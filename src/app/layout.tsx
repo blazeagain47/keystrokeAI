@@ -1,16 +1,23 @@
 // src/app/layout.tsx
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import { AuthProvider } from '@/hooks/useAuth'
-import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
+import { ThemeProvider } from '@/components/theme-provider'
+import { AuthProvider } from '@/hooks/useAuth'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'KeystrokeAI - AI-Powered Typing Platform',
-  description: 'The world\'s most advanced AI-powered typing platform that adapts to you in real-time',
-  keywords: 'typing, AI, practice, WPM, accuracy, adaptive learning',
+  title: 'KeystrokeAI',
+  description: 'AI-powered typing practice platform',
+  icons: {
+    icon: [
+      {
+        url: '/next.svg',
+        type: 'image/svg+xml',
+      },
+    ],
+  },
 }
 
 export default function RootLayout({
@@ -23,7 +30,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
+          defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
