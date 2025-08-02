@@ -24,11 +24,9 @@ interface TypingBoxProps {
 
 const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) => {
   const { user } = useAuth();
-  const [prompt, setPrompt] = useState('');
   const [words, setWords] = useState<string[]>([]);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
-  const [typedText, setTypedText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [hasStarted, setHasStarted] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
@@ -37,9 +35,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
   const [totalChars, setTotalChars] = useState(0);
   const [errors, setErrors] = useState<Set<number>>(new Set());
   const [cursorVisible, setCursorVisible] = useState(true);
+  const [finalStats, setFinalStats] = useState<{wpm: number, accuracy: number, time: number} | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
-
+  
   // Load new text prompt
   const loadNewPrompt = useCallback(async () => {
     try {
@@ -49,24 +48,22 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
         topic: 'general',
       });
       
-      setPrompt(generatedText);
       setWords(generatedText.split(' '));
       
       // Reset all state
       setCurrentWordIndex(0);
       setCurrentCharIndex(0);
-      setTypedText('');
       setHasStarted(false);
       setStartTime(null);
       setIsComplete(false);
       setCorrectChars(0);
       setTotalChars(0);
       setErrors(new Set());
+      setFinalStats(null);
       
     } catch (error) {
       console.error('Error loading prompt:', error);
-      const fallback = "The quick brown fox jumps over the lazy dog in the park";
-      setPrompt(fallback);
+      const fallback = "The quick brown fox jumps over the lazy dog. This pangram contains every letter of the alphabet and is commonly used for typing practice.";
       setWords(fallback.split(' '));
     } finally {
       setIsLoading(false);
@@ -82,11 +79,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
 
   // Cursor blinking animation
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCursorVisible(prev => !prev);
-    }, 530);
-    return () => clearInterval(interval);
-  }, []);
+    if (!isComplete) {
+      const interval = setInterval(() => {
+        setCursorVisible(prev => !prev);
+      }, 530);
+      return () => clearInterval(interval);
+    }
+  }, [isComplete]);
 
   // Stats updating
   useEffect(() => {
@@ -124,7 +123,6 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
       e.preventDefault();
       if (currentCharIndex > 0) {
         setCurrentCharIndex(prev => prev - 1);
-        setTypedText(prev => prev.slice(0, -1));
         setTotalChars(prev => Math.max(0, prev - 1));
       } else if (currentWordIndex > 0 && currentCharIndex === 0) {
         // Go back to previous word
@@ -150,7 +148,6 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
         
         setCurrentWordIndex(prev => prev + 1);
         setCurrentCharIndex(0);
-        setTypedText(prev => prev + ' ');
       }
       return;
     }
@@ -172,7 +169,6 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
         
         setTotalChars(prev => prev + 1);
         setCurrentCharIndex(prev => prev + 1);
-        setTypedText(prev => prev + e.key);
         
         // Check if word is complete
         if (currentCharIndex + 1 === currentWord.length) {
@@ -183,6 +179,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
             const duration = (endTime - startTime!) / 1000;
             const finalWpm = calculateWPM(correctChars + (isCorrect ? 1 : 0), duration);
             const finalAccuracy = calculateAccuracy(correctChars + (isCorrect ? 1 : 0), totalChars + 1);
+            
+            // Store final stats to prevent recalculation
+            setFinalStats({
+              wpm: finalWpm,
+              accuracy: finalAccuracy,
+              time: duration
+            });
             
             setIsComplete(true);
             onTestComplete(finalWpm, finalAccuracy, duration);
@@ -232,103 +235,194 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="w-8 h-8 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-gray-400">Loading new text...</p>
+      <div className="flex flex-col items-center justify-center min-h-[70vh]">
+        <div className="flex flex-col items-center space-y-6">
+          <div className="relative">
+            <div className="w-12 h-12 border-2 border-yellow-400/30 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 w-12 h-12 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <div className="text-center space-y-2">
+            <p className="text-gray-300 text-lg font-medium">Generating new text...</p>
+            <p className="text-gray-500 text-sm">Powered by AI</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[70vh] px-6" ref={containerRef}>
-      {/* Modern Typing Console */}
-      <div className="w-full max-w-4xl mx-auto">
-        {/* Typing Area */}
-        <div className="bg-gray-800/30 backdrop-blur-sm border border-gray-700/50 rounded-2xl p-8 mb-8 shadow-2xl">
-          <div 
-            className="text-2xl leading-relaxed font-mono select-none focus:outline-none"
-            style={{ 
-              lineHeight: '2.5',
-              letterSpacing: '0.02em',
-              fontFamily: "'JetBrains Mono', 'Consolas', monospace"
-            }}
-            tabIndex={0}
-          >
-            {words.map((word, wordIndex) => (
-              <span key={wordIndex} className="inline-block mr-3">
-                {word.split('').map((char, charIndex) => {
-                  const status = getCharacterStatus(wordIndex, charIndex);
-                  return (
-                    <span
-                      key={`${wordIndex}-${charIndex}`}
-                      className={clsx(
-                        "relative transition-all duration-75",
-                        status === 'correct' && "text-gray-200",
-                        status === 'incorrect' && "text-red-400 bg-red-900/40 rounded-sm",
-                        status === 'cursor' && "bg-yellow-400 text-gray-900 rounded-sm",
-                        status === 'untyped' && "text-gray-500"
-                      )}
-                      style={status === 'cursor' ? {
-                        backgroundColor: cursorVisible ? '#fbbf24' : 'transparent',
-                        color: cursorVisible ? '#111827' : '#6b7280',
-                      } : {}}
-                    >
-                      {char}
-                    </span>
-                  );
-                })}
-              </span>
-            ))}
+    <div className="flex flex-col items-center justify-center min-h-[70vh] px-4" ref={containerRef}>
+      {/* Main Content Container */}
+      <div className="w-full max-w-6xl mx-auto space-y-12">
+        
+        {/* Test Status */}
+        {!hasStarted && !isComplete && (
+          <div className="text-center space-y-3">
+            <div className="inline-flex items-center gap-3 px-6 py-3 bg-gray-800/40 backdrop-blur-sm border border-gray-700/30 rounded-2xl">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <p className="text-gray-300 text-sm font-medium">Click to focus, then start typing</p>
+            </div>
+          </div>
+        )}
+
+        {/* Main Typing Display */}
+        <div 
+          className="relative group cursor-text"
+          onClick={() => containerRef.current?.focus()}
+          tabIndex={0}
+        >
+          {/* Typing Area Background */}
+          <div className="absolute inset-0 bg-gradient-to-br from-gray-800/20 via-gray-700/10 to-gray-800/20 backdrop-blur-sm rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          
+          {/* Text Content */}
+          <div className="relative text-2xl md:text-3xl lg:text-4xl leading-relaxed text-center font-mono px-8 py-16 min-h-[400px] flex items-center justify-center">
+            <div className="max-w-5xl space-y-2">
+              {words.map((word, wordIndex) => (
+                <React.Fragment key={wordIndex}>
+                  <span 
+                    className={clsx(
+                      "inline-block relative mx-1 transition-all duration-200",
+                      wordIndex === currentWordIndex && "bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-2 py-1 -mx-1 shadow-lg shadow-yellow-400/5"
+                    )}
+                  >
+                    {word.split('').map((char, charIndex) => {
+                      const status = getCharacterStatus(wordIndex, charIndex);
+                      return (
+                        <span
+                          key={`${wordIndex}-${charIndex}`}
+                          className={clsx(
+                            "relative transition-all duration-100 ease-out",
+                            status === 'correct' && "text-gray-200",
+                            status === 'incorrect' && "text-red-400 bg-red-900/40 rounded-md shadow-sm",
+                            status === 'cursor' && "bg-yellow-400 text-gray-900 rounded-md shadow-md shadow-yellow-400/30",
+                            status === 'untyped' && "text-gray-600"
+                          )}
+                          style={status === 'cursor' ? {
+                            backgroundColor: cursorVisible ? '#fbbf24' : 'transparent',
+                            color: cursorVisible ? '#111827' : '#6b7280',
+                            transform: cursorVisible ? 'scale(1.05)' : 'scale(1)',
+                          } : {}}
+                        >
+                          {char}
+                        </span>
+                      );
+                    })}
+                  </span>
+                  {wordIndex < words.length - 1 && (
+                    <span className="text-gray-600 mx-1 select-none"> </span>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Restart Button */}
-        <div className="flex justify-center">
-          <button
-            onClick={handleRestart}
-            className="group flex items-center justify-center w-12 h-12 bg-gray-800/50 hover:bg-gray-700/50 border border-gray-600/50 rounded-full transition-all duration-200 hover:scale-110"
-          >
-            <RotateCcw className="w-5 h-5 text-gray-400 group-hover:text-yellow-400 transition-colors" />
-          </button>
-        </div>
-      </div>
-
-      {/* Test Complete Modal */}
-      {isComplete && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gray-800 border border-gray-700 rounded-2xl p-8 shadow-2xl">
-            <h3 className="text-2xl font-bold text-white mb-4">Test Complete!</h3>
-            <div className="grid grid-cols-3 gap-6 mb-6">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-yellow-400">
-                  {calculateWPM(correctChars, (Date.now() - startTime!) / 1000)}
-                </div>
-                <div className="text-sm text-gray-400">WPM</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-green-400">
-                  {calculateAccuracy(correctChars, totalChars)}%
-                </div>
-                <div className="text-sm text-gray-400">Accuracy</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-400">
-                  {((Date.now() - startTime!) / 1000).toFixed(1)}s
-                </div>
-                <div className="text-sm text-gray-400">Time</div>
-              </div>
-            </div>
+        {(!hasStarted || isComplete) && (
+          <div className="flex justify-center">
             <button
               onClick={handleRestart}
-              className="w-full bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-medium py-3 px-6 rounded-lg transition-colors"
+              className="group relative flex items-center justify-center w-16 h-16 bg-gradient-to-br from-gray-800 to-gray-900 hover:from-yellow-500 hover:to-yellow-600 border border-gray-600/30 hover:border-yellow-400/50 rounded-2xl transition-all duration-300 hover:scale-110 hover:shadow-xl hover:shadow-yellow-400/20 focus:outline-none focus:ring-4 focus:ring-yellow-400/30"
             >
-              Try Again
+              <RotateCcw className="w-6 h-6 text-gray-400 group-hover:text-white transition-all duration-300 group-hover:rotate-180" />
+              
+              {/* Tooltip */}
+              <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-gray-800 text-gray-200 text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                New Text
+              </div>
             </button>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Results Display */}
+        {isComplete && finalStats && (
+          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Main Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto">
+              {/* WPM Card */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/20 to-orange-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
+                <div className="relative bg-gradient-to-br from-gray-800/90 to-gray-900/90 backdrop-blur-sm border border-yellow-400/20 rounded-2xl p-8 text-center hover:border-yellow-400/40 transition-all duration-300">
+                  <div className="text-5xl font-bold text-yellow-400 mb-2">
+                    {finalStats.wpm}
+                  </div>
+                  <div className="text-sm text-gray-400 uppercase tracking-wider font-medium">Words per minute</div>
+                </div>
+              </div>
+
+              {/* Accuracy Card */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-br from-green-400/20 to-emerald-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
+                <div className="relative bg-gradient-to-br from-gray-800/90 to-gray-900/90 backdrop-blur-sm border border-green-400/20 rounded-2xl p-8 text-center hover:border-green-400/40 transition-all duration-300">
+                  <div className="text-5xl font-bold text-green-400 mb-2">
+                    {finalStats.accuracy}%
+                  </div>
+                  <div className="text-sm text-gray-400 uppercase tracking-wider font-medium">Accuracy</div>
+                </div>
+              </div>
+
+              {/* Time Card */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-cyan-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
+                <div className="relative bg-gradient-to-br from-gray-800/90 to-gray-900/90 backdrop-blur-sm border border-blue-400/20 rounded-2xl p-8 text-center hover:border-blue-400/40 transition-all duration-300">
+                  <div className="text-5xl font-bold text-blue-400 mb-2">
+                    {finalStats.time.toFixed(1)}s
+                  </div>
+                  <div className="text-sm text-gray-400 uppercase tracking-wider font-medium">Time</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Secondary Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+              <div className="bg-gray-800/40 backdrop-blur-sm border border-gray-700/30 rounded-xl p-4 text-center hover:border-gray-600/50 transition-all duration-200">
+                <div className="font-mono text-2xl text-gray-200 mb-1">
+                  {Math.round(finalStats.wpm * 5)}
+                </div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider">Characters</div>
+              </div>
+              <div className="bg-gray-800/40 backdrop-blur-sm border border-gray-700/30 rounded-xl p-4 text-center hover:border-gray-600/50 transition-all duration-200">
+                <div className="font-mono text-2xl text-red-400 mb-1">
+                  {Math.round((100 - finalStats.accuracy) * totalChars / 100)}
+                </div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider">Errors</div>
+              </div>
+              <div className="bg-gray-800/40 backdrop-blur-sm border border-gray-700/30 rounded-xl p-4 text-center hover:border-gray-600/50 transition-all duration-200">
+                <div className="font-mono text-2xl text-gray-200 mb-1">
+                  {words.length}
+                </div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider">Words</div>
+              </div>
+              <div className="bg-gray-800/40 backdrop-blur-sm border border-gray-700/30 rounded-xl p-4 text-center hover:border-gray-600/50 transition-all duration-200">
+                <div className="font-mono text-2xl text-green-400 mb-1">
+                  {Math.round(correctChars)}
+                </div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider">Correct</div>
+              </div>
+            </div>
+
+            {/* Performance Message */}
+            <div className="text-center">
+              <div className={clsx(
+                "inline-flex items-center gap-3 px-8 py-4 rounded-2xl text-lg font-semibold backdrop-blur-sm border shadow-lg",
+                finalStats.wpm >= 60 ? "bg-green-900/30 text-green-300 border-green-700/50 shadow-green-500/20" :
+                finalStats.wpm >= 40 ? "bg-yellow-900/30 text-yellow-300 border-yellow-700/50 shadow-yellow-500/20" :
+                "bg-red-900/30 text-red-300 border-red-700/50 shadow-red-500/20"
+              )}>
+                <div className={clsx(
+                  "w-3 h-3 rounded-full",
+                  finalStats.wpm >= 60 ? "bg-green-400 animate-pulse" :
+                  finalStats.wpm >= 40 ? "bg-yellow-400 animate-pulse" :
+                  "bg-red-400"
+                )}></div>
+                {finalStats.wpm >= 60 ? "Outstanding performance! 🔥" :
+                 finalStats.wpm >= 40 ? "Great typing speed! ⚡" :
+                 "Keep practicing - you've got this! 💪"}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
