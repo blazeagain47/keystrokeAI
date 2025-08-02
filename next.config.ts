@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Remove env config that was overriding environment variables
 };
 
 export default nextConfig;
