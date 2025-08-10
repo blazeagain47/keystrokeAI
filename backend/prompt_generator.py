@@ -235,7 +235,72 @@ _FALLBACK_BANK = [
 ]
 
 
-def generate_words_prompt(count: int, language: str = "english") -> str:
+def _assemble_sentences(tokens: list[str], include_punctuation: bool) -> str:
+    """
+    Given plain tokens (words and numeric tokens), return a string with proper sentence
+    boundaries and optional commas. Ensures:
+    - Sentences length 6–12 tokens.
+    - First token of each sentence capitalized.
+    - Sentence enders: '.', '!', '?' with light randomness (bias to '.') when punctuation is enabled.
+    - Commas appear after a token with small probability but never adjacent to other punctuation.
+    """
+    import random as _random
+    rng = _random.Random()
+    out: list[str] = []
+    i = 0
+    while i < len(tokens):
+        span = rng.randint(6, 12)
+        end = min(len(tokens), i + span)
+        sent = tokens[i:end].copy()
+
+        if include_punctuation and len(sent) > 6:
+            num_commas = rng.choice([0, 1, 1, 2])
+            positions = list(range(2, len(sent) - 1))
+            rng.shuffle(positions)
+            placed = 0
+            used_positions: set[int] = set()
+            for pos in positions:
+                if placed >= num_commas:
+                    break
+                if (pos - 1) in used_positions or (pos + 1) in used_positions:
+                    continue
+                sent[pos] = sent[pos] + ","
+                used_positions.add(pos)
+                placed += 1
+
+        if sent:
+            head = sent[0]
+            if head and head[0].isalpha():
+                sent[0] = head[0].upper() + head[1:]
+
+        if include_punctuation:
+            ender = rng.choices([".", ".", ".", "!", "?"], weights=[5, 1, 1, 1, 1])[0]
+            joined = " ".join(sent) + ender
+        else:
+            joined = " ".join(sent)
+        out.append(joined)
+        i = end
+    return " ".join(out)
+
+
+def _maybe_inject_numbers(base_words: list[str], include_numbers: bool, rng) -> list[str]:
+    if not include_numbers:
+        return base_words
+    tokens: list[str] = []
+    for w in base_words:
+        if rng.random() < 0.12:
+            n = rng.choice([
+                str(rng.randint(1, 99)),
+                str(rng.randint(100, 999)),
+                str(rng.randint(2000, 9999)),
+            ])
+            tokens.append(n)
+        else:
+            tokens.append(w)
+    return tokens
+
+
+def generate_words_prompt(count: int, language: str = "english", include_punctuation: bool = False, include_numbers: bool = False) -> str:
     rng = random.Random()
     allowed = {10, 15, 20, 30, 50}
     if count not in allowed:
@@ -244,17 +309,13 @@ def generate_words_prompt(count: int, language: str = "english") -> str:
     words = _load_corpus_words()
     bank = words if len(words) >= 200 else _FALLBACK_BANK
 
-    # Sample with replacement to reach exactly count words
+    # Sample with replacement to reach exactly count tokens
     chosen: list[str] = []
     for _ in range(count):
         w = rng.choice(bank)
-        # simple punctuation mixing every ~7 words
-        if (len(chosen) + 1) % 7 == 0 and rng.random() < 0.5:
-            w = w.rstrip(",.!?") + rng.choice([",", ".", "!", "?"])
-        chosen.append(w)  # do not force lowercase here
+        chosen.append(w)
 
-    text = " ".join(chosen[:count]).strip()
-    if text:
-        text = text[0].upper() + text[1:]
-    return text
+    chosen = _maybe_inject_numbers(chosen, include_numbers, rng)
+    text = _assemble_sentences(chosen, include_punctuation)
+    return text.strip()
 

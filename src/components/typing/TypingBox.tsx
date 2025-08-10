@@ -35,6 +35,7 @@ interface TypingBoxProps {
 
 const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt }) => {
   const LINE_H = 38; // px fixed line-height for precise viewport math
+  const VISIBLE_LINES = 3;
   const { user } = useAuth();
 
   /* state */
@@ -68,6 +69,12 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const lastLineRef = useRef<number>(0);
   const baseTopRef = useRef<number>(0);
   const lineEndsRef = useRef<number[]>([]);
+
+  const clampTop = useCallback((top: number) => {
+    const totalLines = lineEndsRef.current.length || 0;
+    const maxTop = Math.max(0, totalLines - VISIBLE_LINES);
+    return Math.max(0, Math.min(top, maxTop));
+  }, []);
 
   /* ───────── Load prompt from prop ───────── */
   const resetFromPrompt = useCallback((text: string) => {
@@ -123,9 +130,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       firstLineTopRef.current = first.offsetTop;
       setVisibleStartLine(0);
       if (viewportRef.current) {
-        viewportRef.current.style.height = `${2 * LINE_H}px`;
-        viewportRef.current.style.paddingTop = '3px';
-        viewportRef.current.style.paddingBottom = '3px';
+        const PAD = 3; // small visual buffer
+        viewportRef.current.style.height = `${(VISIBLE_LINES * LINE_H) + (PAD * 2)}px`;
+        viewportRef.current.style.paddingTop = `${PAD}px`;
+        viewportRef.current.style.paddingBottom = `${PAD}px`;
       }
       if (contentRef.current) contentRef.current.style.transform = `translateY(0px)`;
       computeWordLines();
@@ -161,19 +169,19 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     }
   }, [hasStarted, startTime, isComplete, correctChars, totalChars, onStatsUpdate, mode, onTestComplete, typedInput]);
 
-  /* auto-advance viewport so current word is always top line */
+  /* auto-advance viewport so current line is centered (middle of 3) */
   useEffect(() => {
     const line = wordLineRef.current[currentWordIndex] ?? 0;
-    if (line > visibleStartLine) {
-      const nextVisible = line;
-      setVisibleStartLine(nextVisible);
+    const desiredTop = clampTop(line - 1);
+    if (desiredTop !== visibleStartLine) {
+      setVisibleStartLine(desiredTop);
       if (contentRef.current) {
-        const px = (nextVisible * (lineHeightRef.current || LINE_H)) | 0;
+        const px = (desiredTop * (lineHeightRef.current || LINE_H)) | 0;
         contentRef.current.style.transform = `translateY(-${px}px)`;
       }
     }
     lastLineRef.current = line;
-  }, [currentWordIndex, visibleStartLine]);
+  }, [currentWordIndex, visibleStartLine, clampTop]);
 
   /* ───────── Keyboard handler ───────── */
   const handleKeyDown = useCallback(
@@ -230,14 +238,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         // Append space to typed input
         setTypedInput((prev) => prev + ' ');
 
-        // Immediate advance if space finalizes last word on current top line
-        const topEndIdx = lineEndsRef.current[visibleStartLine] ?? -1;
-        const isLastOnTop = currentWordIndex === topEndIdx;
-        if (isLastOnTop) {
-          const nextTop = visibleStartLine + 1;
-          setVisibleStartLine(nextTop);
+        // Center on the next word's line (middle of viewport)
+        const nextLine = wordLineRef.current[currentWordIndex + 1] ?? (wordLineRef.current[currentWordIndex] ?? 0);
+        const desiredTop = clampTop(nextLine - 1);
+        if (desiredTop !== visibleStartLine) {
+          setVisibleStartLine(desiredTop);
           if (contentRef.current) {
-            const px = ((nextTop) * (lineHeightRef.current || LINE_H)) | 0;
+            const px = (desiredTop * (lineHeightRef.current || LINE_H)) | 0;
             contentRef.current.style.transform = `translateY(-${px}px)`;
           }
         }

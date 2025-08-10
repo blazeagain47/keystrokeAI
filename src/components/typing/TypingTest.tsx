@@ -76,14 +76,24 @@ const TypingTest: React.FC = () => {
     };
   }, [view]);
 
-  async function loadPrompt(desiredCount?: number) {
+  async function loadPrompt(
+    desiredCount?: number,
+    opts?: { include_punctuation?: boolean; include_numbers?: boolean; mode?: 'words' | 'time'; durationSec?: number; language?: string }
+  ) {
     if (isFetching) return;
     setIsFetching(true);
     let tries = 0;
     let result: { text: string; mode: 'words'; count: number; seed: number } | null = null;
     const count = desiredCount ?? wordCount;
     while (tries < 3) {
-      const r = await fetchPrompt({ mode: 'words', count });
+      const r = await fetchPrompt({
+        mode: opts?.mode ?? 'words',
+        count,
+        durationSec: opts?.durationSec,
+        include_punctuation: opts?.include_punctuation ?? showPunctuation,
+        include_numbers: opts?.include_numbers ?? showNumbers,
+        language: opts?.language ?? 'english',
+      });
       if (!sessionUsedSeeds.current.has(r.seed)) {
         result = r;
         break;
@@ -91,23 +101,39 @@ const TypingTest: React.FC = () => {
       tries += 1;
     }
     if (!result) {
-      result = await fetchPrompt({ mode: 'words', count });
+      result = await fetchPrompt({
+        mode: opts?.mode ?? 'words',
+        count,
+        durationSec: opts?.durationSec,
+        include_punctuation: opts?.include_punctuation ?? showPunctuation,
+        include_numbers: opts?.include_numbers ?? showNumbers,
+        language: opts?.language ?? 'english',
+      });
     }
     sessionUsedSeeds.current.add(result.seed);
     setCurrentPrompt(result.text);
     setIsFetching(false);
   }
 
-  async function handleRestart(desiredCount?: number) {
+  async function handleRestart(desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) {
     setView('typing');
     setWpmSeries([]);
     setIsTestComplete(false);
     if (mode === 'time') {
       const initialCount = Math.max(200, Math.ceil(durationSec * 4));
-      await loadPrompt(initialCount);
+      await loadPrompt(initialCount, {
+        mode: 'time',
+        durationSec,
+        include_punctuation: flagOverrides?.include_punctuation ?? showPunctuation,
+        include_numbers: flagOverrides?.include_numbers ?? showNumbers,
+      });
     } else {
       const c = desiredCount ?? wordCount;
-      await loadPrompt(c);
+      await loadPrompt(c, {
+        mode: 'words',
+        include_punctuation: flagOverrides?.include_punctuation ?? showPunctuation,
+        include_numbers: flagOverrides?.include_numbers ?? showNumbers,
+      });
     }
   }
 
@@ -169,7 +195,11 @@ const TypingTest: React.FC = () => {
                   ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-gray-900 shadow-yellow-400/25 hover:shadow-yellow-400/40' 
                   : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
               )}
-              onClick={() => setShowPunctuation(!showPunctuation)}
+              onClick={async () => {
+                const next = !showPunctuation;
+                setShowPunctuation(next);
+                await handleRestart(undefined, { include_punctuation: next });
+              }}
             >
               <AtSign className="h-4 w-4" />
               punctuation
@@ -183,7 +213,11 @@ const TypingTest: React.FC = () => {
                   ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-gray-900 shadow-yellow-400/25 hover:shadow-yellow-400/40' 
                   : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
               )}
-              onClick={() => setShowNumbers(!showNumbers)}
+              onClick={async () => {
+                const next = !showNumbers;
+                setShowNumbers(next);
+                await handleRestart(undefined, { include_numbers: next });
+              }}
             >
               <Hash className="h-4 w-4" />
               numbers
@@ -297,7 +331,7 @@ const TypingTest: React.FC = () => {
                           ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/25' 
                           : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-300'
                       )}
-                      onClick={async () => { setWordCount(count); await handleRestart(count); }}
+              onClick={async () => { setWordCount(count); await handleRestart(count); }}
                     >
                       {count}
                       {wordCount === count && (
@@ -383,7 +417,13 @@ const TypingTest: React.FC = () => {
             onRequestNewPrompt={async () => { await handleRestart(); }}
             onRequestAppendPrompt={async () => {
               const extraCount = 120;
-              const extra = await fetchPrompt({ mode: 'words', count: extraCount, language: 'english' });
+              const extra = await fetchPrompt({
+                mode: 'words',
+                count: extraCount,
+                include_punctuation: showPunctuation,
+                include_numbers: showNumbers,
+                language: 'english',
+              });
               return extra.text;
             }}
           />

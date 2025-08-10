@@ -84,15 +84,29 @@ async def analyze_typing(data: TypingInput):
 class GenerateIn(BaseModel):
     mode: str = "words"
     count: Optional[int] = 25
+    duration: Optional[int] = None
     language: Optional[str] = "english"
+    include_punctuation: Optional[bool] = False
+    include_numbers: Optional[bool] = False
 
 
 @app.post("/generate")
 async def generate_handler(params: GenerateIn):
-    if params.mode != "words":
+    # For now, we unify to words-mode generation with optional punctuation/numbers.
+    # Time mode requests will request a long count from the frontend.
+    if params.mode not in ("words", "time"):
         params.mode = "words"
     allowed = {10, 15, 20, 30, 50}
-    count = params.count if params.count in allowed else 25
+    if params.mode == "time":
+        # front-end supplies a large count for time mode; fall back if missing
+        count = max(200, int(params.count or 200))
+    else:
+        count = params.count if params.count in allowed else 25
     seed = random.randint(1, 2_000_000_000)
-    text = generate_words_prompt(count=count, language=params.language or "english")
+    text = generate_words_prompt(
+        count=count,
+        language=params.language or "english",
+        include_punctuation=bool(params.include_punctuation),
+        include_numbers=bool(params.include_numbers),
+    )
     return {"text": text, "mode": "words", "count": count, "seed": seed}

@@ -25,12 +25,26 @@ export async function generatePrompt(options: PromptOptions) {
   return data as { text: string };
 }
 
-export async function fetchPrompt(params: { mode: "words"; count: number; language?: string }) {
+export async function fetchPrompt(params: {
+  mode: "words" | "time";
+  count?: number;
+  durationSec?: number;
+  include_punctuation?: boolean;
+  include_numbers?: boolean;
+  language?: string;
+}) {
   const base = process.env.NEXT_PUBLIC_BACKEND_URL || API_BASE;
   const res = await fetch(`${base}/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode: params.mode, count: params.count, language: params.language ?? "english" }),
+    body: JSON.stringify({
+      mode: params.mode,
+      count: params.count,
+      duration: params.durationSec,
+      include_punctuation: params.include_punctuation ?? false,
+      include_numbers: params.include_numbers ?? false,
+      language: params.language ?? "english",
+    }),
   });
   if (!res.ok) throw new Error("Failed to fetch prompt");
   return res.json() as Promise<{ text: string; mode: "words"; count: number; seed: number }>;
