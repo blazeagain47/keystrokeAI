@@ -24,13 +24,16 @@ function calculateAccuracy(correctChars: number, totalChars: number) {
 /* ─────────────────────────────────────────────────────────── */
 /* component                                                 */
 interface TypingBoxProps {
+  mode: 'words' | 'time';
+  durationSec?: number;
   onStatsUpdate: (wpm: number, accuracy: number, time: number) => void;
   onTestComplete: (wpm: number, accuracy: number, duration: number, typedText: string) => void;
   prompt?: string;
   onRequestNewPrompt?: () => void | Promise<void>;
+  onRequestAppendPrompt?: () => Promise<string> | string;
 }
 
-const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt }) => {
+const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt }) => {
   const { user } = useAuth();
 
   /* state */
@@ -51,6 +54,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete, pr
   const containerRef = useRef<HTMLDivElement>(null);
   const isTabHeldRef = useRef<boolean>(false);
   const lastTabDownAtRef = useRef<number | null>(null);
+  const endAtRef = useRef<number | null>(null);
+  const lastAppendAtRef = useRef<number>(0);
 
   /* ───────── Load prompt from prop ───────── */
   const resetFromPrompt = useCallback((text: string) => {
@@ -88,14 +93,21 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete, pr
   useEffect(() => {
     if (hasStarted && startTime && !isComplete) {
       const interval = setInterval(() => {
-        const currentTime = (Date.now() - startTime) / 1000;
+        const now = Date.now();
+        const currentTime = (now - startTime) / 1000;
         const wpm       = calculateWPM(correctChars, currentTime);
         const accuracy  = calculateAccuracy(correctChars, totalChars);
         onStatsUpdate(wpm, accuracy, currentTime);
-      }, 100);
+        if (mode === 'time' && endAtRef.current && now >= endAtRef.current) {
+          const finalWpm = calculateWPM(correctChars, currentTime);
+          const finalAcc = calculateAccuracy(correctChars, totalChars);
+          setIsComplete(true);
+          onTestComplete(finalWpm, finalAcc, currentTime, typedInput);
+        }
+      }, 250);
       return () => clearInterval(interval);
     }
-  }, [hasStarted, startTime, isComplete, correctChars, totalChars, onStatsUpdate]);
+  }, [hasStarted, startTime, isComplete, correctChars, totalChars, onStatsUpdate, mode, onTestComplete, typedInput]);
 
   /* ───────── Keyboard handler ───────── */
   const handleKeyDown = useCallback(
@@ -106,6 +118,9 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete, pr
       if (!hasStarted && e.key.length === 1) {
         setHasStarted(true);
         setStartTime(Date.now());
+        if (mode === 'time') {
+          endAtRef.current = Date.now() + durationSec * 1000;
+        }
       }
 
       /* restart combo handling */
@@ -163,6 +178,20 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete, pr
         return;
       }
 
+      /* Auto-extend prompt in time mode when near the end */
+      if (mode === 'time') {
+        const remainingWords = words.length - currentWordIndex;
+        const now = Date.now();
+        if (remainingWords < 30 && onRequestAppendPrompt && now - lastAppendAtRef.current > 5000) {
+          lastAppendAtRef.current = now;
+          Promise.resolve(onRequestAppendPrompt()).then((extra) => {
+            if (!extra) return;
+            const more = extra.split(/\s+/).filter(Boolean);
+            setWords((prev) => [...prev, ...more]);
+          }).catch(() => {});
+        }
+      }
+
       /* regular char */
       if (e.key.length === 1) {
         e.preventDefault();
@@ -181,18 +210,17 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete, pr
 
           /* word complete? */
           if (currentCharIndex + 1 === currentWord.length) {
-            /* last word? */
-            if (currentWordIndex === words.length - 1) {
-              const endTime     = Date.now();
-              const duration    = (endTime - startTime!) / 1000;
-              const finalWpm    = calculateWPM(correctChars + (isCorrect ? 1 : 0), duration);
-              const finalAcc    = calculateAccuracy(correctChars + (isCorrect ? 1 : 0), totalChars + 1);
-
-              // setFinalStats({ wpm: finalWpm, accuracy: finalAcc, time: duration });
-              setIsComplete(true);
-              onTestComplete(finalWpm, finalAcc, duration, typedInput + e.key);
-
-              if (user) saveTypingResult(user.uid, finalWpm, finalAcc, duration, 'words', words.length);
+            if (mode === 'words') {
+              /* last word? */
+              if (currentWordIndex === words.length - 1) {
+                const endTime     = Date.now();
+                const duration    = (endTime - startTime!) / 1000;
+                const finalWpm    = calculateWPM(correctChars + (isCorrect ? 1 : 0), duration);
+                const finalAcc    = calculateAccuracy(correctChars + (isCorrect ? 1 : 0), totalChars + 1);
+                setIsComplete(true);
+                onTestComplete(finalWpm, finalAcc, duration, typedInput + e.key);
+                if (user) saveTypingResult(user.uid, finalWpm, finalAcc, duration, 'words', words.length);
+              }
             }
           }
         }
@@ -214,6 +242,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete, pr
       resetFromPrompt,
       typedInput,
       onRequestNewPrompt,
+      mode,
+      durationSec,
     ]
   );
 

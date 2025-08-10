@@ -34,7 +34,9 @@ const TypingTest: React.FC = () => {
 
   // Test configuration state
   const [testMode, setTestMode] = useState<'time' | 'words' | 'quote' | 'zen' | 'custom'>('words');
-  const [testDuration, setTestDuration] = useState(15);
+  // functional mode + duration (time mode)
+  const [mode, setMode] = useState<'words' | 'time'>('words');
+  const [durationSec, setDurationSec] = useState<number>(15);
   const [wordCount, setWordCount] = useState<number>(15);
   const [showPunctuation, setShowPunctuation] = useState(false);
   const [showNumbers, setShowNumbers] = useState(false);
@@ -100,7 +102,13 @@ const TypingTest: React.FC = () => {
     setView('typing');
     setWpmSeries([]);
     setIsTestComplete(false);
-    await loadPrompt(desiredCount);
+    if (mode === 'time') {
+      const initialCount = Math.max(200, Math.ceil(durationSec * 4));
+      await loadPrompt(initialCount);
+    } else {
+      const c = desiredCount ?? wordCount;
+      await loadPrompt(c);
+    }
   }
 
   // Fetch an initial prompt on mount with default wordCount (15)
@@ -193,7 +201,7 @@ const TypingTest: React.FC = () => {
                   ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-blue-500/25 hover:shadow-blue-500/40' 
                   : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
               )}
-              onClick={() => setTestMode('time')}
+              onClick={async () => { setTestMode('time'); setMode('time'); setView('typing'); await handleRestart(); }}
             >
               <Clock className="h-4 w-4" />
               time
@@ -206,7 +214,7 @@ const TypingTest: React.FC = () => {
                   ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-purple-500/25 hover:shadow-purple-500/40' 
                   : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
               )}
-              onClick={() => setTestMode('words')}
+              onClick={async () => { setTestMode('words'); setMode('words'); setView('typing'); await handleRestart(); }}
             >
               <span className="text-lg font-bold">A</span>
               words
@@ -263,14 +271,14 @@ const TypingTest: React.FC = () => {
                       key={duration}
                       className={clsx(
                         "px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 relative overflow-hidden",
-                        testDuration === duration 
+                        durationSec === duration 
                           ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/25' 
                           : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-300'
                       )}
-                      onClick={() => setTestDuration(duration)}
+                      onClick={async () => { setDurationSec(duration); setView('typing'); await handleRestart(); }}
                     >
                       {duration}s
-                      {testDuration === duration && (
+                      {durationSec === duration && (
                         <div className="absolute inset-0 bg-white/10 animate-pulse"></div>
                       )}
                     </button>
@@ -367,10 +375,17 @@ const TypingTest: React.FC = () => {
         
         {view === 'typing' && (
           <TypingBox 
+            mode={mode}
+            durationSec={durationSec}
             onStatsUpdate={handleStatsUpdate}
             onTestComplete={handleTestComplete}
             prompt={currentPrompt}
             onRequestNewPrompt={async () => { await handleRestart(); }}
+            onRequestAppendPrompt={async () => {
+              const extraCount = 120;
+              const extra = await fetchPrompt({ mode: 'words', count: extraCount, language: 'english' });
+              return extra.text;
+            }}
           />
         )}
         {view === 'results' && (
