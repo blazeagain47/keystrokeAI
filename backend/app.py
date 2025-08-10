@@ -3,6 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
+import random
+from typing import Optional
+from .prompt_generator import generate_words_prompt
 
 app = FastAPI()
 
@@ -76,3 +79,20 @@ def generate_response(user_text: str) -> dict:
 async def analyze_typing(data: TypingInput):
     # Return structured JSON directly
     return generate_response(data.user_text)
+
+
+class GenerateIn(BaseModel):
+    mode: str = "words"
+    count: Optional[int] = 25
+    language: Optional[str] = "english"
+
+
+@app.post("/generate")
+async def generate_handler(params: GenerateIn):
+    if params.mode != "words":
+        params.mode = "words"
+    allowed = {10, 15, 20, 30, 50}
+    count = params.count if params.count in allowed else 25
+    seed = random.randint(1, 2_000_000_000)
+    text = generate_words_prompt(count=count, language=params.language or "english")
+    return {"text": text, "mode": "words", "count": count, "seed": seed}

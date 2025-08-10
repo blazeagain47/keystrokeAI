@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import TypingBox from './TypingBox';
 import ResultsPanel from './ResultsPanel';
 import { 
@@ -16,12 +16,15 @@ import {
   Timer
 } from 'lucide-react';
 import clsx from 'clsx';
+import { fetchPrompt } from '@/lib/api';
 
 const TypingTest: React.FC = () => {
   const [wpm, setWpm] = useState(0);
   const [accuracy, setAccuracy] = useState(100);
   const [time, setTime] = useState(0);
   const [isTestComplete, setIsTestComplete] = useState(false);
+  const [view, setView] = useState<'typing' | 'results'>('typing');
+  const [wpmSeries, setWpmSeries] = useState<Array<{ second: number; wpm: number }>>([]);
   const [analysisResult, setAnalysisResult] = useState<null | {
     input: string;
     corrections: string[];
@@ -32,15 +35,87 @@ const TypingTest: React.FC = () => {
   // Test configuration state
   const [testMode, setTestMode] = useState<'time' | 'words' | 'quote' | 'zen' | 'custom'>('words');
   const [testDuration, setTestDuration] = useState(15);
-  const [wordCount, setWordCount] = useState(50);
+  const [wordCount, setWordCount] = useState<number>(15);
   const [showPunctuation, setShowPunctuation] = useState(false);
   const [showNumbers, setShowNumbers] = useState(false);
+
+  // Backend prompt state
+  const [currentPrompt, setCurrentPrompt] = useState<string>("");
+  const sessionUsedSeeds = useRef<Set<number>>(new Set());
+  const [isFetching, setIsFetching] = useState(false);
+  // results-view combo restart listener
+  useEffect(() => {
+    if (view !== 'results') return;
+    let tabHeld = false;
+    let lastTabAt: number | null = null;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        tabHeld = true;
+        lastTabAt = Date.now();
+        return;
+      }
+      if (e.key === 'Enter') {
+        const recent = lastTabAt && Date.now() - lastTabAt <= 500;
+        if (tabHeld || recent) {
+          e.preventDefault();
+          void handleRestart();
+        }
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') tabHeld = false;
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [view]);
+
+  async function loadPrompt(desiredCount?: number) {
+    if (isFetching) return;
+    setIsFetching(true);
+    let tries = 0;
+    let result: { text: string; mode: 'words'; count: number; seed: number } | null = null;
+    const count = desiredCount ?? wordCount;
+    while (tries < 3) {
+      const r = await fetchPrompt({ mode: 'words', count });
+      if (!sessionUsedSeeds.current.has(r.seed)) {
+        result = r;
+        break;
+      }
+      tries += 1;
+    }
+    if (!result) {
+      result = await fetchPrompt({ mode: 'words', count });
+    }
+    sessionUsedSeeds.current.add(result.seed);
+    setCurrentPrompt(result.text);
+    setIsFetching(false);
+  }
+
+  async function handleRestart(desiredCount?: number) {
+    setView('typing');
+    setWpmSeries([]);
+    setIsTestComplete(false);
+    await loadPrompt(desiredCount);
+  }
+
+  // Fetch an initial prompt on mount with default wordCount (15)
+  useEffect(() => {
+    void handleRestart(15);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleStatsUpdate = (newWpm: number, newAccuracy: number, newTime: number) => {
     setWpm(newWpm);
     setAccuracy(newAccuracy);
     setTime(newTime);
     setIsTestComplete(false);
+    const s = Math.max(1, Math.floor(newTime));
+    setWpmSeries((prev) => (prev.length && prev[prev.length - 1].second === s) ? prev : [...prev, { second: s, wpm: newWpm }]);
   };
 
   const handleTestComplete = async (finalWpm: number, finalAccuracy: number, finalTime: number, finalTypedText?: string) => {
@@ -48,6 +123,7 @@ const TypingTest: React.FC = () => {
     setWpm(finalWpm);
     setAccuracy(finalAccuracy);
     setTime(finalTime);
+    setView('results');
     if (!finalTypedText) return;
     try {
       const response = await fetch("http://127.0.0.1:8000/analyze", {
@@ -204,7 +280,7 @@ const TypingTest: React.FC = () => {
 
               {testMode === 'words' && (
                 <div className="flex items-center gap-2 bg-gray-800/30 backdrop-blur-sm border border-gray-700/30 rounded-xl p-1">
-                  {[25, 50, 100, 200].map((count) => (
+                  {[10, 15, 20, 30, 50].map((count) => (
                     <button 
                       key={count}
                       className={clsx(
@@ -213,7 +289,7 @@ const TypingTest: React.FC = () => {
                           ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/25' 
                           : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-300'
                       )}
-                      onClick={() => setWordCount(count)}
+                      onClick={async () => { setWordCount(count); await handleRestart(count); }}
                     >
                       {count}
                       {wordCount === count && (
@@ -236,7 +312,7 @@ const TypingTest: React.FC = () => {
       </div>
 
       {/* Live Stats Bar - Only show during active typing */}
-      {time > 0 && !isTestComplete && (
+      {time > 0 && view === 'typing' && (
         <div className="sticky top-[120px] z-40 bg-gray-900/90 backdrop-blur-xl border-y border-gray-800/50 shadow-xl animate-in slide-in-from-top duration-500">
           <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center justify-center gap-12">
@@ -283,58 +359,63 @@ const TypingTest: React.FC = () => {
         </div>
       )}
 
-      {/* Main Typing Area */}
+      {/* Main Area */}
       <div className="flex-1 relative">
         {/* Background Effects */}
         <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/5 via-transparent to-blue-400/5 pointer-events-none"></div>
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-yellow-400/10 to-transparent rounded-full blur-3xl pointer-events-none"></div>
         
-        <TypingBox 
-          onStatsUpdate={handleStatsUpdate}
-          onTestComplete={handleTestComplete}
-        />
+        {view === 'typing' && (
+          <TypingBox 
+            onStatsUpdate={handleStatsUpdate}
+            onTestComplete={handleTestComplete}
+            prompt={currentPrompt}
+            onRequestNewPrompt={async () => { await handleRestart(); }}
+          />
+        )}
+        {view === 'results' && (
+          <ResultsPanel
+            wpm={wpm}
+            accuracy={accuracy}
+            time={time}
+            analysis={analysisResult}
+            wpmSeries={wpmSeries}
+            onNextTest={async () => { await handleRestart(); }}
+          />
+        )}
       </div>
 
-      {isTestComplete && (
-        <ResultsPanel
-          wpm={wpm}
-          accuracy={accuracy}
-          time={time}
-          analysis={analysisResult}
-        />
-      )}
+      {/* Results render via view switch above */}
 
-      {/* Bottom Helper Bar - Only show when not actively typing */}
-      {time === 0 && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-30 animate-in slide-in-from-bottom duration-700">
-          <div className="bg-gray-800/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl px-8 py-4 shadow-2xl">
-            <div className="flex items-center gap-8 text-sm">
-              <div className="flex items-center gap-3 text-gray-400">
-                <div className="flex items-center gap-1">
-                  <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Tab</kbd>
-                  <span className="text-gray-500">+</span>
-                  <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Enter</kbd>
-                </div>
-                <span className="font-medium">restart test</span>
+      {/* Bottom Helper Bar - Always visible */}
+      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-30 animate-in slide-in-from-bottom duration-700">
+        <div className="bg-gray-800/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl px-8 py-4 shadow-2xl">
+          <div className="flex items-center gap-8 text-sm">
+            <div className="flex items-center gap-3 text-gray-400">
+              <div className="flex items-center gap-1">
+                <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Tab</kbd>
+                <span className="text-gray-500">+</span>
+                <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Enter</kbd>
               </div>
-              
-              <div className="w-px h-6 bg-gray-600/50"></div>
-              
-              <div className="flex items-center gap-3 text-gray-400">
-                <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Space</kbd>
-                <span className="font-medium">next word</span>
-              </div>
-              
-              <div className="w-px h-6 bg-gray-600/50"></div>
-              
-              <div className="flex items-center gap-3 text-gray-400">
-                <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Backspace</kbd>
-                <span className="font-medium">go back</span>
-              </div>
+              <span className="font-medium">restart test</span>
+            </div>
+            
+            <div className="w-px h-6 bg-gray-600/50"></div>
+            
+            <div className="flex items-center gap-3 text-gray-400">
+              <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Space</kbd>
+              <span className="font-medium">next word</span>
+            </div>
+            
+            <div className="w-px h-6 bg-gray-600/50"></div>
+            
+            <div className="flex items-center gap-3 text-gray-400">
+              <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Backspace</kbd>
+              <span className="font-medium">go back</span>
             </div>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Floating Action Hint */}
       {!isTestComplete && time === 0 && (

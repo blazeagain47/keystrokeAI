@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { generateTypingPrompt } from '@/lib/generateText';
 import { saveTypingResult } from '@/lib/firebase/scores';
 import { RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
@@ -27,9 +26,11 @@ function calculateAccuracy(correctChars: number, totalChars: number) {
 interface TypingBoxProps {
   onStatsUpdate: (wpm: number, accuracy: number, time: number) => void;
   onTestComplete: (wpm: number, accuracy: number, duration: number, typedText: string) => void;
+  prompt?: string;
+  onRequestNewPrompt?: () => void | Promise<void>;
 }
 
-const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) => {
+const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt }) => {
   const { user } = useAuth();
 
   /* state */
@@ -44,43 +45,36 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
   const [totalChars, setTotalChars] = useState(0);
   const [errors, setErrors]         = useState<Set<number>>(new Set());
   const [cursorVisible, setCursorVisible] = useState(true);
-  const [finalStats, setFinalStats] = useState<{ wpm: number; accuracy: number; time: number } | null>(null);
+  // const [finalStats, setFinalStats] = useState<{ wpm: number; accuracy: number; time: number } | null>(null);
   const [typedInput, setTypedInput] = useState<string>("");
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const isTabHeldRef = useRef<boolean>(false);
+  const lastTabDownAtRef = useRef<number | null>(null);
 
-  /* ───────── Load prompt ───────── */
-  const loadNewPrompt = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const generatedText = await generateTypingPrompt({ difficulty: 'medium', topic: 'general' });
-      setWords(generatedText.split(' '));
-
-      /* reset */
-      setCurrentWordIndex(0);
-      setCurrentCharIndex(0);
-      setHasStarted(false);
-      setStartTime(null);
-      setIsComplete(false);
-      setCorrectChars(0);
-      setTotalChars(0);
-      setErrors(new Set());
-      setFinalStats(null);
-      setTypedInput("");
-    } catch (error) {
-      console.error('Error loading prompt:', error);
-      const fallback =
-        'The quick brown fox jumps over the lazy dog. This pangram contains every letter of the alphabet and is commonly used for typing practice.';
-      setWords(fallback.split(' '));
-    } finally {
-      setIsLoading(false);
-    }
+  /* ───────── Load prompt from prop ───────── */
+  const resetFromPrompt = useCallback((text: string) => {
+    setIsLoading(true);
+    const nextWords = text.split(/\s+/).filter(Boolean);
+    setWords(nextWords);
+    setCurrentWordIndex(0);
+    setCurrentCharIndex(0);
+    setHasStarted(false);
+    setStartTime(null);
+    setIsComplete(false);
+    setCorrectChars(0);
+    setTotalChars(0);
+    setErrors(new Set());
+    setTypedInput("");
+    setIsLoading(false);
   }, []);
 
-  /* init */
+  /* init & prop change */
   useEffect(() => {
-    if (user) loadNewPrompt();
-  }, [user, loadNewPrompt]);
+    if (prompt && prompt.length > 0) {
+      resetFromPrompt(prompt);
+    }
+  }, [prompt, resetFromPrompt]);
 
   /* cursor blink */
   useEffect(() => {
@@ -114,11 +108,24 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
         setStartTime(Date.now());
       }
 
-      /* restart */
-      if (e.key === 'Tab' || e.key === 'Enter') {
+      /* restart combo handling */
+      if (e.key === 'Tab') {
         e.preventDefault();
-        loadNewPrompt();
+        isTabHeldRef.current = true;
+        lastTabDownAtRef.current = Date.now();
         return;
+      }
+      if (e.key === 'Enter') {
+        const recentTab = lastTabDownAtRef.current && (Date.now() - lastTabDownAtRef.current <= 500);
+        if (isTabHeldRef.current || recentTab) {
+          e.preventDefault();
+          if (onRequestNewPrompt) {
+            void onRequestNewPrompt();
+          } else if (prompt) {
+            resetFromPrompt(prompt);
+          }
+          return;
+        }
       }
 
       /* backspace */
@@ -181,7 +188,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
               const finalWpm    = calculateWPM(correctChars + (isCorrect ? 1 : 0), duration);
               const finalAcc    = calculateAccuracy(correctChars + (isCorrect ? 1 : 0), totalChars + 1);
 
-              setFinalStats({ wpm: finalWpm, accuracy: finalAcc, time: duration });
+              // setFinalStats({ wpm: finalWpm, accuracy: finalAcc, time: duration });
               setIsComplete(true);
               onTestComplete(finalWpm, finalAcc, duration, typedInput + e.key);
 
@@ -202,16 +209,29 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
       words,
       totalChars,
       correctChars,
-      loadNewPrompt,
       onTestComplete,
+      prompt,
+      resetFromPrompt,
+      typedInput,
+      onRequestNewPrompt,
     ]
   );
+
+  const handleKeyUp = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Tab') {
+      isTabHeldRef.current = false;
+    }
+  }, []);
 
   /* attach listener */
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [handleKeyDown, handleKeyUp]);
 
   /* status helper */
   const getCharacterStatus = (wordIndex: number, charIndex: number) => {
@@ -228,7 +248,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
     return 'untyped';
   };
 
-  const handleRestart = () => loadNewPrompt();
+  const handleRestart = () => {
+    if (onRequestNewPrompt) {
+      void onRequestNewPrompt();
+    } else if (prompt) {
+      resetFromPrompt(prompt);
+    }
+  };
 
   /* ──────────────────────────────────────────────────────────── */
   /* render                                                     */
