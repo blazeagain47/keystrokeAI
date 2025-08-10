@@ -34,8 +34,11 @@ interface TypingBoxProps {
 }
 
 const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt }) => {
+  // Fallback; will be replaced by measured DOM line-height
   const LINE_H = 38; // px fixed line-height for precise viewport math
-  const VISIBLE_LINES = 3;
+  // Bigger viewport and center focus
+  const VISIBLE_LINES = 5;
+  const CENTER_OFFSET = Math.floor(VISIBLE_LINES / 2);
   const { user } = useAuth();
 
   /* state */
@@ -121,25 +124,49 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     lineEndsRef.current = ends;
   }, [LINE_H]);
 
-  /* measure line height on new prompt */
+  // Measure real line-height and size viewport precisely (no padding).
   useEffect(() => {
     const id = requestAnimationFrame(() => {
-      const first = wordRefs.current[0];
-      if (!first) return;
-      lineHeightRef.current = LINE_H;
-      firstLineTopRef.current = first.offsetTop;
-      setVisibleStartLine(0);
-      if (viewportRef.current) {
-        const PAD = 3; // small visual buffer
-        viewportRef.current.style.height = `${(VISIBLE_LINES * LINE_H) + (PAD * 2)}px`;
-        viewportRef.current.style.paddingTop = `${PAD}px`;
-        viewportRef.current.style.paddingBottom = `${PAD}px`;
-      }
-      if (contentRef.current) contentRef.current.style.transform = `translateY(0px)`;
       computeWordLines();
+
+      // Find first tokens of line 0 and 1
+      let firstIdx0 = -1, firstIdx1 = -1;
+      const wl = wordLineRef.current;
+      for (let i = 0; i < wl.length; i++) {
+        if (wl[i] === 0 && firstIdx0 === -1) firstIdx0 = i;
+        if (wl[i] === 1 && firstIdx1 === -1) firstIdx1 = i;
+        if (firstIdx0 !== -1 && firstIdx1 !== -1) break;
+      }
+
+      let measuredLH = LINE_H;
+      const el0 = firstIdx0 !== -1 ? wordRefs.current[firstIdx0] : null;
+      const el1 = firstIdx1 !== -1 ? wordRefs.current[firstIdx1] : null;
+      if (el0 && el1) {
+        measuredLH = Math.round(el1.offsetTop - el0.offsetTop) || LINE_H;
+      } else {
+        const any = el0 || wordRefs.current[0];
+        if (any) {
+          const lh = parseFloat(getComputedStyle(any).lineHeight);
+          if (!Number.isNaN(lh)) measuredLH = Math.round(lh);
+        }
+      }
+
+      lineHeightRef.current = measuredLH;
+      firstLineTopRef.current = el0 ? el0.offsetTop : 0;
+      setVisibleStartLine(0);
+
+      if (viewportRef.current) {
+        viewportRef.current.style.paddingTop = '0px';
+        viewportRef.current.style.paddingBottom = '0px';
+        viewportRef.current.style.height = `${VISIBLE_LINES * measuredLH}px`;
+      }
+      if (contentRef.current) {
+        contentRef.current.style.transform = `translateY(0px)`;
+        contentRef.current.style.willChange = 'transform';
+      }
     });
     return () => cancelAnimationFrame(id);
-  }, [prompt, computeWordLines, LINE_H]);
+  }, [prompt, computeWordLines]);
 
   /* cursor blink */
   useEffect(() => {
@@ -169,14 +196,16 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     }
   }, [hasStarted, startTime, isComplete, correctChars, totalChars, onStatsUpdate, mode, onTestComplete, typedInput]);
 
-  /* auto-advance viewport so current line is centered (middle of 3) */
+  /* auto-advance viewport so current line is centered within the viewport */
   useEffect(() => {
     const line = wordLineRef.current[currentWordIndex] ?? 0;
-    const desiredTop = clampTop(line - 1);
+    // Center the active line within the viewport
+    const desiredTop = clampTop(line - CENTER_OFFSET);
     if (desiredTop !== visibleStartLine) {
       setVisibleStartLine(desiredTop);
       if (contentRef.current) {
-        const px = (desiredTop * (lineHeightRef.current || LINE_H)) | 0;
+        const lh = lineHeightRef.current || LINE_H;
+        const px = Math.round(desiredTop * lh);
         contentRef.current.style.transform = `translateY(-${px}px)`;
       }
     }
@@ -238,13 +267,16 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         // Append space to typed input
         setTypedInput((prev) => prev + ' ');
 
-        // Center on the next word's line (middle of viewport)
-        const nextLine = wordLineRef.current[currentWordIndex + 1] ?? (wordLineRef.current[currentWordIndex] ?? 0);
-        const desiredTop = clampTop(nextLine - 1);
-        if (desiredTop !== visibleStartLine) {
-          setVisibleStartLine(desiredTop);
+        // Snap shift by one line but re-center around the next active line
+        const topEndIdx = lineEndsRef.current[visibleStartLine] ?? -1;
+        if (currentWordIndex === topEndIdx) {
+          // Snap shift to keep motion crisp; effect above will keep it centered
+          const nextLine = wordLineRef.current[currentWordIndex + 1] ?? (visibleStartLine + CENTER_OFFSET);
+          const nextTop = clampTop(nextLine - CENTER_OFFSET);
+          setVisibleStartLine(nextTop);
           if (contentRef.current) {
-            const px = (desiredTop * (lineHeightRef.current || LINE_H)) | 0;
+            const lh = lineHeightRef.current || LINE_H;
+            const px = Math.round(nextTop * lh);
             contentRef.current.style.transform = `translateY(-${px}px)`;
           }
         }
@@ -417,12 +449,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           <div className="absolute inset-0 bg-gradient-to-br from-gray-800/20 via-gray-700/10 to-gray-800/20 backdrop-blur-sm rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           <div className="relative text-2xl md:text-3xl lg:text-4xl leading-relaxed font-mono px-8 py-10">
             {/* Fixed-height two-line viewport */}
-            <div ref={viewportRef} className="relative overflow-hidden rounded-2xl min-h-[5.5rem]">
-              {/* top/bottom fade masks */}
-              <div className="pointer-events-none absolute top-0 left-0 right-0 h-4 bg-gradient-to-b from-gray-900/40 to-transparent z-10" />
-              <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-gray-900/40 to-transparent z-10" />
-              <div ref={contentRef} className="transition-transform duration-200 ease-out will-change-transform">
-                <div className="max-w-5xl whitespace-normal break-words tracking-normal leading-[1.35]">
+            <div ref={viewportRef} className="relative overflow-hidden typing-viewport">
+              {/* optional fades removed for floating-on-canvas look */}
+              <div ref={contentRef} className="transition-transform duration-200 ease-out translate-z-0 typing-content">
+                <div className="max-w-6xl whitespace-normal break-words tracking-normal leading-[1.35]">
                   {words.map((word, wordIndex) => (
                     <React.Fragment key={wordIndex}>
                       <span
