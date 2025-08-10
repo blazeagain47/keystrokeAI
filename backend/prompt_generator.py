@@ -251,7 +251,10 @@ def generate_words_prompt(count: int, language: str = "english") -> str:
         # simple punctuation mixing every ~7 words
         if (len(chosen) + 1) % 7 == 0 and rng.random() < 0.5:
             w = w.rstrip(",.!?") + rng.choice([",", ".", "!", "?"])
-        chosen.append(w.lower())
+        chosen.append(w)  # do not force lowercase here
 
-    return " ".join(chosen[:count])
+    text = " ".join(chosen[:count]).strip()
+    if text:
+        text = text[0].upper() + text[1:]
+    return text
 

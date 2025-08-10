@@ -34,6 +34,7 @@ interface TypingBoxProps {
 }
 
 const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt }) => {
+  const LINE_H = 38; // px fixed line-height for precise viewport math
   const { user } = useAuth();
 
   /* state */
@@ -56,6 +57,17 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const lastTabDownAtRef = useRef<number | null>(null);
   const endAtRef = useRef<number | null>(null);
   const lastAppendAtRef = useRef<number>(0);
+  // two-line viewport mechanics
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const wordRefs = useRef<Array<HTMLSpanElement | null>>([]);
+  const lineHeightRef = useRef<number>(0);
+  const firstLineTopRef = useRef<number>(0);
+  const [visibleStartLine, setVisibleStartLine] = useState(0);
+  const wordLineRef = useRef<number[]>([]);
+  const lastLineRef = useRef<number>(0);
+  const baseTopRef = useRef<number>(0);
+  const lineEndsRef = useRef<number[]>([]);
 
   /* ───────── Load prompt from prop ───────── */
   const resetFromPrompt = useCallback((text: string) => {
@@ -72,6 +84,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     setErrors(new Set());
     setTypedInput("");
     setIsLoading(false);
+    // reset two-line viewport position
+    setVisibleStartLine(0);
+    if (contentRef.current) contentRef.current.style.transform = `translateY(0px)`;
+    lastLineRef.current = 0;
+    wordLineRef.current = [];
   }, []);
 
   /* init & prop change */
@@ -80,6 +97,41 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       resetFromPrompt(prompt);
     }
   }, [prompt, resetFromPrompt]);
+
+  /* util to compute per-word line mapping */
+  const computeWordLines = useCallback(() => {
+    const baseTop = wordRefs.current.find(Boolean)?.offsetTop ?? 0;
+    baseTopRef.current = baseTop;
+    const lh = lineHeightRef.current || LINE_H;
+    const lines: number[] = [];
+    wordRefs.current.forEach((el, idx) => {
+      if (!el) { lines[idx] = 0; return; }
+      lines[idx] = Math.max(0, Math.round((el.offsetTop - baseTop) / lh));
+    });
+    wordLineRef.current = lines;
+    const ends: number[] = [];
+    lines.forEach((ln, idx) => { ends[ln] = idx; });
+    lineEndsRef.current = ends;
+  }, [LINE_H]);
+
+  /* measure line height on new prompt */
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const first = wordRefs.current[0];
+      if (!first) return;
+      lineHeightRef.current = LINE_H;
+      firstLineTopRef.current = first.offsetTop;
+      setVisibleStartLine(0);
+      if (viewportRef.current) {
+        viewportRef.current.style.height = `${2 * LINE_H}px`;
+        viewportRef.current.style.paddingTop = '3px';
+        viewportRef.current.style.paddingBottom = '3px';
+      }
+      if (contentRef.current) contentRef.current.style.transform = `translateY(0px)`;
+      computeWordLines();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [prompt, computeWordLines, LINE_H]);
 
   /* cursor blink */
   useEffect(() => {
@@ -108,6 +160,20 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       return () => clearInterval(interval);
     }
   }, [hasStarted, startTime, isComplete, correctChars, totalChars, onStatsUpdate, mode, onTestComplete, typedInput]);
+
+  /* auto-advance viewport so current word is always top line */
+  useEffect(() => {
+    const line = wordLineRef.current[currentWordIndex] ?? 0;
+    if (line > visibleStartLine) {
+      const nextVisible = line;
+      setVisibleStartLine(nextVisible);
+      if (contentRef.current) {
+        const px = (nextVisible * (lineHeightRef.current || LINE_H)) | 0;
+        contentRef.current.style.transform = `translateY(-${px}px)`;
+      }
+    }
+    lastLineRef.current = line;
+  }, [currentWordIndex, visibleStartLine]);
 
   /* ───────── Keyboard handler ───────── */
   const handleKeyDown = useCallback(
@@ -163,6 +229,19 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         e.preventDefault();
         // Append space to typed input
         setTypedInput((prev) => prev + ' ');
+
+        // Immediate advance if space finalizes last word on current top line
+        const topEndIdx = lineEndsRef.current[visibleStartLine] ?? -1;
+        const isLastOnTop = currentWordIndex === topEndIdx;
+        if (isLastOnTop) {
+          const nextTop = visibleStartLine + 1;
+          setVisibleStartLine(nextTop);
+          if (contentRef.current) {
+            const px = ((nextTop) * (lineHeightRef.current || LINE_H)) | 0;
+            contentRef.current.style.transform = `translateY(-${px}px)`;
+          }
+        }
+
         if (currentWordIndex < words.length - 1) {
           const currentWord     = words[currentWordIndex];
           const remainingChars  = currentWord.length - currentCharIndex;
@@ -188,6 +267,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
             if (!extra) return;
             const more = extra.split(/\s+/).filter(Boolean);
             setWords((prev) => [...prev, ...more]);
+            // recompute line map on next frame after DOM updates
+            requestAnimationFrame(() => {
+              computeWordLines();
+            });
           }).catch(() => {});
         }
       }
@@ -325,48 +408,59 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           tabIndex={0}
         >
           <div className="absolute inset-0 bg-gradient-to-br from-gray-800/20 via-gray-700/10 to-gray-800/20 backdrop-blur-sm rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-          <div className="relative text-2xl md:text-3xl lg:text-4xl leading-relaxed text-center font-mono px-8 py-16 min-h-[400px] flex items-center justify-center">
-            <div className="max-w-5xl space-y-2">
-              {words.map((word, wordIndex) => (
-                <React.Fragment key={wordIndex}>
-                  <span
-                    className={clsx(
-                      'inline-block relative mx-1 transition-all duration-200',
-                      wordIndex === currentWordIndex &&
-                        'bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-2 py-1 -mx-1 shadow-lg shadow-yellow-400/5'
-                    )}
-                  >
-                    {word.split('').map((char, charIndex) => {
-                      const status = getCharacterStatus(wordIndex, charIndex);
-                      return (
-                        <span
-                          key={`${wordIndex}-${charIndex}`}
-                          className={clsx(
-                            'relative transition-all duration-100 ease-out',
-                            status === 'correct' && 'text-gray-200',
-                            status === 'incorrect' && 'text-red-400 bg-red-900/40 rounded-md shadow-sm',
-                            status === 'cursor' &&
-                              'bg-yellow-400 text-gray-900 rounded-md shadow-md shadow-yellow-400/30',
-                            status === 'untyped' && 'text-gray-600'
-                          )}
-                          style={
-                            status === 'cursor'
-                              ? {
-                                  backgroundColor: cursorVisible ? '#fbbf24' : 'transparent',
-                                  color: cursorVisible ? '#111827' : '#6b7280',
-                                  transform: cursorVisible ? 'scale(1.05)' : 'scale(1)',
-                                }
-                              : {}
-                          }
-                        >
-                          {char}
-                        </span>
-                      );
-                    })}
-                  </span>
-                  {wordIndex < words.length - 1 && <span className="text-gray-600 mx-1 select-none"> </span>}
-                </React.Fragment>
-              ))}
+          <div className="relative text-2xl md:text-3xl lg:text-4xl leading-relaxed font-mono px-8 py-10">
+            {/* Fixed-height two-line viewport */}
+            <div ref={viewportRef} className="relative overflow-hidden rounded-2xl min-h-[5.5rem]">
+              {/* top/bottom fade masks */}
+              <div className="pointer-events-none absolute top-0 left-0 right-0 h-4 bg-gradient-to-b from-gray-900/40 to-transparent z-10" />
+              <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-gray-900/40 to-transparent z-10" />
+              <div ref={contentRef} className="transition-transform duration-200 ease-out will-change-transform">
+                <div className="max-w-5xl whitespace-normal break-words tracking-normal leading-[1.35]">
+                  {words.map((word, wordIndex) => (
+                    <React.Fragment key={wordIndex}>
+                      <span
+                        ref={(el) => {
+                          wordRefs.current[wordIndex] = el;
+                        }}
+                        className={clsx(
+                          'inline align-baseline relative transition-all duration-200',
+                          wordIndex === currentWordIndex &&
+                            'bg-yellow-400/10 border border-yellow-400/20 rounded-lg shadow-lg shadow-yellow-400/5'
+                        )}
+                      >
+                        {word.split('').map((char, charIndex) => {
+                          const status = getCharacterStatus(wordIndex, charIndex);
+                          return (
+                            <span
+                              key={`${wordIndex}-${charIndex}`}
+                              className={clsx(
+                                'relative transition-all duration-100 ease-out',
+                                status === 'correct' && 'text-gray-200',
+                                status === 'incorrect' && 'text-red-400 bg-red-900/40 rounded-md shadow-sm',
+                                status === 'cursor' &&
+                                  'bg-yellow-400 text-gray-900 rounded-md shadow-md shadow-yellow-400/30',
+                                status === 'untyped' && 'text-gray-600'
+                              )}
+                              style={
+                                status === 'cursor'
+                                  ? {
+                                      backgroundColor: cursorVisible ? '#fbbf24' : 'transparent',
+                                      color: cursorVisible ? '#111827' : '#6b7280',
+                                      transform: cursorVisible ? 'scale(1.05)' : 'scale(1)',
+                                    }
+                                  : {}
+                              }
+                            >
+                              {char}
+                            </span>
+                          );
+                        })}
+                      </span>
+                      {wordIndex < words.length - 1 ? ' ' : null}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
