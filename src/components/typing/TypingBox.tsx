@@ -8,7 +8,7 @@ import { RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 
 /* NEW – bring in the modernised Shadcn results panel */
-import StatsPanel from './StatsPanel';
+// Legacy StatsPanel removed in favor of modern ResultsPanel
 
 /* ─────────────────────────────────────────────────────────── */
 /* helpers                                                   */
@@ -26,7 +26,7 @@ function calculateAccuracy(correctChars: number, totalChars: number) {
 /* component                                                 */
 interface TypingBoxProps {
   onStatsUpdate: (wpm: number, accuracy: number, time: number) => void;
-  onTestComplete: (wpm: number, accuracy: number, duration: number) => void;
+  onTestComplete: (wpm: number, accuracy: number, duration: number, typedText: string) => void;
 }
 
 const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) => {
@@ -45,6 +45,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
   const [errors, setErrors]         = useState<Set<number>>(new Set());
   const [cursorVisible, setCursorVisible] = useState(true);
   const [finalStats, setFinalStats] = useState<{ wpm: number; accuracy: number; time: number } | null>(null);
+  const [typedInput, setTypedInput] = useState<string>("");
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -65,6 +66,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
       setTotalChars(0);
       setErrors(new Set());
       setFinalStats(null);
+      setTypedInput("");
     } catch (error) {
       console.error('Error loading prompt:', error);
       const fallback =
@@ -122,6 +124,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
       /* backspace */
       if (e.key === 'Backspace') {
         e.preventDefault();
+        // Update typed input
+        setTypedInput((prev) => (prev.length > 0 ? prev.slice(0, -1) : prev));
         if (currentCharIndex > 0) {
           setCurrentCharIndex((prev) => prev - 1);
           setTotalChars((prev) => Math.max(0, prev - 1));
@@ -135,6 +139,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
       /* space */
       if (e.key === ' ') {
         e.preventDefault();
+        // Append space to typed input
+        setTypedInput((prev) => prev + ' ');
         if (currentWordIndex < words.length - 1) {
           const currentWord     = words[currentWordIndex];
           const remainingChars  = currentWord.length - currentCharIndex;
@@ -157,6 +163,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
         if (currentCharIndex < currentWord.length) {
           const targetChar = currentWord[currentCharIndex];
           const isCorrect  = e.key === targetChar;
+          // Record typed character
+          setTypedInput((prev) => prev + e.key);
 
           if (isCorrect) setCorrectChars((prev) => prev + 1);
           else setErrors((prev) => new Set([...prev, totalChars]));
@@ -175,7 +183,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
 
               setFinalStats({ wpm: finalWpm, accuracy: finalAcc, time: duration });
               setIsComplete(true);
-              onTestComplete(finalWpm, finalAcc, duration);
+              onTestComplete(finalWpm, finalAcc, duration, typedInput + e.key);
 
               if (user) saveTypingResult(user.uid, finalWpm, finalAcc, duration, 'words', words.length);
             }
@@ -322,19 +330,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ onStatsUpdate, onTestComplete }) 
           </div>
         )}
 
-        {/* ─────────────────────────────────────────────── */}
-        {/* NEW results panel (replaces old grid)          */}
-        {isComplete && finalStats && (
-          <StatsPanel
-            wpm={finalStats.wpm}
-            accuracy={finalStats.accuracy}
-            time={finalStats.time}
-            isTestComplete
-            finalWpm={finalStats.wpm}
-            finalAccuracy={finalStats.accuracy}
-            finalTime={finalStats.time}
-          />
-        )}
+        {/* Results rendering moved to parent ResultsPanel */}
       </div>
     </div>
   );

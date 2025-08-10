@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import TypingBox from './TypingBox';
+import ResultsPanel from './ResultsPanel';
 import { 
   Clock, 
   Hash,
@@ -21,6 +22,12 @@ const TypingTest: React.FC = () => {
   const [accuracy, setAccuracy] = useState(100);
   const [time, setTime] = useState(0);
   const [isTestComplete, setIsTestComplete] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<null | {
+    input: string;
+    corrections: string[];
+    difficulty: string;
+    feedback: string;
+  }>(null);
 
   // Test configuration state
   const [testMode, setTestMode] = useState<'time' | 'words' | 'quote' | 'zen' | 'custom'>('words');
@@ -36,11 +43,30 @@ const TypingTest: React.FC = () => {
     setIsTestComplete(false);
   };
 
-  const handleTestComplete = (finalWpm: number, finalAccuracy: number, finalTime: number) => {
+  const handleTestComplete = async (finalWpm: number, finalAccuracy: number, finalTime: number, finalTypedText?: string) => {
     setIsTestComplete(true);
     setWpm(finalWpm);
     setAccuracy(finalAccuracy);
     setTime(finalTime);
+    if (!finalTypedText) return;
+    try {
+      const response = await fetch("http://127.0.0.1:8000/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_text: finalTypedText }),
+      });
+      if (!response.ok) throw new Error("Backend analysis failed");
+      const result = await response.json();
+      setAnalysisResult(result);
+    } catch (err) {
+      console.error("AI analysis error:", err);
+      setAnalysisResult({
+        input: finalTypedText,
+        corrections: [],
+        difficulty: "Unknown",
+        feedback: "Could not fetch AI feedback. Please ensure backend is running.",
+      });
+    }
   };
 
   return (
@@ -268,6 +294,15 @@ const TypingTest: React.FC = () => {
           onTestComplete={handleTestComplete}
         />
       </div>
+
+      {isTestComplete && (
+        <ResultsPanel
+          wpm={wpm}
+          accuracy={accuracy}
+          time={time}
+          analysis={analysisResult}
+        />
+      )}
 
       {/* Bottom Helper Bar - Only show when not actively typing */}
       {time === 0 && (

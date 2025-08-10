@@ -10,6 +10,11 @@
     "type-check": "tsc --noEmit",
     "firebase:emulators": "firebase emulators:start",
     "firebase:deploy": "firebase deploy",
+    "inspect-firestore": "tsx scripts/inspect-firestore.ts",
+    "analyze-dataset": "tsx scripts/analyze-dataset.ts",
+    "extract-dataset": "tsx scripts/extract_firestorm.ts",
+    "train-lora": "python train_lora.py",
+    "setup-python": "python setup_python_env.py",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:e2e": "playwright test"
@@ -64,6 +69,7 @@
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "prettier": "^3.0.3",
-    "prettier-plugin-tailwindcss": "^0.5.6"
+    "prettier-plugin-tailwindcss": "^0.5.6",
+    "tsx": "^4.20.3"
   }
 }
