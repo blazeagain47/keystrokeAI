@@ -152,6 +152,19 @@ const TypingTest: React.FC = () => {
     setWpmSeries((prev) => (prev.length && prev[prev.length - 1].second === s) ? prev : [...prev, { second: s, wpm: newWpm }]);
   };
 
+  // Ensure a 1s sampling cadence during active typing (view === 'typing' and not complete)
+  useEffect(() => {
+    const isActive = view === 'typing' && !isTestComplete;
+    if (!isActive) return;
+    const id = setInterval(() => {
+      // Trigger a no-op update using existing values to keep the 1s cadence in the top bar
+      setWpm((w) => w);
+      setAccuracy((a) => a);
+      setTime((t) => t);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [view, isTestComplete]);
+
   const handleTestComplete = async (finalWpm: number, finalAccuracy: number, finalTime: number, finalTypedText?: string) => {
     setIsTestComplete(true);
     setWpm(finalWpm);

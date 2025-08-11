@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Zap, Target, Timer, ListChecks } from "lucide-react";
 import { motion } from "framer-motion";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import AIFeedback from "@/components/feedback/AIFeedback";
 
 type AnalysisResult = {
   input: string;
@@ -173,6 +174,11 @@ export function ResultsPanel({ wpm, accuracy, time, analysis, wpmSeries = [], on
             )}
           </CardHeader>
           <CardContent className="space-y-4">
+            <AIFeedback
+              wpmTrend={wpmSeries.map((d) => d.wpm)}
+              accuracyPct={accuracy}
+              completed={true}
+            />
             {analysis ? (
               <>
                 <div>

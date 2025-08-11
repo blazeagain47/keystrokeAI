@@ -246,6 +246,16 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         }
       }
 
+      const pushStats = (correctDelta = 0, totalDelta = 0) => {
+        if (hasStarted && startTime && !isComplete) {
+          const now = Date.now();
+          const currentTime = (now - startTime) / 1000;
+          const wpmNow = calculateWPM(correctChars + correctDelta, currentTime);
+          const accNow = calculateAccuracy(correctChars + correctDelta, totalChars + totalDelta);
+          onStatsUpdate(wpmNow, accNow, currentTime);
+        }
+      };
+
       /* backspace */
       if (e.key === 'Backspace') {
         e.preventDefault();
@@ -254,9 +264,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         if (currentCharIndex > 0) {
           setCurrentCharIndex((prev) => prev - 1);
           setTotalChars((prev) => Math.max(0, prev - 1));
+          pushStats(0, -1);
         } else if (currentWordIndex > 0 && currentCharIndex === 0) {
           setCurrentWordIndex((prev) => prev - 1);
           setCurrentCharIndex(words[currentWordIndex - 1]?.length || 0);
+          pushStats();
         }
         return;
       }
@@ -289,6 +301,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
               setErrors((prev) => new Set([...prev, totalChars + i - currentCharIndex]));
             }
             setTotalChars((prev) => prev + remainingChars);
+            pushStats(0, remainingChars);
           }
           setCurrentWordIndex((prev) => prev + 1);
           setCurrentCharIndex(0);
@@ -329,6 +342,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
           setTotalChars((prev) => prev + 1);
           setCurrentCharIndex((prev) => prev + 1);
+          pushStats(isCorrect ? 1 : 0, 1);
 
           /* word complete? */
           if (currentCharIndex + 1 === currentWord.length) {
