@@ -92,3 +92,99 @@
 .typing-content{
   text-rendering: geometricPrecision;
 }
+
+/* Smart Test pulsing badge */
+@keyframes ksPulse {
+  0% { transform: scale(1); opacity: .9; }
+  50% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: .9; }
+}
+.ks-smart-badge {
+  animation: ksPulse 2.4s ease-in-out infinite;
+}
+
+/* Rank badge shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.rank-badge {
+  background-size: 200% auto;
+  animation: shimmer 2.5s linear infinite;
+}
+
+/* === Results CTA Glow === */
+.btn-glow { position: relative; isolation: isolate; }
+.btn-glow::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 1.25rem;
+  background: radial-gradient(60% 60% at 50% 50%, rgba(255,255,255,0.25), rgba(255,255,255,0));
+  opacity: 0.15;
+  pointer-events: none;
+  animation: ksBtnShine 3s ease-in-out infinite;
+  z-index: -1;
+}
+@keyframes ksBtnShine {
+  0%, 100% { opacity: 0.12; transform: scale(1); }
+  50% { opacity: 0.28; transform: scale(1.02); }
+}
+
+/* === KS: Section blending & cards === */
+.ks-section-gradient {
+  position: relative;
+  isolation: isolate;
+}
+.ks-section-gradient::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 160px; /* gently blends filter area into results */
+  background: linear-gradient(to bottom, rgba(255,255,255,0.04), rgba(255,255,255,0));
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Optional intentional divider between filter row and results grid */
+.ks-section-divider {
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(255,255,255,0.08),
+    transparent
+  );
+  filter: blur(0.2px);
+  margin-top: 8px;
+  margin-bottom: 14px; /* keeps a tasteful gap */
+}
+
+/* Cohesive glass card style + hover polish */
+.ks-card {
+  background: color-mix(in srgb, var(--background), #ffffff 5%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  transition: transform 240ms ease, box-shadow 240ms ease, border-color 240ms ease;
+}
+.ks-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,0.16);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+}
+
+/* Small chip for headings like “AI FEEDBACK” */
+.ks-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+}

@@ -17,6 +17,33 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { fetchPrompt } from '@/lib/api';
+import SmartTestBadge from '@/components/SmartTestBadge';
+
+// --- NEW: simple local history for adaptive difficulty ---
+const HISTORY_KEY = "ks_history_v1";
+type Hist = { wpm: number; acc: number; ts: number };
+function readHist(): Hist[] {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as Hist[]; } catch { return []; }
+}
+function writeHist(items: Hist[]) {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(-5))); } catch {}
+}
+function movingAvg(items: Hist[]) {
+  if (!items.length) return { wpm: 0, acc: 100 };
+  const n = items.length;
+  const wpm = Math.round(items.reduce((s, x) => s + x.wpm, 0) / n);
+  const acc = Math.round(items.reduce((s, x) => s + x.acc, 0) / n);
+  return { wpm, acc };
+}
+
+type FetchResponse = {
+  text: string;
+  mode: 'words';
+  count: number;
+  seed: number;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  flags?: { punctuation: boolean; numbers: boolean };
+};
 
 const TypingTest: React.FC = () => {
   const [wpm, setWpm] = useState(0);
@@ -76,14 +103,22 @@ const TypingTest: React.FC = () => {
     };
   }, [view]);
 
+  const usedDifficultyRef = useRef<"easy"|"medium"|"hard"|"auto">("auto");
+  const [smartUsedDifficulty, setSmartUsedDifficulty] = useState<null | 'easy' | 'medium' | 'hard'>(null);
+  const [smartFlags, setSmartFlags] = useState<null | { punctuation?: boolean; numbers?: boolean }>(null);
+  const [avgWpm, setAvgWpm] = useState<number>(0);
+  const [avgAcc, setAvgAcc] = useState<number>(100);
+  const [prevDifficulty, setPrevDifficulty] = useState<null | 'easy'|'medium'|'hard'>(null);
+  const [difficultyChanged, setDifficultyChanged] = useState(false);
+
   async function loadPrompt(
     desiredCount?: number,
-    opts?: { include_punctuation?: boolean; include_numbers?: boolean; mode?: 'words' | 'time'; durationSec?: number; language?: string }
-  ) {
-    if (isFetching) return;
+    opts?: { include_punctuation?: boolean; include_numbers?: boolean; mode?: 'words' | 'time'; durationSec?: number; language?: string; difficulty?: 'easy'|'medium'|'hard'|'auto'; recentWpm?: number; recentAccuracy?: number }
+  ): Promise<FetchResponse> {
+    if (isFetching) return Promise.resolve({ text: currentPrompt, mode: 'words', count: desiredCount ?? wordCount, seed: 0 } as FetchResponse);
     setIsFetching(true);
     let tries = 0;
-    let result: { text: string; mode: 'words'; count: number; seed: number } | null = null;
+    let result: FetchResponse | null = null;
     const count = desiredCount ?? wordCount;
     while (tries < 3) {
       const r = await fetchPrompt({
@@ -93,6 +128,9 @@ const TypingTest: React.FC = () => {
         include_punctuation: opts?.include_punctuation ?? showPunctuation,
         include_numbers: opts?.include_numbers ?? showNumbers,
         language: opts?.language ?? 'english',
+        difficulty: opts?.difficulty ?? 'auto',
+        recentWpm: opts?.recentWpm,
+        recentAccuracy: opts?.recentAccuracy,
       });
       if (!sessionUsedSeeds.current.has(r.seed)) {
         result = r;
@@ -108,39 +146,78 @@ const TypingTest: React.FC = () => {
         include_punctuation: opts?.include_punctuation ?? showPunctuation,
         include_numbers: opts?.include_numbers ?? showNumbers,
         language: opts?.language ?? 'english',
+        difficulty: opts?.difficulty ?? 'auto',
+        recentWpm: opts?.recentWpm,
+        recentAccuracy: opts?.recentAccuracy,
       });
     }
     sessionUsedSeeds.current.add(result.seed);
     setCurrentPrompt(result.text);
+    try {
+      const activeMode = opts?.mode ?? mode;
+      const snippet = result.text.slice(0, 80);
+      const lenWords = result.text.trim().split(/\s+/).filter(Boolean).length;
+      // eslint-disable-next-line no-console
+      const hasDigit = /\d/.test(result.text);
+      const hasPunct = /[.,!?]/.test(result.text);
+      console.info("[GEN]", {
+        mode: activeMode,
+        len: lenWords,
+        filters: { punctuation: opts?.include_punctuation ?? showPunctuation, numbers: opts?.include_numbers ?? showNumbers },
+        source: "backend",
+        sample: snippet,
+        difficulty: result?.difficulty,
+        verify: { hasPunct, hasDigit },
+      });
+    } catch {}
     setIsFetching(false);
+    return result as FetchResponse;
   }
 
   async function handleRestart(desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) {
     setView('typing');
     setWpmSeries([]);
     setIsTestComplete(false);
+    const hist = readHist();
+    const avg = movingAvg(hist);
+    setAvgWpm(avg.wpm);
+    setAvgAcc(avg.acc);
     if (mode === 'time') {
-      const initialCount = Math.max(200, Math.ceil(durationSec * 4));
-      await loadPrompt(initialCount, {
+      const estWpm = avg.wpm > 0 ? avg.wpm : 50;
+      const estWords = Math.ceil((estWpm * durationSec) / 60);
+      const initialCount = Math.max(200, Math.ceil(estWords * 1.6));
+      const res: FetchResponse = await loadPrompt(initialCount, {
         mode: 'time',
         durationSec,
         include_punctuation: flagOverrides?.include_punctuation ?? showPunctuation,
         include_numbers: flagOverrides?.include_numbers ?? showNumbers,
+        difficulty: 'auto',
+        recentWpm: avg.wpm,
+        recentAccuracy: avg.acc,
       });
+      if (res?.difficulty) { usedDifficultyRef.current = res.difficulty; }
+      if (res?.difficulty) setSmartUsedDifficulty(res.difficulty);
+      if (res?.flags) setSmartFlags(res.flags);
     } else {
       const c = desiredCount ?? wordCount;
-      await loadPrompt(c, {
+      const res: FetchResponse = await loadPrompt(c, {
         mode: 'words',
         include_punctuation: flagOverrides?.include_punctuation ?? showPunctuation,
         include_numbers: flagOverrides?.include_numbers ?? showNumbers,
+        difficulty: 'auto',
+        recentWpm: avg.wpm,
+        recentAccuracy: avg.acc,
       });
+      if (res?.difficulty) { usedDifficultyRef.current = res.difficulty; }
+      if (res?.difficulty) setSmartUsedDifficulty(res.difficulty);
+      if (res?.flags) setSmartFlags(res.flags);
     }
   }
 
   // Fetch an initial prompt on mount with default wordCount (15)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     void handleRestart(15);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleStatsUpdate = (newWpm: number, newAccuracy: number, newTime: number) => {
@@ -165,12 +242,29 @@ const TypingTest: React.FC = () => {
     return () => clearInterval(id);
   }, [view, isTestComplete]);
 
+  // Track difficulty changes to animate badge
+  useEffect(() => {
+    const current = smartUsedDifficulty;
+    if (current && prevDifficulty && current !== prevDifficulty) {
+      setDifficultyChanged(true);
+      const t = setTimeout(() => setDifficultyChanged(false), 1500);
+      return () => clearTimeout(t);
+    }
+    if (current) setPrevDifficulty(current);
+  }, [smartUsedDifficulty, prevDifficulty]);
+
   const handleTestComplete = async (finalWpm: number, finalAccuracy: number, finalTime: number, finalTypedText?: string) => {
     setIsTestComplete(true);
     setWpm(finalWpm);
     setAccuracy(finalAccuracy);
     setTime(finalTime);
     setView('results');
+    // update local history for adaptive difficulty
+    try {
+      const items = readHist();
+      items.push({ wpm: finalWpm, acc: finalAccuracy, ts: Date.now() });
+      writeHist(items);
+    } catch {}
     if (!finalTypedText) return;
     try {
       const response = await fetch("http://127.0.0.1:8000/analyze", {
@@ -370,7 +464,7 @@ const TypingTest: React.FC = () => {
       {time > 0 && view === 'typing' && (
         <div className="sticky top-[120px] z-40 bg-gray-900/90 backdrop-blur-xl border-y border-gray-800/50 shadow-xl animate-in slide-in-from-top duration-500">
           <div className="max-w-7xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-center gap-12">
+            <div className="flex items-center justify-center gap-12 flex-wrap">
               {/* WPM */}
               <div className="flex items-center gap-3 group">
                 <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-yellow-400/20 to-orange-500/20 rounded-xl border border-yellow-400/30">
@@ -409,6 +503,10 @@ const TypingTest: React.FC = () => {
                   <div className="text-xs text-gray-500 uppercase tracking-wider">Time</div>
                 </div>
               </div>
+              {/* Smart Test badge */}
+              {smartUsedDifficulty && (
+                <SmartTestBadge usedDifficulty={smartUsedDifficulty} difficultyChanged={difficultyChanged} />
+              )}
             </div>
           </div>
         </div>
@@ -436,20 +534,28 @@ const TypingTest: React.FC = () => {
                 include_punctuation: showPunctuation,
                 include_numbers: showNumbers,
                 language: 'english',
+                difficulty: usedDifficultyRef.current || 'auto',
               });
               return extra.text;
             }}
           />
         )}
         {view === 'results' && (
-          <ResultsPanel
-            wpm={wpm}
-            accuracy={accuracy}
-            time={time}
-            analysis={analysisResult}
-            wpmSeries={wpmSeries}
-            onNextTest={async () => { await handleRestart(); }}
-          />
+          <div className="ks-section-gradient">
+            <div className="ks-section-divider" />
+            <ResultsPanel
+              wpm={wpm}
+              accuracy={accuracy}
+              time={time}
+              analysis={analysisResult}
+              wpmSeries={wpmSeries}
+              usedDifficulty={smartUsedDifficulty ?? undefined}
+              avgWpm={avgWpm}
+              avgAcc={avgAcc}
+              flags={smartFlags ?? undefined}
+              onNextTest={async () => { await handleRestart(); }}
+            />
+          </div>
         )}
       </div>
 

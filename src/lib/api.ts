@@ -32,6 +32,9 @@ export async function fetchPrompt(params: {
   include_punctuation?: boolean;
   include_numbers?: boolean;
   language?: string;
+  difficulty?: "easy" | "medium" | "hard" | "auto";
+  recentWpm?: number;
+  recentAccuracy?: number;
 }) {
   const base = process.env.NEXT_PUBLIC_BACKEND_URL || API_BASE;
   const res = await fetch(`${base}/generate`, {
@@ -41,13 +44,17 @@ export async function fetchPrompt(params: {
       mode: params.mode,
       count: params.count,
       duration: params.durationSec,
-      include_punctuation: params.include_punctuation ?? false,
-      include_numbers: params.include_numbers ?? false,
+      // Send explicit booleans; never omit so backend won't use tier defaults
+      include_punctuation: Boolean(params.include_punctuation),
+      include_numbers: Boolean(params.include_numbers),
       language: params.language ?? "english",
+      difficulty: params.difficulty ?? "auto",
+      recent_wpm: params.recentWpm,
+      recent_accuracy: params.recentAccuracy,
     }),
   });
   if (!res.ok) throw new Error("Failed to fetch prompt");
-  return res.json() as Promise<{ text: string; mode: "words"; count: number; seed: number }>;
+  return res.json() as Promise<{ text: string; mode: "words"; count: number; seed: number; difficulty?: "easy" | "medium" | "hard"; flags?: { punctuation: boolean; numbers: boolean } }>;
 }
 
 

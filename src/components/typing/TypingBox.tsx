@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { saveTypingResult } from '@/lib/firebase/scores';
 import { RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
+import { segmentGraphemes, normalizeInputChar } from "@/utils/segments";
 
 /* NEW – bring in the modernised Shadcn results panel */
 // Legacy StatsPanel removed in favor of modern ResultsPanel
@@ -265,9 +266,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           setCurrentCharIndex((prev) => prev - 1);
           setTotalChars((prev) => Math.max(0, prev - 1));
           pushStats(0, -1);
-        } else if (currentWordIndex > 0 && currentCharIndex === 0) {
+    } else if (currentWordIndex > 0 && currentCharIndex === 0) {
           setCurrentWordIndex((prev) => prev - 1);
-          setCurrentCharIndex(words[currentWordIndex - 1]?.length || 0);
+          const prevWord = words[currentWordIndex - 1] || "";
+          setCurrentCharIndex(segmentGraphemes(prevWord).length || 0);
           pushStats();
         }
         return;
@@ -295,9 +297,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
         if (currentWordIndex < words.length - 1) {
           const currentWord     = words[currentWordIndex];
-          const remainingChars  = currentWord.length - currentCharIndex;
+          const g = segmentGraphemes(currentWord);
+          const remainingChars  = g.length - currentCharIndex;
           if (remainingChars > 0) {
-            for (let i = currentCharIndex; i < currentWord.length; i++) {
+            for (let i = currentCharIndex; i < g.length; i++) {
               setErrors((prev) => new Set([...prev, totalChars + i - currentCharIndex]));
             }
             setTotalChars((prev) => prev + remainingChars);
@@ -331,11 +334,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       if (e.key.length === 1) {
         e.preventDefault();
         const currentWord = words[currentWordIndex];
-        if (currentCharIndex < currentWord.length) {
-          const targetChar = currentWord[currentCharIndex];
-          const isCorrect  = e.key === targetChar;
+        const g = segmentGraphemes(currentWord);
+        if (currentCharIndex < g.length) {
+          const targetChar = g[currentCharIndex];
+          const typedCharNorm = normalizeInputChar(e.key);
+          const isCorrect  = typedCharNorm === targetChar;
           // Record typed character
-          setTypedInput((prev) => prev + e.key);
+          setTypedInput((prev) => prev + typedCharNorm);
 
           if (isCorrect) setCorrectChars((prev) => prev + 1);
           else setErrors((prev) => new Set([...prev, totalChars]));
@@ -345,7 +350,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           pushStats(isCorrect ? 1 : 0, 1);
 
           /* word complete? */
-          if (currentCharIndex + 1 === currentWord.length) {
+          if (currentCharIndex + 1 === g.length) {
             if (mode === 'words') {
               /* last word? */
               if (currentWordIndex === words.length - 1) {

@@ -2,6 +2,7 @@
 "use client";
 import { useMemo } from "react";
 import { rankForXP, xpForRun, xpStore, streakStore } from "@/utils/progression";
+import { rankStyles, mapToRankTier, shouldShimmer } from "@/utils/rankStyles";
 
 type Props = {
   wpmTrend: number[];      // sequential WPM samples over the run (seconds)
@@ -58,25 +59,60 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed }: Props) 
   }
 
   return (
-    <div className="mt-4 flex flex-col items-center gap-3">
-      <div className="bg-gray-800/60 rounded-xl px-4 py-3 text-base sm:text-lg text-center shadow-md border border-white/5">
-        <span className="text-yellow-300 font-semibold">💡 AI Feedback:</span> <span className="text-gray-100">{message}</span>
-      </div>
+    <div className="mt-4 w-full">
+      <div className="rounded-2xl bg-white/5 border border-white/10 backdrop-blur p-5 shadow-xl relative overflow-hidden">
+        {/* subtle glow accents */}
+        <div className="pointer-events-none absolute -inset-24 bg-[radial-gradient(32rem_32rem_at_20%_-10%,rgba(56,189,248,0.10),transparent_60%),radial-gradient(28rem_28rem_at_90%_0%,rgba(167,139,250,0.10),transparent_60%)]" />
 
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        <div className="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 text-sm border border-emerald-500/30">
-          Rank: <span className="font-semibold">{rank.label}</span>
-        </div>
-        <div className="px-3 py-1 rounded-full bg-indigo-500/15 text-indigo-300 text-sm border border-indigo-500/30">
-          Total XP: <span className="font-semibold">{xp}</span>
-        </div>
-        <div className="px-3 py-1 rounded-full bg-pink-500/15 text-pink-300 text-sm border border-pink-500/30">
-          Streak: <span className="font-semibold">{streak}</span>
-        </div>
-      </div>
+        <div className="relative space-y-4">
+          {/* Heading */}
+          <div className="mb-2">
+            <span className="ks-chip">AI FEEDBACK</span>
+          </div>
 
-      <div className="bg-gray-900/60 rounded-lg px-3 py-2 text-sm text-gray-200 border border-white/5">
-        🎯 <span className="font-medium">Next challenge:</span> {challenge} <span className="opacity-80">(+{reward} XP)</span>
+          {/* Message */}
+          <div className="text-base sm:text-lg text-gray-100">
+            {message}
+          </div>
+
+          {/* Rank / XP / Streak */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {(() => {
+              const tier = mapToRankTier(rank.label);
+              const st = rankStyles[tier];
+              const shimmer = shouldShimmer(tier);
+              return (
+                <div
+                  className={`${shimmer ? 'rank-badge' : ''} text-white text-xs sm:text-sm font-semibold px-4 py-1 rounded-full`}
+                  style={{
+                    backgroundImage: `linear-gradient(90deg, ${st.start}, ${st.end}, ${st.start})`,
+                    boxShadow: `0 0 8px ${st.glow}`,
+                    border: `1px solid ${st.start}33`
+                  }}
+                >
+                  {rank.label}
+                </div>
+              );
+            })()}
+
+            <div className="text-xs sm:text-sm font-semibold px-3 py-1 rounded-full bg-white/5 border border-white/10">
+              Total XP: <span className={`${shouldShimmer(mapToRankTier(rank.label)) ? 'rank-badge' : ''}`} style={{
+                backgroundImage: shouldShimmer(mapToRankTier(rank.label)) ? `linear-gradient(90deg, ${rankStyles[mapToRankTier(rank.label)].start}, ${rankStyles[mapToRankTier(rank.label)].end}, ${rankStyles[mapToRankTier(rank.label)].start})` : undefined,
+                WebkitBackgroundClip: shouldShimmer(mapToRankTier(rank.label)) ? 'text' as any : undefined,
+                color: shouldShimmer(mapToRankTier(rank.label)) ? 'transparent' : undefined,
+              }}>{xp}</span>
+            </div>
+
+            <div className="px-3 py-1 rounded-full bg-white/5 text-gray-200 text-xs sm:text-sm border border-white/10">
+              Streak: <span className="font-semibold">{streak}</span>
+            </div>
+          </div>
+
+          {/* Challenge */}
+          <div className="rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-gray-200">
+            🎯 <span className="font-medium">Next challenge:</span> {challenge} <span className="opacity-80">(+{reward} XP)</span>
+          </div>
+        </div>
       </div>
     </div>
   );

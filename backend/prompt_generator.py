@@ -1,5 +1,6 @@
 import os
 import random
+import re
 from typing import Optional, Dict, Any
 import json
 from pathlib import Path
@@ -234,8 +235,69 @@ _FALLBACK_BANK = [
     "mind", "breath", "track", "smooth", "motion", "pattern", "learn", "grace", "model", "prompt",
 ]
 
+# --- NEW: Tier parameters ----------------------------------------------------
+from typing import Iterable, Tuple, List
 
-def _assemble_sentences(tokens: list[str], include_punctuation: bool) -> str:
+TIER = ("easy", "medium", "hard")
+
+def _partition_banks(words: List[str]) -> Tuple[List[str], List[str], List[str]]:
+    """
+    Split words by naive difficulty heuristic:
+    - easy: <=5 letters
+    - medium: 6-7 letters
+    - hard: >=8 letters
+    Use fallback bank if corpus is small.
+    """
+    src = words if len(words) >= 200 else _FALLBACK_BANK
+    easy, med, hard = [], [], []
+    for w in src:
+        L = len(w)
+        if L <= 5: easy.append(w)
+        elif L <= 7: med.append(w)
+        else: hard.append(w)
+    # ensure all non-empty (fallback to src)
+    if not easy: easy = src[:]
+    if not med: med = src[:]
+    if not hard: hard = src[:]
+    return easy, med, hard
+
+def _tier_params(difficulty: str):
+    """
+    Return generation knobs for given tier.
+    knobs:
+      - sent_span = (min,max) words per sentence
+      - commas choices
+      - ender weights
+      - number_rate
+      - bank_mix = (easy, med, hard) weights
+    """
+    if difficulty == "hard":
+        return {
+            "sent_span": (8, 14),
+            "comma_choices": [0,1,1,2,2],
+            "ender_weights": [4,1,1,1,1],  # dot bias but allow ! ?
+            "number_rate": 0.18,
+            "bank_mix": (1, 2, 4),
+        }
+    if difficulty == "medium":
+        return {
+            "sent_span": (7, 12),
+            "comma_choices": [0,1,1,2],
+            "ender_weights": [6,1,1,1,1],
+            "number_rate": 0.12,
+            "bank_mix": (2, 3, 2),
+        }
+    # easy
+    return {
+        "sent_span": (6, 10),
+        "comma_choices": [0,0,1],
+        "ender_weights": [8,1,0,0,0],    # mostly periods
+        "number_rate": 0.06,
+        "bank_mix": (4, 2, 1),
+    }
+
+
+def _assemble_sentences(tokens: list[str], include_punctuation: bool, *, sent_span=(6,12), comma_choices=None, ender_weights=None) -> str:
     """
     Given plain tokens (words and numeric tokens), return a string with proper sentence
     boundaries and optional commas. Ensures:
@@ -248,13 +310,15 @@ def _assemble_sentences(tokens: list[str], include_punctuation: bool) -> str:
     rng = _random.Random()
     out: list[str] = []
     i = 0
+    if comma_choices is None: comma_choices = [0,1,1,2]
+    if ender_weights is None: ender_weights = [5,1,1,1,1]
     while i < len(tokens):
-        span = rng.randint(6, 12)
+        span = rng.randint(sent_span[0], sent_span[1])
         end = min(len(tokens), i + span)
         sent = tokens[i:end].copy()
 
         if include_punctuation and len(sent) > 6:
-            num_commas = rng.choice([0, 1, 1, 2])
+            num_commas = rng.choice(comma_choices)
             positions = list(range(2, len(sent) - 1))
             rng.shuffle(positions)
             placed = 0
@@ -274,7 +338,7 @@ def _assemble_sentences(tokens: list[str], include_punctuation: bool) -> str:
                 sent[0] = head[0].upper() + head[1:]
 
         if include_punctuation:
-            ender = rng.choices([".", ".", ".", "!", "?"], weights=[5, 1, 1, 1, 1])[0]
+            ender = rng.choices([".", ".", ".", "!", "?"], weights=ender_weights)[0]
             joined = " ".join(sent) + ender
         else:
             joined = " ".join(sent)
@@ -283,12 +347,12 @@ def _assemble_sentences(tokens: list[str], include_punctuation: bool) -> str:
     return " ".join(out)
 
 
-def _maybe_inject_numbers(base_words: list[str], include_numbers: bool, rng) -> list[str]:
+def _maybe_inject_numbers(base_words: list[str], include_numbers: bool, rng, *, rate: float = 0.12) -> list[str]:
     if not include_numbers:
         return base_words
     tokens: list[str] = []
     for w in base_words:
-        if rng.random() < 0.12:
+        if include_numbers and rng.random() < rate:
             n = rng.choice([
                 str(rng.randint(1, 99)),
                 str(rng.randint(100, 999)),
@@ -300,22 +364,52 @@ def _maybe_inject_numbers(base_words: list[str], include_numbers: bool, rng) -> 
     return tokens
 
 
-def generate_words_prompt(count: int, language: str = "english", include_punctuation: bool = False, include_numbers: bool = False) -> str:
+def generate_words_prompt(
+    count: int,
+    language: str = "english",
+    include_punctuation: bool = False,
+    include_numbers: bool = False,
+    difficulty: str = "medium",
+) -> str:
     rng = random.Random()
     allowed = {10, 15, 20, 30, 50}
     if count not in allowed:
         count = 25
 
     words = _load_corpus_words()
-    bank = words if len(words) >= 200 else _FALLBACK_BANK
+    # Filter out tokens containing digits/punct when flags are OFF
+    alpha_re = re.compile(r"^[A-Za-z]+$")
+    def clean_bank(src: list[str]) -> list[str]:
+        out: list[str] = []
+        base = src if len(src) >= 200 else _FALLBACK_BANK
+        for w in base:
+            if not include_numbers and not alpha_re.match(w):
+                # Skip tokens like "v2", "foo-bar", "123"
+                continue
+            # Strip common punctuation artifacts from corpus words; real punctuation is added later
+            out.append(w.strip(".,!?;:"))
+        return out or _FALLBACK_BANK[:]
+    easy_bank, med_bank, hard_bank = _partition_banks(clean_bank(words))
+    params = _tier_params(difficulty if difficulty in TIER else "medium")
 
     # Sample with replacement to reach exactly count tokens
     chosen: list[str] = []
+    weights = params["bank_mix"]
+    banks = [easy_bank, med_bank, hard_bank]
     for _ in range(count):
-        w = rng.choice(bank)
+        # first pick a bank by tier weights, then a word from that bank
+        bank_idx = rng.choices([0,1,2], weights=weights, k=1)[0]
+        w = rng.choice(banks[bank_idx])
         chosen.append(w)
 
-    chosen = _maybe_inject_numbers(chosen, include_numbers, rng)
-    text = _assemble_sentences(chosen, include_punctuation)
+    # number rate depends on tier
+    chosen = _maybe_inject_numbers(chosen, include_numbers, rng, rate=params["number_rate"])
+    text = _assemble_sentences(
+        chosen,
+        include_punctuation,
+        sent_span=params["sent_span"],
+        comma_choices=params["comma_choices"],
+        ender_weights=params["ender_weights"],
+    )
     return text.strip()
 
