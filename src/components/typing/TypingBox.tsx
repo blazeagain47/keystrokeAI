@@ -399,19 +399,25 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     };
   }, [handleKeyDown, handleKeyUp]);
 
-  /* status helper */
+  /* status helper – index-accurate using typedInput + error set for skipped chars */
   const getCharacterStatus = (wordIndex: number, charIndex: number) => {
-    if (wordIndex < currentWordIndex) {
-      const wordStart = words.slice(0, wordIndex).join(' ').length + (wordIndex > 0 ? 1 : 0);
-      return errors.has(wordStart + charIndex) ? 'incorrect' : 'correct';
-    } else if (wordIndex === currentWordIndex) {
-      if (charIndex < currentCharIndex) {
-        const wordStart = words.slice(0, wordIndex).join(' ').length + (wordIndex > 0 ? 1 : 0);
-        return errors.has(wordStart + charIndex) ? 'incorrect' : 'correct';
-      } else if (charIndex === currentCharIndex) return 'cursor';
-      else return 'untyped';
-    }
-    return 'untyped';
+    // Caret
+    if (wordIndex === currentWordIndex && charIndex === currentCharIndex) return 'cursor';
+
+    // Global stream index for this character
+    const wordStart = words.slice(0, wordIndex).join(' ').length + (wordIndex > 0 ? 1 : 0);
+    const streamIndex = wordStart + charIndex;
+
+    // If we explicitly marked this character as incorrect (including skipped-on-space), honor it
+    if (errors.has(streamIndex)) return 'incorrect';
+
+    // Compare typed character at this absolute index to target
+    const typedChar = typedInput[streamIndex];
+    if (typedChar == null) return 'untyped';
+
+    const targetWord = words[wordIndex] ?? '';
+    const targetChar = targetWord[charIndex];
+    return typedChar === targetChar ? 'correct' : 'incorrect';
   };
 
   const handleRestart = () => {
