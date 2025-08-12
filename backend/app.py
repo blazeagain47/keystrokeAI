@@ -1,25 +1,52 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import random
 from typing import Optional
-from .prompt_generator import generate_words_prompt
+from prompt_generator import generate_words_prompt
+import uuid
+import time
+
+from .database import engine, Base
+from .auth import router as auth_router
 
 app = FastAPI()
 
-# CORS for frontend (Next.js on localhost)
+# Create tables on startup (SQLite, simple MVP)
+Base.metadata.create_all(bind=engine)
+
+# CORS: single origin, credentials enabled
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=["http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount auth
+app.include_router(auth_router)
+
+@app.get("/health")
+async def health():
+    return {"ok": True, "ts": time.time()}
+
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    rid = request.headers.get("x-request-id") or str(uuid.uuid4())
+    start = time.time()
+    print(f"[GEN] ▶ {rid} {request.method} {request.url.path}")
+    try:
+        response = await call_next(request)
+        dur = (time.time() - start) * 1000
+        print(f"[GEN] ◀ {rid} {response.status_code} {dur:.1f}ms")
+        return response
+    except Exception as e:
+        dur = (time.time() - start) * 1000
+        print(f"[GEN] ✖ {rid} ERROR {dur:.1f}ms {e}")
+        raise
 
 # Load a small model first
 model_name = "distilgpt2"

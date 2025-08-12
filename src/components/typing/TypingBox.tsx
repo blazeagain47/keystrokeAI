@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { saveTypingResult } from '@/lib/firebase/scores';
 import { RotateCcw } from 'lucide-react';
@@ -52,10 +52,15 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const [isComplete, setIsComplete] = useState(false);
   const [correctChars, setCorrectChars] = useState(0);
   const [totalChars, setTotalChars] = useState(0);
-  const [errors, setErrors]         = useState<Set<number>>(new Set());
+  // removed error-set; status is derived on the fly from typed stream
   const [cursorVisible, setCursorVisible] = useState(true);
   // const [finalStats, setFinalStats] = useState<{ wpm: number; accuracy: number; time: number } | null>(null);
   const [typedInput, setTypedInput] = useState<string>("");
+  // Optional: minimal debug overlay; enable via ?debug=1
+  const [debug, setDebug] = useState(false);
+  type DebugEntry = { ts: number; event: string; key?: string; si: number; wi: number; ci: number; target?: string; typed?: string; note?: string };
+  const [debugLog, setDebugLog] = useState<DebugEntry[]>([]);
+  const [debugPaused, setDebugPaused] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const isTabHeldRef = useRef<boolean>(false);
@@ -80,6 +85,15 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     return Math.max(0, Math.min(top, maxTop));
   }, []);
 
+  useEffect(() => {
+    try {
+      const q = new URL(window.location.href).searchParams;
+      if (q.get('debug') === '1') setDebug(true);
+    } catch {}
+  }, []);
+
+  const targetStream = useMemo(() => words.join(' '), [words]);
+
   /* ───────── Load prompt from prop ───────── */
   const resetFromPrompt = useCallback((text: string) => {
     setIsLoading(true);
@@ -92,7 +106,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     setIsComplete(false);
     setCorrectChars(0);
     setTotalChars(0);
-    setErrors(new Set());
+    // errors set removed; status derived from typed stream
     setTypedInput("");
     setIsLoading(false);
     // reset two-line viewport position
@@ -216,7 +230,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   /* ───────── Keyboard handler ───────── */
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (!user || isLoading || isComplete) return;
+      if (isLoading || isComplete) return;
 
       /* start timer */
       if (!hasStarted && e.key.length === 1) {
@@ -266,6 +280,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           setCurrentCharIndex((prev) => prev - 1);
           setTotalChars((prev) => Math.max(0, prev - 1));
           pushStats(0, -1);
+          if (debug && !debugPaused) {
+            const si = words.slice(0, currentWordIndex).join(' ').length + (currentWordIndex > 0 ? 1 : 0) + Math.max(0, currentCharIndex - 1);
+            setDebugLog((prev) => [...prev.slice(-199), { ts: Date.now(), event: 'backspace', si, wi: currentWordIndex, ci: Math.max(0, currentCharIndex - 1), target: targetStream[si] || '' }]);
+          }
     } else if (currentWordIndex > 0 && currentCharIndex === 0) {
           setCurrentWordIndex((prev) => prev - 1);
           const prevWord = words[currentWordIndex - 1] || "";
@@ -278,10 +296,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       /* space */
       if (e.key === ' ') {
         e.preventDefault();
-        // Append space to typed input
-        setTypedInput((prev) => prev + ' ');
 
-        // Snap shift by one line but re-center around the next active line
+        // Handle remaining characters in the current word as explicit mistakes
         const topEndIdx = lineEndsRef.current[visibleStartLine] ?? -1;
         if (currentWordIndex === topEndIdx) {
           // Snap shift to keep motion crisp; effect above will keep it centered
@@ -295,19 +311,51 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           }
         }
 
+        if (mode === 'time') {
+          // Accept space; move to next word boundary and keep indices aligned
+          setTypedInput((prev) => prev + ' ');
+          setTotalChars((prev) => prev + 1);
+          pushStats(0, 1);
+          if (currentWordIndex < words.length - 1) {
+            setCurrentWordIndex((prev) => prev + 1);
+            setCurrentCharIndex(0);
+          }
+          if (debug && !debugPaused) {
+            const si = words.slice(0, currentWordIndex).join(' ').length + (currentWordIndex > 0 ? 1 : 0) + currentCharIndex;
+            setDebugLog((prev) => [...prev.slice(-199), { ts: Date.now(), event: 'space', si, wi: currentWordIndex, ci: currentCharIndex, target: targetStream[si] || '' }]);
+          }
+          return;
+        }
+
         if (currentWordIndex < words.length - 1) {
           const currentWord     = words[currentWordIndex];
           const g = segmentGraphemes(currentWord);
           const remainingChars  = g.length - currentCharIndex;
           if (remainingChars > 0) {
-            for (let i = currentCharIndex; i < g.length; i++) {
-              setErrors((prev) => new Set([...prev, totalChars + i - currentCharIndex]));
-            }
+            // Insert placeholders to keep indices aligned; status derived later
+            // no error set; we simply fill placeholders so status remains 'untyped' until backfilled
+            // Insert placeholders for skipped characters BEFORE the space
+            const placeholders = '\u0000'.repeat(remainingChars);
+            setTypedInput((prev) => prev + placeholders);
             setTotalChars((prev) => prev + remainingChars);
             pushStats(0, remainingChars);
           }
+          // Now append the actual space and count it toward totals for alignment with stream indices
+          setTypedInput((prev) => prev + ' ');
+          setTotalChars((prev) => prev + 1);
+          pushStats(0, 1);
+
           setCurrentWordIndex((prev) => prev + 1);
           setCurrentCharIndex(0);
+          if (debug && !debugPaused) {
+            const si = words.slice(0, currentWordIndex).join(' ').length + (currentWordIndex > 0 ? 1 : 0) + g.length;
+            setDebugLog((prev) => [...prev.slice(-199), { ts: Date.now(), event: 'space', si, wi: currentWordIndex + 1, ci: 0, target: targetStream[si] || '' }]);
+          }
+        } else {
+          // Last word: treat trailing space as normal char for alignment
+          setTypedInput((prev) => prev + ' ');
+          setTotalChars((prev) => prev + 1);
+          pushStats(0, 1);
         }
         return;
       }
@@ -343,7 +391,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           setTypedInput((prev) => prev + typedCharNorm);
 
           if (isCorrect) setCorrectChars((prev) => prev + 1);
-          else setErrors((prev) => new Set([...prev, totalChars]));
+          // log
+          if (debug && !debugPaused) {
+            const si = words.slice(0, currentWordIndex).join(' ').length + (currentWordIndex > 0 ? 1 : 0) + currentCharIndex;
+            setDebugLog((prev) => [...prev.slice(-199), { ts: Date.now(), event: 'char', key: e.key, si, wi: currentWordIndex, ci: currentCharIndex, target: targetChar, typed: typedCharNorm, note: isCorrect ? 'ok' : 'bad' }]);
+          }
 
           setTotalChars((prev) => prev + 1);
           setCurrentCharIndex((prev) => prev + 1);
@@ -359,7 +411,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
                 const finalWpm    = calculateWPM(correctChars + (isCorrect ? 1 : 0), duration);
                 const finalAcc    = calculateAccuracy(correctChars + (isCorrect ? 1 : 0), totalChars + 1);
                 setIsComplete(true);
-                onTestComplete(finalWpm, finalAcc, duration, typedInput + e.key);
+                onTestComplete(finalWpm, finalAcc, duration, typedInput + typedCharNorm);
                 if (user) saveTypingResult(user.uid, finalWpm, finalAcc, duration, 'words', words.length);
               }
             }
@@ -404,7 +456,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     };
   }, [handleKeyDown, handleKeyUp]);
 
-  /* status helper – index-accurate using typedInput + error set for skipped chars */
+  /* status helper – index-accurate using global targetStream and typedInput */
   const getCharacterStatus = (wordIndex: number, charIndex: number) => {
     // Caret
     if (wordIndex === currentWordIndex && charIndex === currentCharIndex) return 'cursor';
@@ -412,17 +464,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     // Global stream index for this character
     const wordStart = words.slice(0, wordIndex).join(' ').length + (wordIndex > 0 ? 1 : 0);
     const streamIndex = wordStart + charIndex;
-
-    // If we explicitly marked this character as incorrect (including skipped-on-space), honor it
-    if (errors.has(streamIndex)) return 'incorrect';
-
-    // Compare typed character at this absolute index to target
     const typedChar = typedInput[streamIndex];
-    if (typedChar == null) return 'untyped';
-
-    const targetWord = words[wordIndex] ?? '';
-    const targetChar = targetWord[charIndex];
-    return typedChar === targetChar ? 'correct' : 'incorrect';
+    const targetChar = targetStream[streamIndex] ?? '';
+    if (typedChar != null) {
+      return typedChar === targetChar ? 'correct' : 'incorrect';
+    }
+    // If nothing has been typed at this position yet, do not flag as incorrect preemptively
+    return 'untyped';
   };
 
   const handleRestart = () => {
@@ -526,6 +574,38 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
             </div>
           </div>
         </div>
+
+        {debug && (
+          <div className="fixed bottom-6 right-6 z-50 max-w-[48vw] max-h-[50vh] text-xs bg-gray-900/90 border border-gray-700/70 rounded-lg p-2 shadow-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-semibold text-gray-200">Debug log</span>
+              <button className="px-2 py-1 text-gray-200 bg-gray-700/60 rounded hover:bg-gray-700" onClick={() => setDebugPaused((p) => !p)}>
+                {debugPaused ? 'Resume' : 'Pause'}
+              </button>
+              <button className="px-2 py-1 text-gray-200 bg-gray-700/60 rounded hover:bg-gray-700" onClick={() => setDebugLog([])}>
+                Clear
+              </button>
+              <button
+                className="px-2 py-1 text-gray-200 bg-gray-700/60 rounded hover:bg-gray-700"
+                onClick={() => {
+                  const text = debugLog
+                    .map((e) => `${new Date(e.ts).toLocaleTimeString()} · ${e.event} · si=${e.si} wi=${e.wi} ci=${e.ci}${e.key ? ` key=${e.key}` : ''}${e.note ? ` · ${e.note}` : ''}`)
+                    .join('\n');
+                  navigator.clipboard.writeText(text).catch(() => {});
+                }}
+              >
+                Copy
+              </button>
+            </div>
+            <div className="font-mono text-gray-300 whitespace-pre overflow-auto max-h-[40vh] pr-2">
+              {debugLog.map((e, i) => (
+                <div key={i} className="text-gray-300">
+                  {new Date(e.ts).toLocaleTimeString()} · {e.event} · si={e.si} wi={e.wi} ci={e.ci} {e.key ? `key=${e.key}` : ''} {e.note ? `· ${e.note}` : ''}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* restart button */}
         {(!hasStarted || isComplete) && (

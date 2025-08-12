@@ -1,61 +1,64 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
-
-export type PromptOptions = {
-  language?: string;
-  difficulty?: "easy" | "medium" | "hard";
-  include_punctuation?: boolean;
-  include_numbers?: boolean;
-  quotes_mode?: boolean;
-  zen_mode?: boolean;
-  topic?: string;
-  word_target?: number;
-  seed?: number;
+export type FetchJSONOptions = {
+  method?: "GET" | "POST";
+  body?: any;
+  timeoutMs?: number;
+  retries?: number;
+  retryDelayMs?: number;
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
 };
 
-export async function generatePrompt(options: PromptOptions) {
-  const res = await fetch(`${API_BASE}/prompt/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(options),
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to generate prompt: ${res.status}`);
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+export async function fetchJSON<T = any>(
+  url: string,
+  {
+    method = "GET",
+    body,
+    timeoutMs = 10000,
+    retries = 1,
+    retryDelayMs = 600,
+    signal,
+    headers = {},
+  }: FetchJSONOptions = {}
+): Promise<T> {
+  const attempt = async () => {
+    // New combined controller per attempt so timeout works on retries
+    const combined = new AbortController();
+    const timeout = setTimeout(() => combined.abort(), timeoutMs);
+    // Forward user abort into combined
+    if (signal) {
+      signal.addEventListener("abort", () => combined.abort(), { once: true });
+    }
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          ...headers,
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: combined.signal,
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return (await res.json()) as T;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  let lastErr: any;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await attempt();
+    } catch (e) {
+      lastErr = e;
+      if (i < retries) await sleep(retryDelayMs * (i + 1));
+    }
   }
-  const data = await res.json();
-  return data as { text: string };
+  throw lastErr;
 }
-
-export async function fetchPrompt(params: {
-  mode: "words" | "time";
-  count?: number;
-  durationSec?: number;
-  include_punctuation?: boolean;
-  include_numbers?: boolean;
-  language?: string;
-  difficulty?: "easy" | "medium" | "hard" | "auto";
-  recentWpm?: number;
-  recentAccuracy?: number;
-}) {
-  const base = process.env.NEXT_PUBLIC_BACKEND_URL || API_BASE;
-  const res = await fetch(`${base}/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      mode: params.mode,
-      count: params.count,
-      duration: params.durationSec,
-      // Send explicit booleans; never omit so backend won't use tier defaults
-      include_punctuation: Boolean(params.include_punctuation),
-      include_numbers: Boolean(params.include_numbers),
-      language: params.language ?? "english",
-      difficulty: params.difficulty ?? "auto",
-      recent_wpm: params.recentWpm,
-      recent_accuracy: params.recentAccuracy,
-    }),
-  });
-  if (!res.ok) throw new Error("Failed to fetch prompt");
-  return res.json() as Promise<{ text: string; mode: "words"; count: number; seed: number; difficulty?: "easy" | "medium" | "hard"; flags?: { punctuation: boolean; numbers: boolean } }>;
-}
-
-
-

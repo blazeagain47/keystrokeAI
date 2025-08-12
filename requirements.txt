@@ -13,3 +13,8 @@ accelerate>=0.24.0
 # Utilities
 tqdm
 numpy
+fastapi
+uvicorn
+sqlalchemy
+passlib[bcrypt]
+PyJWT

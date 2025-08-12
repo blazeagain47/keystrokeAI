@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import TypingBox from './TypingBox';
 import ResultsPanel from './ResultsPanel';
 import { 
@@ -16,7 +16,7 @@ import {
   Timer
 } from 'lucide-react';
 import clsx from 'clsx';
-import { fetchPrompt } from '@/lib/api';
+import { fetchJSON } from '@/lib/http';
 import SmartTestBadge from '@/components/SmartTestBadge';
 
 // --- NEW: simple local history for adaptive difficulty ---
@@ -71,37 +71,14 @@ const TypingTest: React.FC = () => {
   // Backend prompt state
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
   const sessionUsedSeeds = useRef<Set<number>>(new Set());
-  const [isFetching, setIsFetching] = useState(false);
-  // results-view combo restart listener
-  useEffect(() => {
-    if (view !== 'results') return;
-    let tabHeld = false;
-    let lastTabAt: number | null = null;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        tabHeld = true;
-        lastTabAt = Date.now();
-        return;
-      }
-      if (e.key === 'Enter') {
-        const recent = lastTabAt && Date.now() - lastTabAt <= 500;
-        if (tabHeld || recent) {
-          e.preventDefault();
-          void handleRestart();
-        }
-      }
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Tab') tabHeld = false;
-    };
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-    };
-  }, [view]);
+  // Robust generation state
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const lastPayloadRef = useRef<GeneratePayload | null>(null);
+  const genAbortRef = useRef<AbortController | null>(null);
+  const genSeqRef = useRef<number>(0);
+  // backend base URL routed via fetchJSON
+  // results-view combo restart listener (moved below to avoid forward reference)
 
   const usedDifficultyRef = useRef<"easy"|"medium"|"hard"|"auto">("auto");
   const [smartUsedDifficulty, setSmartUsedDifficulty] = useState<null | 'easy' | 'medium' | 'hard'>(null);
@@ -111,70 +88,65 @@ const TypingTest: React.FC = () => {
   const [prevDifficulty, setPrevDifficulty] = useState<null | 'easy'|'medium'|'hard'>(null);
   const [difficultyChanged, setDifficultyChanged] = useState(false);
 
-  async function loadPrompt(
-    desiredCount?: number,
-    opts?: { include_punctuation?: boolean; include_numbers?: boolean; mode?: 'words' | 'time'; durationSec?: number; language?: string; difficulty?: 'easy'|'medium'|'hard'|'auto'; recentWpm?: number; recentAccuracy?: number }
-  ): Promise<FetchResponse> {
-    if (isFetching) return Promise.resolve({ text: currentPrompt, mode: 'words', count: desiredCount ?? wordCount, seed: 0 } as FetchResponse);
-    setIsFetching(true);
-    let tries = 0;
-    let result: FetchResponse | null = null;
-    const count = desiredCount ?? wordCount;
-    while (tries < 3) {
-      const r = await fetchPrompt({
-        mode: opts?.mode ?? 'words',
-        count,
-        durationSec: opts?.durationSec,
-        include_punctuation: opts?.include_punctuation ?? showPunctuation,
-        include_numbers: opts?.include_numbers ?? showNumbers,
-        language: opts?.language ?? 'english',
-        difficulty: opts?.difficulty ?? 'auto',
-        recentWpm: opts?.recentWpm,
-        recentAccuracy: opts?.recentAccuracy,
-      });
-      if (!sessionUsedSeeds.current.has(r.seed)) {
-        result = r;
-        break;
-      }
-      tries += 1;
-    }
-    if (!result) {
-      result = await fetchPrompt({
-        mode: opts?.mode ?? 'words',
-        count,
-        durationSec: opts?.durationSec,
-        include_punctuation: opts?.include_punctuation ?? showPunctuation,
-        include_numbers: opts?.include_numbers ?? showNumbers,
-        language: opts?.language ?? 'english',
-        difficulty: opts?.difficulty ?? 'auto',
-        recentWpm: opts?.recentWpm,
-        recentAccuracy: opts?.recentAccuracy,
-      });
-    }
-    sessionUsedSeeds.current.add(result.seed);
-    setCurrentPrompt(result.text);
-    try {
-      const activeMode = opts?.mode ?? mode;
-      const snippet = result.text.slice(0, 80);
-      const lenWords = result.text.trim().split(/\s+/).filter(Boolean).length;
-      // eslint-disable-next-line no-console
-      const hasDigit = /\d/.test(result.text);
-      const hasPunct = /[.,!?]/.test(result.text);
-      console.info("[GEN]", {
-        mode: activeMode,
-        len: lenWords,
-        filters: { punctuation: opts?.include_punctuation ?? showPunctuation, numbers: opts?.include_numbers ?? showNumbers },
-        source: "backend",
-        sample: snippet,
-        difficulty: result?.difficulty,
-        verify: { hasPunct, hasDigit },
-      });
-    } catch {}
-    setIsFetching(false);
-    return result as FetchResponse;
-  }
+  type GeneratePayload = {
+    mode: 'words' | 'time';
+    count?: number;
+    duration?: number;
+    include_punctuation?: boolean;
+    include_numbers?: boolean;
+    language?: string;
+    difficulty?: 'easy'|'medium'|'hard'|'auto';
+    recent_wpm?: number;
+    recent_accuracy?: number;
+  };
 
-  async function handleRestart(desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) {
+  const generatePrompt = useCallback(async (payload: GeneratePayload) => {
+    // cancel previous in-flight
+    if (genAbortRef.current) genAbortRef.current.abort();
+    const controller = new AbortController();
+    genAbortRef.current = controller;
+
+    const seq = ++genSeqRef.current;
+    lastPayloadRef.current = payload;
+    setIsGenerating(true);
+    setGenerateError(null);
+
+    try {
+      // quick ping to health to detect reloads
+      try {
+        await fetchJSON(`/health`, { signal: controller.signal as unknown as AbortSignal });
+      } catch {
+        // ignore; main request handles retry
+      }
+
+      const res = await fetchJSON<FetchResponse>(`/generate`, {
+        method: "POST",
+        body: payload,
+        signal: controller.signal as unknown as AbortSignal,
+      });
+
+      // ignore stale
+      if (seq !== genSeqRef.current) return;
+
+      sessionUsedSeeds.current.add(res.seed);
+      setCurrentPrompt(res.text);
+      if (res?.difficulty) { usedDifficultyRef.current = res.difficulty; }
+      if (res?.difficulty) setSmartUsedDifficulty(res.difficulty);
+      if (res?.flags) setSmartFlags(res.flags);
+      setIsGenerating(false);
+    } catch (err: unknown) {
+      if (seq !== genSeqRef.current) return;
+      setIsGenerating(false);
+      const msg = err instanceof Error ? err.message : 'Failed to generate';
+      setGenerateError(msg);
+    } finally {
+      if (genAbortRef.current === controller) genAbortRef.current = null;
+    }
+  }, []);
+
+  const busyRef = useRef(false);
+
+  const handleRestart = useCallback(async (desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) => {
     setView('typing');
     setWpmSeries([]);
     setIsTestComplete(false);
@@ -186,39 +158,48 @@ const TypingTest: React.FC = () => {
       const estWpm = avg.wpm > 0 ? avg.wpm : 50;
       const estWords = Math.ceil((estWpm * durationSec) / 60);
       const initialCount = Math.max(200, Math.ceil(estWords * 1.6));
-      const res: FetchResponse = await loadPrompt(initialCount, {
+      await generatePrompt({
         mode: 'time',
-        durationSec,
+        count: initialCount,
+        duration: durationSec,
         include_punctuation: flagOverrides?.include_punctuation ?? showPunctuation,
         include_numbers: flagOverrides?.include_numbers ?? showNumbers,
+        language: 'english',
         difficulty: 'auto',
-        recentWpm: avg.wpm,
-        recentAccuracy: avg.acc,
+        recent_wpm: avg.wpm,
+        recent_accuracy: avg.acc,
       });
-      if (res?.difficulty) { usedDifficultyRef.current = res.difficulty; }
-      if (res?.difficulty) setSmartUsedDifficulty(res.difficulty);
-      if (res?.flags) setSmartFlags(res.flags);
     } else {
       const c = desiredCount ?? wordCount;
-      const res: FetchResponse = await loadPrompt(c, {
+      await generatePrompt({
         mode: 'words',
+        count: c,
         include_punctuation: flagOverrides?.include_punctuation ?? showPunctuation,
         include_numbers: flagOverrides?.include_numbers ?? showNumbers,
+        language: 'english',
         difficulty: 'auto',
-        recentWpm: avg.wpm,
-        recentAccuracy: avg.acc,
+        recent_wpm: avg.wpm,
+        recent_accuracy: avg.acc,
       });
-      if (res?.difficulty) { usedDifficultyRef.current = res.difficulty; }
-      if (res?.difficulty) setSmartUsedDifficulty(res.difficulty);
-      if (res?.flags) setSmartFlags(res.flags);
     }
-  }
+  }, [durationSec, generatePrompt, showNumbers, showPunctuation, wordCount, mode]);
+
+  const safeRestart = useCallback(async (desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      await handleRestart(desiredCount, flagOverrides);
+    } finally {
+      busyRef.current = false;
+    }
+  }, [handleRestart]);
 
   // Fetch an initial prompt on mount with default wordCount (15)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    void handleRestart(15);
-  }, []);
+    void safeRestart(15);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeRestart]);
 
   const handleStatsUpdate = (newWpm: number, newAccuracy: number, newTime: number) => {
     setWpm(newWpm);
@@ -267,13 +248,10 @@ const TypingTest: React.FC = () => {
     } catch {}
     if (!finalTypedText) return;
     try {
-      const response = await fetch("http://127.0.0.1:8000/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_text: finalTypedText }),
-      });
-      if (!response.ok) throw new Error("Backend analysis failed");
-      const result = await response.json();
+      const result = await fetchJSON<{ input: string; corrections: string[]; difficulty: string; feedback: string }>(
+        "/analyze",
+        { method: "POST", body: { user_text: finalTypedText } }
+      );
       setAnalysisResult(result);
     } catch (err) {
       console.error("AI analysis error:", err);
@@ -416,7 +394,7 @@ const TypingTest: React.FC = () => {
                           ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/25' 
                           : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-300'
                       )}
-                      onClick={async () => { setDurationSec(duration); setView('typing'); await handleRestart(); }}
+              onClick={async () => { setDurationSec(duration); setView('typing'); await safeRestart(); }}
                     >
                       {duration}s
                       {durationSec === duration && (
@@ -438,7 +416,7 @@ const TypingTest: React.FC = () => {
                           ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/25' 
                           : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-300'
                       )}
-              onClick={async () => { setWordCount(count); await handleRestart(count); }}
+              onClick={async () => { setWordCount(count); await safeRestart(count); }}
                     >
                       {count}
                       {wordCount === count && (
@@ -519,26 +497,46 @@ const TypingTest: React.FC = () => {
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-yellow-400/10 to-transparent rounded-full blur-3xl pointer-events-none"></div>
         
         {view === 'typing' && (
-          <TypingBox 
-            mode={mode}
-            durationSec={durationSec}
-            onStatsUpdate={handleStatsUpdate}
-            onTestComplete={handleTestComplete}
-            prompt={currentPrompt}
-            onRequestNewPrompt={async () => { await handleRestart(); }}
-            onRequestAppendPrompt={async () => {
-              const extraCount = 120;
-              const extra = await fetchPrompt({
-                mode: 'words',
-                count: extraCount,
-                include_punctuation: showPunctuation,
-                include_numbers: showNumbers,
-                language: 'english',
-                difficulty: usedDifficultyRef.current || 'auto',
-              });
-              return extra.text;
-            }}
-          />
+          <>
+            {/* Inline status / retry for generator */}
+            {isGenerating ? (
+              <div className="text-center text-sm opacity-80 my-4">Generating new text...</div>
+            ) : generateError ? (
+              <div className="text-center text-sm opacity-80 my-4">
+                Couldn’t reach the generator.{" "}
+                <button
+                  className="underline decoration-dotted hover:opacity-100 opacity-80"
+                  onClick={() => { if (lastPayloadRef.current) void generatePrompt(lastPayloadRef.current); }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
+
+            <TypingBox 
+              mode={mode}
+              durationSec={durationSec}
+              onStatsUpdate={handleStatsUpdate}
+              onTestComplete={handleTestComplete}
+              prompt={currentPrompt}
+              onRequestNewPrompt={async () => { await safeRestart(); }}
+              onRequestAppendPrompt={async () => {
+                const extraCount = 120;
+                const extra = await fetchJSON<FetchResponse>(`/generate`, {
+                  method: 'POST',
+                  body: {
+                    mode: 'words',
+                    count: extraCount,
+                    include_punctuation: showPunctuation,
+                    include_numbers: showNumbers,
+                    language: 'english',
+                    difficulty: usedDifficultyRef.current || 'auto',
+                  },
+                });
+                return extra.text;
+              }}
+            />
+          </>
         )}
         {view === 'results' && (
           <div className="ks-section-gradient">
@@ -553,7 +551,7 @@ const TypingTest: React.FC = () => {
               avgWpm={avgWpm}
               avgAcc={avgAcc}
               flags={smartFlags ?? undefined}
-              onNextTest={async () => { await handleRestart(); }}
+              onNextTest={async () => { await safeRestart(); }}
             />
           </div>
         )}
