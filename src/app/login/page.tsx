@@ -12,8 +12,11 @@ export default function LoginPage() {
   const { login, register, loading } = useAuthStore();
   const router = useRouter();
 
+  const [err, setErr] = useState<string | null>(null);
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErr(null);
     try {
       if (tab === "login") {
         await login(username, password);
@@ -21,8 +24,8 @@ export default function LoginPage() {
         await register(username, password, email || undefined);
       }
       router.push("/account");
-    } catch (err: any) {
-      alert(err?.message || "Authentication failed");
+    } catch (error: any) {
+      setErr(error?.message || "Authentication failed");
     }
   };
 
@@ -87,6 +90,7 @@ export default function LoginPage() {
           >
             {tab === "login" ? "Sign in" : "Create account"}
           </button>
+          {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
         </form>
       </div>
     </div>

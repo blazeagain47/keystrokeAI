@@ -1,3 +1,11 @@
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || "http://127.0.0.1:8000";
+
+export function withBase(path: string) {
+  if (!path.startsWith("/")) path = `/${path}`;
+  return `${API_BASE}${path}`;
+}
+
 export type FetchJSONOptions = {
   method?: "GET" | "POST";
   body?: any;

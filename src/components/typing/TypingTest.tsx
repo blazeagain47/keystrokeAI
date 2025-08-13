@@ -112,33 +112,43 @@ const TypingTest: React.FC = () => {
     setGenerateError(null);
 
     try {
-      // quick ping to health to detect reloads
-      try {
-        await fetchJSON(`/health`, { signal: controller.signal as unknown as AbortSignal });
-      } catch {
-        // ignore; main request handles retry
-      }
-
-      const res = await fetchJSON<FetchResponse>(`/generate`, {
+      // Prefer Next.js proxy to avoid CORS/env drift
+      const resp = await fetch("/api/generate-proxy", {
         method: "POST",
-        body: payload,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
         signal: controller.signal as unknown as AbortSignal,
       });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        console.error("[generator] HTTP error", resp.status, errText);
+        throw new Error(`Generator HTTP ${resp.status}`);
+      }
+
+      const data = (await resp.json().catch(() => null)) as FetchResponse | null;
 
       // ignore stale
       if (seq !== genSeqRef.current) return;
 
-      sessionUsedSeeds.current.add(res.seed);
-      setCurrentPrompt(res.text);
-      if (res?.difficulty) { usedDifficultyRef.current = res.difficulty; }
-      if (res?.difficulty) setSmartUsedDifficulty(res.difficulty);
-      if (res?.flags) setSmartFlags(res.flags);
+      if (!data || !data.text) {
+        console.error("[generator] empty response", data);
+        throw new Error("Empty generator response");
+      }
+
+      sessionUsedSeeds.current.add(data.seed);
+      setCurrentPrompt(data.text);
+      if (data?.difficulty) { usedDifficultyRef.current = data.difficulty; }
+      if (data?.difficulty) setSmartUsedDifficulty(data.difficulty);
+      if (data?.flags) setSmartFlags(data.flags);
       setIsGenerating(false);
+      console.log("[generator] success payload", data);
     } catch (err: unknown) {
       if (seq !== genSeqRef.current) return;
       setIsGenerating(false);
       const msg = err instanceof Error ? err.message : 'Failed to generate';
       setGenerateError(msg);
+      console.error("[generator] failed", err);
     } finally {
       if (genAbortRef.current === controller) genAbortRef.current = null;
     }
@@ -197,6 +207,11 @@ const TypingTest: React.FC = () => {
   // Fetch an initial prompt on mount with default wordCount (15)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    // Quick health ping via Next proxy for diagnostics
+    fetch("/api/ping").then(async (r) => {
+      const j = await r.json().catch(() => ({}));
+      console.log("[ping]", j);
+    });
     void safeRestart(15);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [safeRestart]);
@@ -522,18 +537,26 @@ const TypingTest: React.FC = () => {
               onRequestNewPrompt={async () => { await safeRestart(); }}
               onRequestAppendPrompt={async () => {
                 const extraCount = 120;
-                const extra = await fetchJSON<FetchResponse>(`/generate`, {
+                const resp = await fetch('/api/generate-proxy', {
                   method: 'POST',
-                  body: {
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
                     mode: 'words',
                     count: extraCount,
                     include_punctuation: showPunctuation,
                     include_numbers: showNumbers,
                     language: 'english',
                     difficulty: usedDifficultyRef.current || 'auto',
-                  },
+                  }),
                 });
-                return extra.text;
+                if (!resp.ok) {
+                  const errText = await resp.text().catch(() => '');
+                  console.error('[generator] append HTTP error', resp.status, errText);
+                  throw new Error('Generator append failed');
+                }
+                const data = (await resp.json().catch(() => null)) as FetchResponse | null;
+                if (!data || !data.text) throw new Error('Empty generator response');
+                return data.text;
               }}
             />
           </>

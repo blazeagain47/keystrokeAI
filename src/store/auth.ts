@@ -26,7 +26,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   hydrateFromMe: async () => {
     set({ loading: true });
     try {
-      const me = await fetchJSON<UserProfile>("/auth/me");
+      const me = await fetchJSON<UserProfile>("/api/auth/me");
       set({ user: me });
     } catch {
       set({ user: null });
@@ -38,7 +38,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (username, password) => {
     set({ loading: true });
     try {
-      const me = await fetchJSON<UserProfile>("/auth/login", {
+      const me = await fetchJSON<UserProfile>("/api/auth/login", {
         method: "POST",
         body: { username, password },
       });
@@ -51,7 +51,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   register: async (username, password, email) => {
     set({ loading: true });
     try {
-      const me = await fetchJSON<UserProfile>("/auth/register", {
+      const me = await fetchJSON<UserProfile>("/api/auth/register", {
         method: "POST",
         body: { username, password, email },
       });
@@ -64,7 +64,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     set({ loading: true });
     try {
-      await fetchJSON("/auth/logout", { method: "POST" });
+      await fetchJSON("/api/auth/logout", { method: "POST" });
       set({ user: null });
     } finally {
       set({ loading: false });

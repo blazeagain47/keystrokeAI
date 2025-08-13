@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import { Bell, User as UserOutline, UserRound as UserSolid } from "lucide-react";
+// ⬇️ Stable lucide icons only
+import { Bell, User } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import clsx from "clsx";
 
@@ -37,7 +38,11 @@ export default function Header() {
             )}
             aria-label={user ? "Account" : "Login"}
           >
-            {user ? <UserSolid className="h-5 w-5" /> : <UserOutline className="h-5 w-5" />}
+            {user ? (
+              <User className="h-5 w-5" />
+            ) : (
+              <User className="h-5 w-5 opacity-70" />
+            )}
             <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-xs opacity-0 group-hover:opacity-100 transition">
               {user ? user.username : "Sign in"}
             </span>

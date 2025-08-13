@@ -1,11 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
 import random
 from typing import Optional
-from prompt_generator import generate_words_prompt
 import uuid
 import time
 
@@ -29,6 +26,51 @@ app.add_middleware(
 # Mount auth
 app.include_router(auth_router)
 
+# --- Guard heavy / optional imports ---
+HAS_TRANSFORMERS = False
+HAS_PROMPT_GEN = False
+
+def _lazy_import_transformers():
+    global HAS_TRANSFORMERS
+    if not HAS_TRANSFORMERS:
+        try:
+            from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
+            import torch  # type: ignore
+            globals()["AutoModelForCausalLM"] = AutoModelForCausalLM
+            globals()["AutoTokenizer"] = AutoTokenizer
+            globals()["torch"] = torch
+            HAS_TRANSFORMERS = True
+        except Exception:
+            HAS_TRANSFORMERS = False
+    return HAS_TRANSFORMERS
+
+def _lazy_import_prompt_gen():
+    global HAS_PROMPT_GEN
+    if not HAS_PROMPT_GEN:
+        try:
+            # prefer package-relative first
+            from .prompt_generator import generate_words_prompt  # type: ignore
+            globals()["generate_words_prompt"] = generate_words_prompt
+            HAS_PROMPT_GEN = True
+        except Exception:
+            try:
+                from prompt_generator import generate_words_prompt  # type: ignore
+                globals()["generate_words_prompt"] = generate_words_prompt
+                HAS_PROMPT_GEN = True
+            except Exception:
+                HAS_PROMPT_GEN = False
+    return HAS_PROMPT_GEN
+
+def _require_transformers():
+    if not _lazy_import_transformers():
+        from fastapi import HTTPException
+        raise HTTPException(status_code=501, detail="transformers/torch not available")
+
+def _require_prompt_gen():
+    if not _lazy_import_prompt_gen():
+        from fastapi import HTTPException
+        raise HTTPException(status_code=501, detail="prompt_generator not available")
+
 @app.get("/health")
 async def health():
     return {"ok": True, "ts": time.time()}
@@ -47,17 +89,6 @@ async def add_request_id(request: Request, call_next):
         dur = (time.time() - start) * 1000
         print(f"[GEN] ✖ {rid} ERROR {dur:.1f}ms {e}")
         raise
-
-# Load a small model first
-model_name = "distilgpt2"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
-model = AutoModelForCausalLM.from_pretrained(model_name)
-
-# Device setup
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
 
 class TypingInput(BaseModel):
     user_text: str
@@ -123,6 +154,7 @@ class GenerateIn(BaseModel):
 
 @app.post("/generate")
 async def generate_handler(params: GenerateIn):
+    _require_prompt_gen()
     # For now, we unify to words-mode generation with optional punctuation/numbers.
     # Time mode requests will request a long count from the frontend.
     if params.mode not in ("words", "time"):
