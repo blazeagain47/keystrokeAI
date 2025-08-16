@@ -1,6 +1,8 @@
 "use client";
 import React from "react";
 import { formatDate } from "@/lib/format";
+import { useAuth } from "@/hooks/useAuth";
+import { useRouter } from "next/navigation";
 
 type Props = {
   username: string;
@@ -10,6 +12,8 @@ type Props = {
 
 export default function AccountOverview({ username, email, createdAt }: Props) {
   const initials = (username || "?").slice(0, 2).toUpperCase();
+  const { signOut } = useAuth();
+  const router = useRouter();
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -25,9 +29,20 @@ export default function AccountOverview({ username, email, createdAt }: Props) {
             <div className="text-white/40 text-sm">No email</div>
           )}
         </div>
-        <div className="text-right">
-          <div className="text-white/50 text-xs">Joined</div>
-          <div className="text-white/80 text-sm">{formatDate(createdAt)}</div>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <div className="text-white/50 text-xs">Joined</div>
+            <div className="text-white/80 text-sm">{formatDate(createdAt)}</div>
+          </div>
+          <button
+            onClick={async () => {
+              await signOut();
+              router.replace("/login");
+            }}
+            className="px-3 py-1 rounded-xl border border-white/10 hover:bg-white/10 text-sm"
+          >
+            Sign out
+          </button>
         </div>
       </div>
 

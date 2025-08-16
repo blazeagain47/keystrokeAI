@@ -6,13 +6,17 @@ import { useEffect } from "react";
 import { Bell, User } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import clsx from "clsx";
+import { useRouter } from "next/navigation";
 
 export default function Header() {
-  const { user, hydrateFromMe } = useAuthStore();
+  const router = useRouter();
+  const { user, hydrateFromMe, logout, ready } = useAuthStore();
 
   useEffect(() => {
-    hydrateFromMe().catch(() => {});
-  }, [hydrateFromMe]);
+    if (!ready) {
+      hydrateFromMe().catch(() => {});
+    }
+  }, [ready, hydrateFromMe]);
 
   return (
     <header className="sticky top-0 z-50 w-full backdrop-blur bg-background/60 border-b border-white/10">
@@ -47,6 +51,17 @@ export default function Header() {
               {user ? user.username : "Sign in"}
             </span>
           </Link>
+          {user && (
+            <button
+              onClick={async () => {
+                await logout();
+                router.replace("/login");
+              }}
+              className="px-3 py-1 rounded-xl border border-white/10 hover:bg-white/10 text-sm"
+            >
+              Sign out
+            </button>
+          )}
         </div>
       </div>
     </header>

@@ -18,7 +18,7 @@ type AuthState = {
   error: string | null;
   loading: boolean;
 
-  hydrateFromMe: () => Promise<void>;
+  hydrateFromMe: (force?: boolean) => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string, email?: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -30,15 +30,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   error: null,
   loading: false,
 
-  hydrateFromMe: async () => {
+  /** Hydrate auth state from /api/auth/me. Pass force=true to re-run even if ready. */
+  hydrateFromMe: async (force?: boolean) => {
+    if (get().loading) return;
+    if (get().ready && !force) return;
     set({ loading: true });
     try {
       const me = await fetchJSON<User>("/api/auth/me");
-      set({ user: me, error: null, ready: true });
+      set({ user: me || null, error: null });
     } catch (err: any) {
-      set({ user: null, error: err?.message ?? "not_authenticated", ready: true });
+      set({ user: null, error: err?.message || "Not authenticated" });
     } finally {
-      set({ loading: false });
+      set({ loading: false, ready: true });
     }
   },
 
@@ -69,11 +72,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
-    set({ loading: true });
     try {
-      await fetchJSON("/api/auth/logout", { method: "POST" } as any);
-    } catch {}
-    set({ user: null, ready: true, loading: false });
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      }).catch(() => {});
+    } finally {
+      // Clear client state regardless of server response
+      set({ user: null, ready: true, loading: false, error: null });
+    }
   },
 }));
 

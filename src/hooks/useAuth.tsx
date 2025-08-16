@@ -12,7 +12,7 @@ export function useAuth() {
   return {
     user: store.user,
     loading: store.loading,
-    hydrateFromMe: store.hydrateFromMe,
+    hydrateFromMe: store.hydrateFromMe, // (force?: boolean) => Promise<void>
     // map to store actions for compatibility
     signIn: async (email: string, password: string) => {
       // reuse username field as email-or-username if needed; here assume username

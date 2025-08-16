@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 
@@ -13,6 +13,9 @@ export default function LoginPage() {
   const router = useRouter();
 
   const [err, setErr] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,9 +32,11 @@ export default function LoginPage() {
     }
   };
 
+  if (!mounted) return null;
+
   return (
-    <div className="max-w-md mx-auto">
-      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-6">
+    <div className="max-w-md mx-auto" suppressHydrationWarning>
+      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-6" suppressHydrationWarning>
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setTab("login")}
@@ -47,7 +52,7 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-4" data-lpignore="true" autoComplete="off">
           <div>
             <label className="block text-sm mb-1">Username</label>
             <input
@@ -56,6 +61,8 @@ export default function LoginPage() {
               className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-white/20"
               required
               minLength={3}
+              data-lpignore="true"
+              autoComplete="off"
             />
           </div>
 
@@ -67,6 +74,8 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-white/20"
+                data-lpignore="true"
+                autoComplete="off"
               />
             </div>
           )}
@@ -80,6 +89,8 @@ export default function LoginPage() {
               className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-white/20"
               required
               minLength={6}
+              data-lpignore="true"
+              autoComplete="off"
             />
           </div>
 

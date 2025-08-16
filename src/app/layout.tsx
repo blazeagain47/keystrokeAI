@@ -1,5 +1,6 @@
 // src/app/layout.tsx
 import type { Metadata } from 'next'
+import AuthGate from '@/components/auth/AuthGate'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
@@ -36,6 +37,8 @@ export default function RootLayout({
         >
           <Header />
           {children}
+          {/* Global auth modal gate */}
+          <AuthGate />
         </ThemeProvider>
       </body>
     </html>
