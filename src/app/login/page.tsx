@@ -23,7 +23,7 @@ export default function LoginPage() {
       } else {
         await register(username, password, email || undefined);
       }
-      router.push("/account");
+      router.replace("/account");
     } catch (error: any) {
       setErr(error?.message || "Authentication failed");
     }

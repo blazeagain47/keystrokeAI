@@ -18,11 +18,14 @@ export function useAuth() {
       // reuse username field as email-or-username if needed; here assume username
       await store.login(email, password);
     },
+    signUp: async (username: string, password: string, email?: string) => {
+      await store.register(username, password, email);
+    },
+    signInWithGoogle: async () => {
+      throw new Error("Google sign-in not implemented");
+    },
     signOut: async () => {
       await store.logout();
-    },
-    register: async (username: string, password: string, email?: string) => {
-      await store.register(username, password, email);
     },
     setUser: undefined,
   };

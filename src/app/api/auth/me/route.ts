@@ -2,25 +2,40 @@ import { NextRequest, NextResponse } from "next/server";
 import { API_BASE } from "@/lib/api";
 import { slog } from "@/lib/log";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "default-no-store";
+
 export async function GET(req: NextRequest) {
   const upstream = `${API_BASE}/auth/me`;
-  const r = await fetch(upstream, {
-    headers: {
-      cookie: req.headers.get("cookie") ?? "",
-    },
-    cache: "no-store",
-  });
-  let text = await r.text();
-  if (!r.ok) slog("me upstream error", r.status, text.slice(0, 300));
+  try {
+    const res = await fetch(upstream, {
+      method: "GET",
+      headers: { cookie: req.headers.get("cookie") ?? "" },
+      cache: "no-store",
+    });
 
-  const res = new NextResponse(text, {
-    status: r.status,
-    headers: { "content-type": r.headers.get("content-type") || "application/json" },
-  });
+    const body = await res.text();
+    if (!res.ok) {
+      slog("me upstream error", res.status, body);
+      return new NextResponse(body || "", {
+        status: res.status,
+        headers: {
+          "content-type": res.headers.get("content-type") || "text/plain",
+          ...(res.headers.get("set-cookie")
+            ? { "set-cookie": res.headers.get("set-cookie")! }
+            : {}),
+        },
+      });
+    }
 
-  const setCookies = (r as any).headers.getSetCookie?.() ?? (r.headers.get("set-cookie") ? [r.headers.get("set-cookie")!] : []);
-  for (const c of setCookies) res.headers.append("set-cookie", c);
-  return res;
+    const headers = new Headers();
+    const setCookie = res.headers.get("set-cookie");
+    if (setCookie) headers.set("set-cookie", setCookie);
+    headers.set("content-type", "application/json");
+
+    return new NextResponse(body, { status: 200, headers });
+  } catch (err: any) {
+    slog("me proxy failed", 500, String(err?.stack || err));
+    return NextResponse.json({ detail: "proxy_failed" }, { status: 500 });
+  }
 }
-
-

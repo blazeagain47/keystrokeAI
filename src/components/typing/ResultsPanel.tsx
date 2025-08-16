@@ -170,8 +170,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             onClick={() => onNextTest && onNextTest()}
             className="btn-glow px-6 md:px-8 py-6 text-base md:text-lg font-semibold rounded-2xl
                        bg-gradient-to-r from-primary/80 via-primary to-primary/80
-                       shadow-[0_0_0_0_theme(colors.primary/50)]
-                       hover:shadow-[0_0_40px_6px_theme(colors.primary/35)]
+                       ring-1 ring-primary/50 hover:ring-1 hover:ring-primary/35 shadow
                        transition-shadow duration-500"
           >
             Next test
