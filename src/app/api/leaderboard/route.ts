@@ -1,43 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_BASE } from "@/lib/api";
-import { slog } from "@/lib/log";
-
-export const dynamic = "force-dynamic";
-export const fetchCache = "default-no-store";
 
 export async function GET(req: NextRequest) {
-  const upstream = `${API_BASE}/leaderboard`;
+  const url = new URL(req.url);
+  const limit = url.searchParams.get("limit") || "10";
+
+  const upstream = `${API_BASE.replace(/\/+$/,"")}/leaderboard?limit=${encodeURIComponent(limit)}`;
+
   try {
     const res = await fetch(upstream, {
+      method: "GET",
       headers: { cookie: req.headers.get("cookie") ?? "" },
       cache: "no-store",
     });
 
     if (res.ok) {
-      const body = await res.text();
-      const headers = new Headers({ "content-type": "application/json" });
-      const setCookie = res.headers.get("set-cookie");
-      if (setCookie) headers.set("set-cookie", setCookie);
-      return new NextResponse(body, { status: 200, headers });
+      const data = await res.json().catch(() => ({}));
+      return NextResponse.json(data, {
+        status: 200,
+        headers: { "cache-control": "no-store" },
+      });
     }
 
-    // Fallback: benign stub so UI always renders
-    slog("leaderboard upstream error", res.status, await res.text());
-    const stub = [
-      { rank: 1, username: "alex", xp: 3200 },
-      { rank: 2, username: "jordan", xp: 2900 },
-      { rank: 3, username: "morgan", xp: 2400 },
-    ];
-    return NextResponse.json(stub, { status: 200 });
-  } catch (err: any) {
-    slog("leaderboard proxy failed", 500, String(err?.stack || err));
-    const stub = [
-      { rank: 1, username: "alex", xp: 3200 },
-      { rank: 2, username: "jordan", xp: 2900 },
-      { rank: 3, username: "morgan", xp: 2400 },
-    ];
-    return NextResponse.json(stub, { status: 200 });
+    // Fall through to stub
+  } catch {
+    // Fall through to stub
   }
+
+  // Stub fallback if backend endpoint is missing
+  const rows = [
+    { id: "1", username: "alex", xpTotal: 3200 },
+    { id: "2", username: "jordan", xpTotal: 2900 },
+    { id: "3", username: "morgan", xpTotal: 2400 },
+  ];
+  return NextResponse.json({ rows }, { status: 200, headers: { "cache-control": "no-store" } });
 }
 
 

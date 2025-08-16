@@ -31,8 +31,8 @@ export default function AccountPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
-      <AccountOverview user={user} />
-      <StatsGrid user={user} />
+      <AccountOverview username={user.username} email={user.email} createdAt={user.createdAt} />
+      <StatsGrid xpTotal={user.xpTotal ?? 0} streak={user.streak ?? 0} memberSince={user.createdAt} />
       <Leaderboard />
     </div>
   );

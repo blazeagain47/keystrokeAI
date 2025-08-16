@@ -1,30 +1,48 @@
 "use client";
+import React from "react";
+import { formatDate } from "@/lib/format";
 
-import { User } from "@/store/auth";
+type Props = {
+  username: string;
+  email?: string | null;
+  createdAt?: string | null;
+};
 
-export default function AccountOverview({ user }: { user: User }) {
+export default function AccountOverview({ username, email, createdAt }: Props) {
+  const initials = (username || "?").slice(0, 2).toUpperCase();
+
   return (
-    <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div className="col-span-2 rounded-2xl bg-gradient-to-b from-slate-900/50 to-slate-800/40 border border-white/10 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-white">{user.username}</h1>
-            <p className="text-slate-300">{user.email}</p>
-          </div>
-          <div className="text-right text-sm text-slate-400">
-            Joined{" "}
-            <span className="text-slate-200">
-              {new Date(user.createdAt).toLocaleDateString()}
-            </span>
-          </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 flex items-center gap-4">
+        <div className="h-12 w-12 rounded-full bg-white/10 flex items-center justify-center text-white/90 font-semibold">
+          {initials}
+        </div>
+        <div className="flex-1">
+          <div className="text-white/90 font-medium">{username}</div>
+          {email ? (
+            <div className="text-white/50 text-sm truncate">{email}</div>
+          ) : (
+            <div className="text-white/40 text-sm">No email</div>
+          )}
+        </div>
+        <div className="text-right">
+          <div className="text-white/50 text-xs">Joined</div>
+          <div className="text-white/80 text-sm">{formatDate(createdAt)}</div>
         </div>
       </div>
-      <div className="rounded-2xl bg-slate-900/50 border border-white/10 p-6">
-        <div className="text-sm text-slate-400">Notifications</div>
-        <div className="mt-2 text-slate-200">Coming soon</div>
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4">
+        <div className="text-white/60 text-sm">Notifications</div>
+        <div className="text-white/80">Coming soon</div>
       </div>
-    </section>
+
+      <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-4">
+        <div className="text-white/60 text-sm">Tips</div>
+        <div className="text-white/80">Practice daily to extend your streak.</div>
+      </div>
+    </div>
   );
 }
+
 
 

@@ -1,28 +1,28 @@
 "use client";
+import React from "react";
+import { useAuth } from "@/hooks/useAuth";
 
-import { useEffect, useState } from "react";
-
-type Row = { rank: number; username: string; xp: number; you?: boolean };
+type Row = { id: string | number; username: string; xpTotal: number };
 
 export default function Leaderboard() {
-  const [rows, setRows] = useState<Row[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const [rows, setRows] = React.useState<Row[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/leaderboard", { credentials: "include" });
+        setError(null);
+        const res = await fetch("/api/leaderboard?limit=10", { credentials: "include", cache: "no-store" });
+        if (!res.ok) throw new Error(`http_${res.status}`);
         const data = await res.json();
-        if (!cancelled) {
-          setRows(Array.isArray(data) ? data : []);
-          setError(null);
-        }
+        if (!cancelled) setRows(Array.isArray(data?.rows) ? data.rows : []);
       } catch (e: any) {
-        if (!cancelled) setError(e?.message || "failed");
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setError(e?.message ?? "failed");
+          setRows([]);
+        }
       }
     })();
     return () => {
@@ -30,42 +30,48 @@ export default function Leaderboard() {
     };
   }, []);
 
-  return (
-    <section className="rounded-2xl bg-slate-900/50 border border-white/10">
-      <div className="p-5 border-b border-white/10">
-        <h2 className="text-lg font-semibold text-white">Leaderboard</h2>
-        <p className="text-sm text-slate-400">Top players by XP</p>
-      </div>
+  const Skeleton = () => (
+    <div className="animate-pulse space-y-2">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="h-9 rounded-lg bg-white/5" />
+      ))}
+    </div>
+  );
 
-      {loading && <div className="p-5 text-slate-300">Loading leaderboard…</div>}
-      {error && (
-        <div className="p-5 text-amber-300">
-          Couldn’t load leaderboard. Showing a preview if available…
+  return (
+    <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="text-white font-medium">Leaderboard</div>
+      <div className="text-white/50 text-sm mb-3">Top players by XP</div>
+
+      {!rows ? (
+        <Skeleton />
+      ) : rows.length === 0 ? (
+        <div className="text-white/60">No leaderboard data yet.</div>
+      ) : (
+        <div className="divide-y divide-white/10">
+          {rows.map((r: Row, i: number) => {
+            const isMe = user && (String(user.id) === String(r.id) || user.username === r.username);
+            return (
+              <div
+                key={`${r.id}-${i}`}
+                className={`flex items-center justify-between py-2 px-2 rounded-lg ${
+                  isMe ? "bg-white/[0.06] ring-1 ring-white/10" : "hover:bg-white/[0.03]"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-7 text-right text-white/50">#{i + 1}</div>
+                  <div className="text-white/90">{r.username}</div>
+                  {isMe && <span className="text-xs text-white/60 bg-white/10 px-2 py-0.5 rounded-full">you</span>}
+                </div>
+                <div className="text-white/80 tabular-nums">{r.xpTotal} XP</div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <ul className="divide-y divide-white/10">
-        {(rows ?? []).map((row) => (
-          <li
-            key={row.rank + row.username}
-            className={`flex items-center justify-between px-5 py-3 ${
-              row.you ? "bg-blue-950/30" : ""
-            }`}
-          >
-            <div className="flex items-center gap-4">
-              <span className="w-8 text-slate-300">#{row.rank}</span>
-              <span className="text-white">{row.username}</span>
-              {row.you && (
-                <span className="text-xs rounded-full bg-blue-500/20 text-blue-200 px-2 py-0.5">
-                  you
-                </span>
-              )}
-            </div>
-            <div className="text-slate-200">{row.xp} XP</div>
-          </li>
-        ))}
-      </ul>
-    </section>
+      {error && <div className="text-amber-300 text-sm mt-3">Couldn’t load leaderboard ({error}).</div>}
+    </div>
   );
 }
 
