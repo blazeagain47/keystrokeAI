@@ -6,6 +6,8 @@ import { saveTypingResult } from '@/lib/firebase/scores';
 import { RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { segmentGraphemes, normalizeInputChar } from "@/utils/segments";
+import { sameChar, stripInvisibles } from "@/lib/typing/compare";
+import { useSearchParams } from "next/navigation";
 
 /* NEW – bring in the modernised Shadcn results panel */
 // Legacy StatsPanel removed in favor of modern ResultsPanel
@@ -58,6 +60,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const [typedInput, setTypedInput] = useState<string>("");
   // Optional: minimal debug overlay; enable via ?debug=1
   const [debug, setDebug] = useState(false);
+  const search = useSearchParams();
+  const debugType = search?.get("debug") === "type";
   type DebugEntry = { ts: number; event: string; key?: string; si: number; wi: number; ci: number; target?: string; typed?: string; note?: string };
   const [debugLog, setDebugLog] = useState<DebugEntry[]>([]);
   const [debugPaused, setDebugPaused] = useState(false);
@@ -386,15 +390,24 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         if (currentCharIndex < g.length) {
           const targetChar = g[currentCharIndex];
           const typedCharNorm = normalizeInputChar(e.key);
-          const isCorrect  = typedCharNorm === targetChar;
+          const isCorrect  = sameChar(targetChar, typedCharNorm);
           // Record typed character
           setTypedInput((prev) => prev + typedCharNorm);
 
           if (isCorrect) setCorrectChars((prev) => prev + 1);
           // log
-          if (debug && !debugPaused) {
+          if ((debug && !debugPaused) || debugType) {
             const si = words.slice(0, currentWordIndex).join(' ').length + (currentWordIndex > 0 ? 1 : 0) + currentCharIndex;
             setDebugLog((prev) => [...prev.slice(-199), { ts: Date.now(), event: 'char', key: e.key, si, wi: currentWordIndex, ci: currentCharIndex, target: targetChar, typed: typedCharNorm, note: isCorrect ? 'ok' : 'bad' }]);
+            // eslint-disable-next-line no-console
+            if (debugType) console.log('[type-debug]', {
+              expected: targetChar,
+              typed: e.key,
+              expectedHex: [...targetChar].map(c => c.codePointAt(0)?.toString(16)),
+              typedHex: [...e.key].map(c => c.codePointAt(0)?.toString(16)),
+              normExpected: stripInvisibles(targetChar),
+              normTyped: stripInvisibles(e.key),
+            });
           }
 
           setTotalChars((prev) => prev + 1);
@@ -412,7 +425,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
                 const finalAcc    = calculateAccuracy(correctChars + (isCorrect ? 1 : 0), totalChars + 1);
                 setIsComplete(true);
                 onTestComplete(finalWpm, finalAcc, duration, typedInput + typedCharNorm);
-                if (user) saveTypingResult(user.uid, finalWpm, finalAcc, duration, 'words', words.length);
+                if (user) saveTypingResult(String(user.id), finalWpm, finalAcc, duration, 'words', words.length);
               }
             }
           }

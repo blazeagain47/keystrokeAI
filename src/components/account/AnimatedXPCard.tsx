@@ -61,7 +61,7 @@ export default function AnimatedXPCard({ xpTotal, xpToNext }: Props) {
         <div className="flex-1">
           <div className="text-xs text-white/60">Total XP</div>
           <div className="text-2xl font-semibold tracking-tight">
-            <CountUp to={xpTotal} />
+            <CountUp value={xpTotal} />
           </div>
           <div className="text-[11px] text-white/50">Progress to next level</div>
         </div>

@@ -1,34 +1,36 @@
 "use client";
-import { motion, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
-import React from "react";
+import { useEffect, useState } from "react";
 
-type CountUpProps = {
-  to: number;
-  duration?: number; // seconds
+type Props = {
+  value: number;
+  duration?: number; // ms
+  decimals?: number;
   className?: string;
 };
 
-export default function CountUp({ to, duration = 1.2, className }: CountUpProps) {
-  const prefersReducedMotion = useReducedMotion();
-  const mv = useMotionValue(0);
-  const rounded = useTransform(mv, (v) => Math.round(v).toLocaleString());
-  React.useEffect(() => {
-    const controls = animate(mv, to, {
-      duration: prefersReducedMotion ? 0 : duration,
-      ease: [0.16, 1, 0.3, 1],
-    });
-    return controls.stop;
-  }, [to, duration, prefersReducedMotion, mv]);
+export default function CountUp({ value, duration = 900, decimals = 0, className }: Props) {
+  const [display, setDisplay] = useState(0);
+
+  useEffect(() => {
+    let raf: number;
+    const start = performance.now();
+    const from = display;
+    const diff = value - from;
+
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      setDisplay(from + diff * (1 - Math.pow(1 - t, 3))); // easeOutCubic
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   return (
-    <motion.span
-      className={className}
-      initial={{ y: prefersReducedMotion ? 0 : 8, scale: prefersReducedMotion ? 1 : 0.98, opacity: 0 }}
-      animate={{ y: 0, scale: 1, opacity: 1 }}
-      transition={{ duration: prefersReducedMotion ? 0 : 0.5, ease: "easeOut" }}
-    >
-      {rounded}
-    </motion.span>
+    <span className={className}>
+      {display.toFixed(decimals)}
+    </span>
   );
 }
 

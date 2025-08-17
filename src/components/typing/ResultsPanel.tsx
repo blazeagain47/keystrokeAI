@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import AIFeedback from "@/components/feedback/AIFeedback";
+import FireSummaryCard from "@/components/test/FireSummaryCard";
 
 export interface ResultsPanelProps {
   wpm: number;
@@ -52,6 +53,27 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   } = props;
 
   const wpmTrend: number[] = Array.isArray(wpmSeries) ? wpmSeries.map(p => p.wpm) : [];
+  const [pulseGlow, setPulseGlow] = React.useState(false);
+  const prefersReducedMotion = useReducedMotion();
+  // Normalize WPM values to 0..100 for sparkline animation
+  const trendPercentages: number[] | undefined = (() => {
+    if (!wpmTrend || wpmTrend.length < 2) return undefined;
+    const min = Math.min(...wpmTrend);
+    const max = Math.max(...wpmTrend);
+    const range = Math.max(1, max - min);
+    return wpmTrend.map(v => Math.round(((v - min) / range) * 100));
+  })();
+  const nextKnobs: string[] | undefined = (() => {
+    if (!flags) return undefined;
+    const parts: string[] = [];
+    parts.push(flags.punctuation === false ? "Punctuation off" : "Punctuation on");
+    parts.push(flags.numbers === false ? "Numbers off" : "Numbers on");
+    return parts;
+  })();
+  const aiError: string | null = (() => {
+    const msg = analysis?.feedback || "";
+    return msg.includes("Could not fetch AI feedback.") ? msg : null;
+  })();
 
   return (
     <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6" aria-label="Results">
@@ -72,9 +94,10 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={wpmSeries}>
                     <defs>
-                      <linearGradient id="wpmLine" x1="0" x2="1" y1="0" y2="0">
-                        <stop offset="0%" stopColor={`hsl(var(--primary))`} stopOpacity="0.95" />
-                        <stop offset="100%" stopColor={`hsl(var(--primary))`} stopOpacity="0.6" />
+                      <linearGradient id="fireStroke" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#FF3D00" />
+                        <stop offset="50%" stopColor="#FF6A00" />
+                        <stop offset="100%" stopColor="#FFD36E" />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.18} />
@@ -91,12 +114,35 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                       opacity={0.7}
                     />
                     <Tooltip
-                      formatter={(v: any) => [`${Math.round(Number(v))} wpm`, "WPM"]}
-                      labelFormatter={(s: any) => `t = ${s}s`}
+                      wrapperClassName="chart-tooltip"
+                      contentStyle={{ background: "transparent", border: "none", boxShadow: "none" }}
+                      formatter={(v: any) => [
+                        <span className="chart-tooltip-value" key="v">{`${Math.round(Number(v))} WPM`}</span>,
+                        <span className="chart-tooltip-title" key="l">Speed</span>
+                      ]}
+                      labelFormatter={(s: any) => `Time = ${s}s`}
                     />
-                    {/* Glow effect: primary line + faint overlay */}
-                    <Line type="monotone" dataKey="wpm" dot={false} stroke="url(#wpmLine)" strokeWidth={3} isAnimationActive />
-                    <Line type="monotone" dataKey="wpm" dot={false} stroke="url(#wpmLine)" strokeOpacity={0.25} strokeWidth={7} isAnimationActive={false} />
+                    {/* Fire-themed line + soft glow overlay */}
+                    <Line
+                      type="monotone"
+                      dataKey="wpm"
+                      dot={false}
+                      activeDot={{ r: 4, className: "chart-point-glow" }}
+                      stroke="url(#fireStroke)"
+                      strokeWidth={2.5}
+                      isAnimationActive={!prefersReducedMotion}
+                      animationDuration={prefersReducedMotion ? 0 : 3000}
+                      style={{ filter: "drop-shadow(0 0 6px rgba(255,80,0,0.4))" }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="wpm"
+                      dot={false}
+                      stroke="url(#fireStroke)"
+                      strokeOpacity={0.25}
+                      strokeWidth={7}
+                      isAnimationActive={false}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -114,45 +160,22 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           {/* AIFeedback already includes rank/xp/streak; we just rely on its internal card styles */}
           <AIFeedback wpmTrend={wpmTrend} accuracyPct={accuracy} completed={true} />
 
-          {/* Smart next test knobs / summary */}
+          {/* Smart next test summary (fire-themed) */}
           {usedDifficulty && (
             <motion.div
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, ease: "easeOut", delay: 0.08 }}
             >
-              <div className="ks-card p-4 md:p-5 text-sm text-gray-200">
-                <div className="mb-3">
-                  <span className="ks-chip">
-                    <span>Smart test</span>
-                    <span className="opacity-70">adapted your next prompt</span>
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                    <div className="text-[11px] uppercase opacity-70">Difficulty chosen</div>
-                    <div className="font-medium">{usedDifficulty}</div>
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                    <div className="text-[11px] uppercase opacity-70">Your recent average</div>
-                    <div className="font-medium">
-                      {Math.round(Number(avgWpm ?? 0))} WPM • {Math.round(Number(avgAcc ?? 0))}% acc
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                    <div className="text-[11px] uppercase opacity-70">Next test knobs</div>
-                    <div className="font-medium">
-                      {flags?.punctuation === false ? "Punctuation off" : "Punctuation on"} •{" "}
-                      {flags?.numbers === false ? "Numbers off" : "Numbers on"}
-                    </div>
-                  </div>
-                </div>
-
-                {analysis?.feedback && (
-                  <div className="mt-3 text-xs/5 opacity-80">{analysis.feedback}</div>
-                )}
-              </div>
+              <FireSummaryCard
+                difficulty={usedDifficulty}
+                averageWPM={Math.round(Number(avgWpm ?? 0))}
+                accuracy={Math.round(Number(avgAcc ?? 0))}
+                knobs={nextKnobs ?? ["Punctuation off", "Numbers off"]}
+                trend={trendPercentages}
+                error={aiError}
+                className={`mt-0 ${pulseGlow ? 'glow-boost' : ''}`}
+              />
             </motion.div>
           )}
         </motion.div>
@@ -167,7 +190,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
       >
         <div className="text-center">
           <Button
-            onClick={() => onNextTest && onNextTest()}
+            onClick={async () => { setPulseGlow(true); setTimeout(() => setPulseGlow(false), 300); if (onNextTest) await onNextTest(); }}
             className="btn-glow px-6 md:px-8 py-6 text-base md:text-lg font-semibold rounded-2xl
                        bg-gradient-to-r from-primary/80 via-primary to-primary/80
                        ring-1 ring-primary/50 hover:ring-1 hover:ring-primary/35 shadow
