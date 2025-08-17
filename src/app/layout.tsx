@@ -5,11 +5,13 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import Header from '@/components/Header'
+import GlobalFireBackdrop from '@/components/brand/GlobalFireBackdrop'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'KeystrokeAI',
+  title: 'blazeKey',
+  applicationName: 'blazeKey',
   description: 'AI-powered typing practice platform',
   icons: {
     icon: [
@@ -28,13 +30,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className="dark">
-      <body className={`${inter.className} page-bg min-h-dvh antialiased`}>
+      <body className={`${inter.className} page-bg min-h-dvh antialiased overflow-x-clip`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
+          <GlobalFireBackdrop />
           <Header />
           {children}
           {/* Global auth modal gate */}

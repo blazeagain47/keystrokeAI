@@ -15,6 +15,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import AIFeedback from "@/components/feedback/AIFeedback";
+import BlazeFeedbackCard from "@/components/feedback/BlazeFeedbackCard";
 import FireSummaryCard from "@/components/test/FireSummaryCard";
 
 export interface ResultsPanelProps {
@@ -75,6 +76,18 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     return msg.includes("Could not fetch AI feedback.") ? msg : null;
   })();
 
+  function FireTooltipContent({ active, label, payload }: any) {
+    if (!active || !payload || payload.length === 0) return null;
+    const first = payload[0];
+    const wpm = Math.round(Number(first?.value ?? 0));
+    return (
+      <div className="chart-tooltip">
+        <div className="chart-tooltip-title">Time = {label}s</div>
+        <div className="chart-tooltip-value">{wpm} WPM</div>
+      </div>
+    );
+  }
+
   return (
     <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6" aria-label="Results">
       <div className="grid gap-6 lg:grid-cols-2">
@@ -114,13 +127,9 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                       opacity={0.7}
                     />
                     <Tooltip
-                      wrapperClassName="chart-tooltip"
-                      contentStyle={{ background: "transparent", border: "none", boxShadow: "none" }}
-                      formatter={(v: any) => [
-                        <span className="chart-tooltip-value" key="v">{`${Math.round(Number(v))} WPM`}</span>,
-                        <span className="chart-tooltip-title" key="l">Speed</span>
-                      ]}
-                      labelFormatter={(s: any) => `Time = ${s}s`}
+                      content={<FireTooltipContent />}
+                      cursor={{ stroke: "rgba(255,255,255,0.35)", strokeWidth: 1 }}
+                      wrapperStyle={{ outline: "none" }}
                     />
                     {/* Fire-themed line + soft glow overlay */}
                     <Line
@@ -157,8 +166,14 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           transition={{ duration: 0.4, ease: "easeOut", delay: 0.05 }}
           className="flex flex-col gap-6"
         >
-          {/* AIFeedback already includes rank/xp/streak; we just rely on its internal card styles */}
-          <AIFeedback wpmTrend={wpmTrend} accuracyPct={accuracy} completed={true} />
+          {/* Fire-themed AI feedback card (UI-only replacement) */}
+          <BlazeFeedbackCard
+            rank={("" + (/* placeholder rank mapping */ "Master"))}
+            message={<AIFeedback wpmTrend={wpmTrend} accuracyPct={accuracy} completed={true} />}
+            xp={0 /* total XP should come from your store if available */}
+            streak={0 /* streak should come from your store if available */}
+            challenge={"Beat your last WPM next run (+40 XP)"}
+          />
 
           {/* Smart next test summary (fire-themed) */}
           {usedDifficulty && (
@@ -198,9 +213,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           >
             Next test
           </Button>
-          <div className="mt-2 text-xs opacity-70">
-            Ready when you are — your progress carries over
-          </div>
+          
         </div>
       </motion.div>
     </section>

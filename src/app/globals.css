@@ -191,6 +191,116 @@
 
 /* === Fire theme utilities === */
 @layer utilities {
+  @keyframes bk-rotate-slow { to { transform: rotate(360deg) } }
+  @keyframes bk-challenge-sweep { 0% { transform: translateX(-60%) } 100% { transform: translateX(120%) } }
+
+  /* Glassy badge */
+  .bk-badge {
+    @apply inline-flex items-center gap-2 rounded-full px-2.5 py-1 bg-white/5 border border-white/10 text-white/80;
+    backdrop-filter: blur(8px);
+  }
+
+  /* Rank pill with animated conic ring */
+  .bk-rank-badge {
+    position: relative;
+    display: inline-flex; align-items: center; gap: .45ch;
+    padding: .3rem .7rem; border-radius: 9999px;
+    color: #0b0f14; background: var(--bk-grad-fire, linear-gradient(135deg, #FF3D00, #FF6A00 55%, #FFD36E));
+    box-shadow: var(--bk-glow-sm, 0 12px 28px -16px rgba(255,106,0,.45));
+  }
+  .bk-rank-badge::before{
+    content:""; position:absolute; inset:0; border-radius:inherit; padding:1px;
+    background: conic-gradient(from var(--angle,0deg), var(--bk-fire-1, #FF3D00), var(--bk-fire-2, #FF6A00) 50%, var(--bk-fire-3, #FFD36E));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    opacity:.45; animation: bk-rotate-slow 7s linear infinite;
+    pointer-events:none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bk-rank-badge::before { animation: none; }
+  }
+
+  /* Fire CTA button */
+  .bk-cta {
+    @apply inline-flex items-center gap-2 rounded-full px-3 py-1.5 bg-white/5 border border-white/10 text-white/85;
+    box-shadow: 0 0 0 1px rgba(255,106,0,.16) inset, 0 12px 30px -16px rgba(0,0,0,.5);
+    transition: transform .12s ease, box-shadow .2s ease;
+  }
+  .bk-cta:hover { transform: translateY(-0.5px); box-shadow: var(--bk-glow-sm, 0 10px 30px rgba(0,0,0,0.25)); }
+  .bk-cta .cta-main { 
+    background: var(--bk-grad-fire, linear-gradient(135deg, #FF3D00, #FF6A00 55%, #FFD36E));
+    -webkit-background-clip:text; background-clip:text; color: transparent;
+    text-shadow: 0 0 6px rgba(255,106,0,.35);
+  }
+
+  /* Challenge rail: seamless end-to-end sweep (background-position animation) */
+  @keyframes bk-rail-sweep { from{ background-position: 0% 50% } to{ background-position: 200% 50% } }
+  .bk-challenge-rail {
+    position: relative; height: 3px; border-radius: 9999px;
+    background: rgba(255,255,255,.10); overflow: hidden;
+  }
+  .bk-challenge-rail::after{
+    content:""; position:absolute; inset:0; border-radius: inherit;
+    background: linear-gradient(90deg,
+       transparent 0%,
+       rgba(255,106,0,.0) 40%,
+       rgba(255,106,0,.55) 50%,
+       rgba(255,174,0,.0) 60%,
+       transparent 100%);
+    background-size: 220% 100%;
+    animation: bk-rail-sweep 2.4s linear infinite;
+    box-shadow: 0 0 12px rgba(255,106,0,.25) inset;
+  }
+  @media (prefers-reduced-motion: reduce){ .bk-challenge-rail::after{ animation:none } }
+  /* Base glass chip */
+  .bk-chip {
+    @apply inline-flex items-center gap-2 rounded-full px-3 py-1.5 select-none bg-white/10 border border-white/10 text-white/80 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_8px_20px_-10px_rgba(0,0,0,0.5)];
+    transition: transform .12s ease, box-shadow .2s ease, background .2s ease;
+  }
+  .bk-chip:hover { box-shadow: 0 6px 18px -10px rgba(0,0,0,.55); transform: translateY(-0.5px); }
+  .bk-chip:active { transform: translateY(0); }
+
+  /* Active fire chip (selected) */
+  .bk-chip-active {
+    background: linear-gradient(135deg, #FF3D00, #FF6A00 55%, #FFD36E);
+    color: #0b0f14;
+    box-shadow: 0 0 0 1px rgba(255,106,0,.22) inset, 0 12px 30px -16px rgba(255,106,0,.45);
+  }
+
+  /* Focus ring (keyboard) */
+  .bk-focus {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2;
+    outline-color: rgba(255,106,0,0.55);
+  }
+
+  /* Subtle animated sheen on selected label (motion-safe) */
+  @keyframes bk-sheen { 0%{background-position:0% 50%} 100%{background-position:200% 50%} }
+  .bk-chip-sheen {
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.26), transparent);
+    background-size: 200% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: bk-sheen 2.4s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { .bk-chip-sheen { animation: none; } }
+
+  /* Segmented container */
+  .bk-segment {
+    @apply inline-flex items-center gap-1 rounded-full px-1 py-1 bg-white/10 border border-white/10;
+    box-shadow: 0 8px 22px -16px rgba(0,0,0,.6) inset;
+  }
+
+  /* Tiny dot divider */
+  .bk-dot { width:1px; height:20px; background: linear-gradient(#fff3, #fff1); opacity:.3; border-radius: 9999px; }
+
+  /* Language live dot */
+  .bk-live { width:8px; height:8px; border-radius:9999px; background:#38f593; box-shadow:0 0 8px rgba(56,245,147,.6); }
+  /* Unified tile container */
+  .bk-tile {
+    @apply rounded-xl border border-white/10 bg-white/5 px-4 py-3 relative overflow-hidden isolate;
+  }
+
+  /* Prevent metric pairs from wrapping */
+  .bk-nowrap { white-space: nowrap; }
   /* Safety utility to disable pointer events */
   .pe-none { pointer-events: none; }
   .glass-card {
@@ -248,6 +358,11 @@
   }
   .chart-tooltip-value {
     @apply text-sm font-semibold;
+    background: linear-gradient(135deg, #FF3D00, #FF6A00 50%, #FFD36E);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 0 6px rgba(255, 106, 0, 0.35);
   }
   .chart-point-glow {
     filter: drop-shadow(0 0 6px rgba(255,80,0,0.6));
@@ -277,10 +392,155 @@
     color: transparent;
     text-shadow: 0 0 6px rgba(255, 106, 0, 0.35);
   }
+
+  /* Stronger fire gradient for badges */
+  .text-fire-strong {
+    --bk-fire-grad: linear-gradient(135deg, var(--bk-fire-1, #FF3D00), var(--bk-fire-2, #FF6A00) 50%, var(--bk-fire-3, #FFD36E));
+    background-image: var(--bk-fire-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 0 8px rgba(255,106,0,.35);
+  }
+
+  /* Animated sheen overlay for text (motion-safe) */
+  @keyframes bk-sheen {
+    0%   { background-position: center, 0% 50%; }
+    100% { background-position: center, 200% 50%; }
+  }
+  .bk-sheen {
+    /* layer base fire gradient (from var) with a moving white sheen */
+    background-image: var(--bk-fire-grad, linear-gradient(135deg, #FF3D00, #FF6A00 50%, #FFD36E)), linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent);
+    background-size: 100% 100%, 200% 100%;
+    background-repeat: no-repeat;
+    background-position: center, 0% 50%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: bk-sheen 2.8s linear infinite;
+  }
+
+  /* Fire-themed card background */
+  .bk-fire-card {
+    background:
+      radial-gradient(1200px 600px at -20% -40%, rgba(255,61,0,.12), transparent 45%),
+      radial-gradient(900px 520px at 120% 120%, rgba(255,174,0,.10), transparent 55%),
+      var(--bk-surface, color-mix(in srgb, var(--background), #ffffff 5%));
+    border: 1px solid var(--bk-border, rgba(255,255,255,0.10));
+    box-shadow:
+      0 0 0 1px rgba(255,106,0,.10) inset,
+      0 18px 40px -18px rgba(0,0,0,.6),
+      var(--bk-glow-sm, 0 10px 30px rgba(0,0,0,0.25));
+    backdrop-filter: blur(12px);
+    border-radius: 16px;
+  }
+
+  /* Tag pill for knobs */
+  .bk-tag {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs bg-white/10 border border-white/10 text-white/80;
+  }
+
+  /* Glassy error line */
+  .bk-error-line {
+    @apply mt-3 text-xs text-red-300/90 bg-white/5 border border-red-400/20 rounded-md px-2.5 py-1.5;
+  }
+
+  /* One-shot gentle glow pulse */
+  @keyframes bk-glow {
+    0% { box-shadow: 0 0 0 rgba(255,61,0,0); }
+    40% { box-shadow: 0 0 36px rgba(255,61,0,0.35), inset 0 0 24px rgba(255,61,0,0.15); }
+    100% { box-shadow: 0 0 0 rgba(255,61,0,0); }
+  }
+  .bk-pulse { animation: bk-glow 0.9s ease-in-out 1; }
+
+  /* Per-letter fire wave/glow (motion-safe) */
+  .bk-wave-fire { display: inline-flex; gap: 0.02em; }
+  .bk-wave-fire > span {
+    background: linear-gradient(135deg, var(--bk-fire-1, #FF3D00), var(--bk-fire-2, #FF6A00) 55%, var(--bk-fire-3, #FFD36E));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 0 6px rgba(255,106,0,.35);
+    animation: bk-wave 1.9s ease-in-out infinite;
+    animation-delay: calc(var(--i, 0) * 60ms);
+    will-change: filter, transform, opacity;
+  }
+  @keyframes bk-wave {
+    0%, 75%, 100% { opacity:.75; filter: drop-shadow(0 0 0 rgba(255,106,0,0)); transform: translateY(0); }
+    30%          { opacity:1;   filter: drop-shadow(0 0 6px rgba(255,106,0,.45)); transform: translateY(-0.5px); }
+  }
+  .bk-wave-words {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5ch;
+    flex-wrap: wrap;
+  }
+
+  /* Compact vertical gap helper for wrapped rows */
+  .bk-gap-compact {
+    row-gap: 0.25rem; /* gap-y-1 */
+  }
+
+  /* Subtle animated sheen across the card rim (motion-safe) */
+  @keyframes bk-sweep {
+    0% { transform: translateX(-35%); opacity: .25; }
+    100% { transform: translateX(120%); opacity: .25; }
+  }
+  .bk-card-sheen { position: relative; overflow: hidden; contain: paint; }
+  .bk-card-sheen::after {
+    content:"";
+    position:absolute; inset:-1px;
+    border-radius: inherit;
+    background: linear-gradient(120deg, transparent 40%, rgba(255,255,255,.08), transparent 60%);
+    mix-blend-mode: screen;
+    animation: bk-sweep 3.6s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bk-card-sheen::after { animation: none; }
+  }
+
+  /* Ultra-light embers layer for the card specifically */
+  .bk-card-embers {
+    pointer-events: none;
+    position: absolute; inset: 0; overflow: hidden;
+  }
+  .bk-card-embers > span {
+    position: absolute;
+    width: 2px; height: 2px; border-radius: 9999px;
+    background: rgba(255,125,50,0.9);
+    animation: ember-float 4.5s linear infinite;
+    opacity: .16;
+  }
 }
 
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .fire-border::before { animation: none; }
   .animate-draw { animation: none; }
+}
+
+/* === App-wide fire backdrop utilities === */
+@layer utilities {
+  /* Full-app fire backdrop (CSS-only) */
+  .bk-app-bg {
+    background:
+      radial-gradient(1200px 700px at -10% -20%, rgba(255,61,0,0.12), transparent 55%),
+      radial-gradient(1000px 600px at 120% 120%, rgba(255,174,0,0.10), transparent 60%),
+      radial-gradient(800px 520px at 50% 120%, rgba(255,106,0,0.06), transparent 65%),
+      var(--bk-bg, var(--background));
+  }
+  /* Slow shifting highlight for subtle life (motion-safe) */
+  @keyframes bk-shift {
+    0%   { transform: translate3d(0,0,0); opacity: .6; }
+    50%  { transform: translate3d(2%, -1%, 0); opacity: .75; }
+    100% { transform: translate3d(0,0,0); opacity: .6; }
+  }
+  .bk-fire-halo {
+    pointer-events: none;
+    position: absolute; inset: -10%;
+    background: radial-gradient(60% 40% at 70% 20%, rgba(255,106,0,.08), transparent 60%);
+    animation: bk-shift 18s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bk-fire-halo { animation: none; }
+  }
 }
