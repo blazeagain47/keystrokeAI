@@ -617,3 +617,11 @@
 .bk-chart-title { display:flex; align-items:center; gap:.6ch }
 
 html, body { overflow-x: clip }
+
+/* Fire progress spark run */
+@keyframes bk-spark-run-kf {
+  0%   { transform: translateX(-20%); opacity:.8; }
+  50%  { opacity:1; }
+  100% { transform: translateX(120%); opacity:.85; }
+}
+.bk-spark-run { animation: bk-spark-run-kf 2.8s linear infinite; }

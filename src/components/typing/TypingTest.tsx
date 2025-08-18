@@ -582,7 +582,8 @@ const TypingTest: React.FC = () => {
 
       {/* Results render via view switch above */}
 
-      {/* Bottom Helper Bar - Always visible */}
+      {/* Bottom Helper Bar - Only show during active typing */}
+      {view === 'typing' && (
       <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-30 animate-in slide-in-from-bottom duration-700">
         <div className="bg-gray-800/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl px-8 py-4 shadow-2xl">
           <div className="flex items-center gap-8 text-sm">
@@ -611,6 +612,7 @@ const TypingTest: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
 
       {/* Floating Action Hint */}
       {!isTestComplete && time === 0 && (

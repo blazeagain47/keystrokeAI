@@ -3,6 +3,7 @@ import React from "react";
 import CountUp from "@/components/ui/CountUp";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
+import FireProgress from "@/components/ui/FireProgress";
 
 type Props = {
   rank: string;                // e.g., "Master"
@@ -13,46 +14,13 @@ type Props = {
   className?: string;
 };
 
-type RankTheme = {
-  grad: string;     // background gradient for pill
-  glow: string;     // shadow glow
-  ring: string[];   // conic ring colors [c1,c2,c3]
-};
-
-const rankThemes: Record<string, RankTheme> = {
-  master: { grad: "linear-gradient(135deg,#ffb703,#ffd166)", glow: "0 0 0 1px rgba(255,183,3,.2) inset, 0 16px 36px -16px rgba(255,183,3,.55)", ring: ["#ffb703","#ff7e00","#ffd166"] },
-  pro:    { grad: "linear-gradient(135deg,#ff6a00,#ffd36e)", glow: "0 0 0 1px rgba(255,106,0,.2) inset, 0 16px 36px -16px rgba(255,106,0,.55)", ring: ["#ff3d00","#ff6a00","#ffd36e"] },
-  rookie: { grad: "linear-gradient(135deg,#ff3d00,#ff6a00)", glow: "0 0 0 1px rgba(255,61,0,.2) inset, 0 16px 36px -16px rgba(255,61,0,.55)", ring: ["#ff3d00","#ff6a00","#ff9a3d"] },
-  default:{ grad: "linear-gradient(135deg,#FF3D00,#FF6A00 55%,#FFD36E)", glow: "0 0 0 1px rgba(255,106,0,.1) inset, 0 12px 28px -16px rgba(255,106,0,.45)", ring: ["#FF3D00","#FF6A00","#FFD36E"] },
-};
-
-function RankPretty({ rank }: { rank: string }) {
-  const key = (rank || "").toLowerCase();
-  const theme = rankThemes[key] || rankThemes.default;
-  const label = rank ? rank[0].toUpperCase() + rank.slice(1).toLowerCase() : "Pro";
-  return (
-    <span
-      className="bk-rank-badge"
-      style={{
-        background: theme.grad,
-        boxShadow: theme.glow,
-        // pass custom ring colors via CSS variable fallback in gradient string
-        // not strictly needed; the ::before uses var(--bk-fire-*) defaults
-      }}
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden className="opacity-90">
-        <defs>
-          <linearGradient id="bkBoltRank" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor={theme.ring[0]} />
-            <stop offset="0.6" stopColor={theme.ring[1]} />
-            <stop offset="1" stopColor={theme.ring[2]} />
-          </linearGradient>
-        </defs>
-        <path d="M13.5 2 5 13.2h5.6L10 22l9-12.4h-5.5L13.5 2z" fill="url(#bkBoltRank)" />
-      </svg>
-      {label}
-    </span>
-  );
+// simple tier dot mapping
+function tierDotClass(tier?: string) {
+  const t = (tier || "").toLowerCase();
+  if (t === "legend") return "#FF3D00";
+  if (t === "master") return "#FF6A00";
+  if (t === "pro") return "#FFD36E";
+  return "var(--bk-fire-2, #FF6A00)";
 }
 
 export default function BlazeFeedbackCard({ rank, message, xp, streak, challenge, className }: Props) {
@@ -85,9 +53,15 @@ export default function BlazeFeedbackCard({ rank, message, xp, streak, challenge
       </div>
 
       <div className="relative z-10 space-y-3 sm:space-y-4">
-        {/* Header chip with brand wordmark */}
-        <div className="bk-chart-title mb-2">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3">
           <h3 className="text-base md:text-lg font-semibold bk-wordmark">AI Feedback</h3>
+          {!!rank && (
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10" aria-label={`Tier ${rank}`}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: tierDotClass(rank) }} />
+              <span className="text-fire font-medium">{rank}</span>
+            </span>
+          )}
         </div>
 
         {/* Main message */}
@@ -114,22 +88,8 @@ export default function BlazeFeedbackCard({ rank, message, xp, streak, challenge
           ) : null;
         })()}
 
-        {/* Badges row */}
+        {/* Stats row */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <span className="bk-rank-badge">
-            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden className="opacity-90">
-              <defs>
-                <linearGradient id="bkBoltRank" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stopColor="var(--bk-fire-1)" />
-                  <stop offset="0.6" stopColor="var(--bk-fire-2)" />
-                  <stop offset="1" stopColor="var(--bk-fire-3)" />
-                </linearGradient>
-              </defs>
-              <path d="M13.5 2 5 13.2h5.6L10 22l9-12.4h-5.5L13.5 2z" fill="url(#bkBoltRank)" />
-            </svg>
-            {rank?.[0]?.toUpperCase() + rank?.slice(1)?.toLowerCase() || "Pro"}
-          </span>
-
           {authed ? (
             <>
               <span className="bk-cta">
@@ -172,7 +132,7 @@ export default function BlazeFeedbackCard({ rank, message, xp, streak, challenge
               </span>
             </span>
           </div>
-          <div className="bk-challenge-rail mt-2" aria-hidden />
+          <FireProgress className="mt-2" />
         </div>
       </div>
     </section>
