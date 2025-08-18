@@ -4,7 +4,6 @@
 import * as React from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import {
   ResponsiveContainer,
   LineChart,
@@ -17,6 +16,10 @@ import {
 import AIFeedback from "@/components/feedback/AIFeedback";
 import BlazeFeedbackCard from "@/components/feedback/BlazeFeedbackCard";
 import FireSummaryCard from "@/components/test/FireSummaryCard";
+import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
+import NextTestButton from "@/components/typing/NextTestButton";
+import { useStatsStore } from "@/stores/useStatsStore";
+import { useAuth } from "@/hooks/useAuth";
 
 export interface ResultsPanelProps {
   wpm: number;
@@ -52,6 +55,10 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     avgAcc,
     flags,
   } = props;
+
+  const totalXpStore = useStatsStore(s => s.totalXP);
+  const { user } = useAuth();
+  const userStreak = user?.streak ?? 0;
 
   const wpmTrend: number[] = Array.isArray(wpmSeries) ? wpmSeries.map(p => p.wpm) : [];
   const [pulseGlow, setPulseGlow] = React.useState(false);
@@ -100,7 +107,9 @@ export default function ResultsPanel(props: ResultsPanelProps) {
         >
           <Card className="ks-card">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base md:text-lg font-semibold">Typing Speed Trend</CardTitle>
+              <div className="bk-chart-title mb-2">
+                <CardTitle className="text-base md:text-lg font-semibold bk-wordmark">Typing Speed Trend</CardTitle>
+              </div>
             </CardHeader>
             <CardContent className="pt-2">
               <div className="h-[260px] md:h-[300px]">
@@ -119,13 +128,17 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                       tickFormatter={fmt.x}
                       stroke="currentColor"
                       opacity={0.7}
-                    />
+                    >
+                      <text x="50%" y="100%" dy={28} textAnchor="middle" className="fill-white/60 text-xs">Time (s)</text>
+                    </XAxis>
                     <YAxis
                       domain={["auto", "auto"]}
                       tickFormatter={fmt.y}
                       stroke="currentColor"
                       opacity={0.7}
-                    />
+                    >
+                      <text x={0} y={0} dx={12} dy={12} transform="rotate(-90)" textAnchor="middle" className="fill-white/60 text-xs">WPM</text>
+                    </YAxis>
                     <Tooltip
                       content={<FireTooltipContent />}
                       cursor={{ stroke: "rgba(255,255,255,0.35)", strokeWidth: 1 }}
@@ -166,12 +179,12 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           transition={{ duration: 0.4, ease: "easeOut", delay: 0.05 }}
           className="flex flex-col gap-6"
         >
-          {/* Fire-themed AI feedback card (UI-only replacement) */}
+          {/* Fire-themed AI feedback card */}
           <BlazeFeedbackCard
             rank={("" + (/* placeholder rank mapping */ "Master"))}
             message={<AIFeedback wpmTrend={wpmTrend} accuracyPct={accuracy} completed={true} />}
-            xp={0 /* total XP should come from your store if available */}
-            streak={0 /* streak should come from your store if available */}
+            xp={totalXpStore}
+            streak={userStreak}
             challenge={"Beat your last WPM next run (+40 XP)"}
           />
 
@@ -196,26 +209,16 @@ export default function ResultsPanel(props: ResultsPanelProps) {
         </motion.div>
       </div>
 
-      {/* CTA closer to grid */}
+      {/* Fire CTA under chart and right-side commands */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: "easeOut", delay: 0.1 }}
-        className="mt-6 flex w-full items-center justify-center"
+        className="mt-4"
       >
-        <div className="text-center">
-          <Button
-            onClick={async () => { setPulseGlow(true); setTimeout(() => setPulseGlow(false), 300); if (onNextTest) await onNextTest(); }}
-            className="btn-glow px-6 md:px-8 py-6 text-base md:text-lg font-semibold rounded-2xl
-                       bg-gradient-to-r from-primary/80 via-primary to-primary/80
-                       ring-1 ring-primary/50 hover:ring-1 hover:ring-primary/35 shadow
-                       transition-shadow duration-500"
-          >
-            Next test
-          </Button>
-          
-        </div>
+        <NextTestButton />
       </motion.div>
+      <CommandHintsFloating variant="test" />
     </section>
   );
 }

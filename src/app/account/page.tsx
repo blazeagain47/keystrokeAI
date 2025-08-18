@@ -7,20 +7,28 @@ import { useAuth } from "@/hooks/useAuth";
 import AccountOverview from "@/components/account/AccountOverview";
 import StatsGrid from "@/components/account/StatsGrid";
 import Leaderboard from "@/components/account/Leaderboard";
+import BlazeHistoryPanel from "@/components/account/BlazeHistoryPanel";
+import CommandHints from "@/components/account/CommandHints";
+import { useStatsStore } from "@/stores/useStatsStore";
 
 export default function AccountPage() {
   const { user, loading, hydrateFromMe } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
+  const hydrateStats = useStatsStore(s => s.hydrate);
 
-  // hydrate once
+  // hydrate once (force to ensure fresh XP/stats on account load)
   useEffect(() => {
-    // Always hydrate once on mount.
-    // In dev or when ?debug=me is present, force hydration so you can see /api/auth/me in the Network panel.
-    const force = process.env.NODE_ENV === "development" || params.get("debug") === "me";
+    const force = true;
     if (!loading) hydrateFromMe(force);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // hydrate stats store once user is available
+  useEffect(() => {
+    if (!user) return;
+    try { void hydrateStats(String(user.id)); } catch {}
+  }, [user, hydrateStats]);
 
   // redirect only after hydration
   useEffect(() => {
@@ -37,8 +45,10 @@ export default function AccountPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
+      <CommandHints />
       <AccountOverview username={user.username} email={user.email} createdAt={user.createdAt} />
       <StatsGrid totalXP={user.xpTotal ?? 0} streak={user.streak ?? 0} memberSince={new Date(user.createdAt).toLocaleDateString()} />
+      <BlazeHistoryPanel />
       <Leaderboard />
     </div>
   );

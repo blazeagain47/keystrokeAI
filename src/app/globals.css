@@ -544,3 +544,76 @@
     .bk-fire-halo { animation: none; }
   }
 }
+
+/* XP ember that orbits the ring while filling */
+@keyframes bk-xp-orbit {
+  0%   { offset-distance: 0%;   opacity:.0; transform: scale(.9) }
+  10%  { opacity:.9 }
+  100% { offset-distance: 100%; opacity:.0; transform: scale(1.05) }
+}
+.bk-xp-ember {
+  r: 2.4;
+  offset-path: path("M32 10 a22 22 0 1 1 0 44 a22 22 0 1 1 0 -44");
+  animation: bk-xp-orbit 1.2s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(255,106,0,.6));
+}
+
+/* Command hints keyboard chips already use .bk-chip and bk-fire-card;
+   ensure they look clickable and on-brand */
+.bk-chip { cursor: default; }
+
+/* Brand wordmark / section titles with subtle wave + fire sheen */
+@keyframes bk-word-wave { 0%,100%{ transform: translateY(0)} 50%{ transform: translateY(-0.5px)} }
+.bk-wordmark {
+  --bk-fire-grad: linear-gradient(135deg, var(--bk-fire-1,#FF3D00), var(--bk-fire-2,#FF6A00) 55%, var(--bk-fire-3,#FFD36E));
+  background-image: var(--bk-fire-grad), linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent);
+  background-size: 100% 100%, 200% 100%;
+  background-repeat: no-repeat;
+  background-position: center, 0% 50%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 8px rgba(255,106,0,.35);
+  animation: bk-sheen 2.8s linear infinite, bk-word-wave 2.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce){
+  .bk-wordmark { animation: none }
+}
+
+/* Right-side commands panel container */
+.bk-commands-aside { position: fixed; right: 22px; top: 36vh; z-index: 20 }
+
+/* Fire CTA button (next test) */
+.bk-cta-fire {
+  position: relative;
+  display: inline-flex; align-items:center; gap:.6ch;
+  padding: .9rem 1.3rem; border-radius: 9999px;
+  color: #0b0f14; font-weight: 700; letter-spacing: .2px;
+  background: var(--bk-grad-fire);
+  box-shadow: var(--bk-glow-sm);
+  transition: transform .15s ease, box-shadow .2s ease, filter .2s ease;
+  isolation: isolate; overflow: hidden;
+}
+.bk-cta-fire::before {
+  content:""; position:absolute; inset:-2px; border-radius:inherit; pointer-events:none;
+  background: conic-gradient(from var(--angle,0deg), #ff3d00, #ff6a00 50%, #ffd36e 90%, #ff3d00);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; padding: 1px; opacity:.35;
+  animation: bk-rotate-slow 6s linear infinite;
+}
+.bk-cta-fire:hover { transform: translateY(-1px); box-shadow: var(--bk-glow-md) }
+.bk-cta-fire:active { transform: translateY(0) }
+@keyframes bk-ember-pop {
+  0% { transform: translateY(0) scale(.8); opacity:.0 }
+  20%{ opacity:.8 }
+  100%{ transform: translateY(-26px) scale(1.2); opacity:0 }
+}
+.bk-cta-embers { position:absolute; inset:0; pointer-events:none }
+.bk-cta-embers span{
+  position:absolute; bottom:8px; width:4px; height:4px; border-radius:9999px;
+  background: rgba(255,174,0,.9); filter: blur(.2px);
+  animation: bk-ember-pop 1.6s linear infinite;
+}
+
+/* Chart title area spacing (if needed) */
+.bk-chart-title { display:flex; align-items:center; gap:.6ch }
+
+html, body { overflow-x: clip }

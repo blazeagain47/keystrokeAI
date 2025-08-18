@@ -60,6 +60,13 @@ export default function BlazeFeedbackCard({ rank, message, xp, streak, challenge
   const router = useRouter();
   const authed = Boolean(user);
   const handleLogin = () => router.push("/login?from=results");
+  React.useEffect(() => {
+    try {
+      const el = document.getElementById("bk-next-challenge");
+      const txt = el?.getAttribute("data-challenge-text") || "";
+      (window as any).__bkChallengeText = txt;
+    } catch {}
+  }, [challenge]);
   return (
     <section className={`relative bk-fire-card bk-card-sheen p-4 sm:p-5 ${className ?? ""}`}>
       {/* tiny local embers */}
@@ -78,22 +85,34 @@ export default function BlazeFeedbackCard({ rank, message, xp, streak, challenge
       </div>
 
       <div className="relative z-10 space-y-3 sm:space-y-4">
-        {/* Header pill */}
-        <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white/80 ring-1 ring-white/10">
-          <span className="inline-flex items-center gap-1 font-semibold tracking-wide">
-            <svg width="14" height="14" viewBox="0 0 24 24" className="opacity-90" aria-hidden>
-              <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,.35)" fill="none"/>
-              <path d="M13.5 2 5 13.2h5.6L10 22l9-12.4h-5.5L13.5 2z" fill="url(#bkBoltRank)" />
-            </svg>
-            AI feedback
-          </span>
+        {/* Header chip with brand wordmark */}
+        <div className="bk-chart-title mb-2">
+          <h3 className="text-base md:text-lg font-semibold bk-wordmark">AI Feedback</h3>
         </div>
 
         {/* Main message */}
         <div className="flex items-start gap-2 text-white/90">
-          <span aria-hidden className="text-lg">🚀</span>
           <p className="text-sm sm:text-base leading-6">{message}</p>
         </div>
+
+        {/* XP earned pill (last run) */}
+        {(() => {
+          const [lastXp, setLastXp] = React.useState<number | null>(null);
+          React.useEffect(() => {
+            const h = (e: any) => {
+              const val = Number(e?.detail?.total ?? e?.detail ?? 0);
+              if (Number.isFinite(val) && val > 0) setLastXp(val);
+            };
+            window.addEventListener("blaze:xp", h as any);
+            return () => window.removeEventListener("blaze:xp", h as any);
+          }, []);
+          return lastXp && lastXp > 0 ? (
+            <div className="mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1 bg-white/10 border border-white/10">
+              <span className="text-fire font-semibold tabular-nums">+{lastXp} XP</span>
+              <span className="text-white/60 text-xs">great run!</span>
+            </div>
+          ) : null;
+        })()}
 
         {/* Badges row */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -143,8 +162,14 @@ export default function BlazeFeedbackCard({ rank, message, xp, streak, challenge
               <circle cx="12" cy="12" r="3" fill="url(#bkBoltRank)" />
             </svg>
             <span className="text-sm">Next challenge:</span>
-            <span className="text-sm font-semibold">
-              <span className="text-fire">{challenge}</span>
+            <span className="text-sm font-semibold ml-1">
+              <span
+                id="bk-next-challenge"
+                data-challenge-text={challenge || ""}
+                className="text-fire"
+              >
+                {challenge}
+              </span>
             </span>
           </div>
           <div className="bk-challenge-rail mt-2" aria-hidden />

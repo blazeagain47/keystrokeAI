@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { saveTypingResult } from '@/lib/firebase/scores';
+import { computeXpAward } from '@/lib/xp';
+import { useStatsStore } from '@/stores/useStatsStore';
 import { RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { segmentGraphemes, normalizeInputChar } from "@/utils/segments";
@@ -43,6 +45,9 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const VISIBLE_LINES = 5;
   const CENTER_OFFSET = Math.floor(VISIBLE_LINES / 2);
   const { user } = useAuth();
+  const addXp = useStatsStore(s=>s.addXp);
+  const ingestRunStore = useStatsStore(s=>s.ingestRun);
+  const [awardedThisRun, setAwardedThisRun] = useState(false);
 
   /* state */
   const [words, setWords]           = useState<string[]>([]);
@@ -209,6 +214,25 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           const finalAcc = calculateAccuracy(correctChars, totalChars);
           setIsComplete(true);
           onTestComplete(finalWpm, finalAcc, currentTime, typedInput);
+          if (user) {
+            try {
+              const uid = String(user.id);
+              import("@/lib/historyLocal").then(({ addLocalRun }) => {
+                addLocalRun(uid, {
+                  id: crypto.randomUUID(),
+                  ts: Date.now(),
+                  wpm: finalWpm,
+                  acc: finalAcc,
+                  durationSec: currentTime,
+                  mode: "time",
+                  words: undefined,
+                  difficulty: undefined,
+                  xpEarned: 0,
+                });
+                window.dispatchEvent(new CustomEvent("blaze:run", { detail: { uid } }));
+              }).catch(() => {});
+            } catch {}
+          }
         }
       }, 250);
       return () => clearInterval(interval);
@@ -425,7 +449,52 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
                 const finalAcc    = calculateAccuracy(correctChars + (isCorrect ? 1 : 0), totalChars + 1);
                 setIsComplete(true);
                 onTestComplete(finalWpm, finalAcc, duration, typedInput + typedCharNorm);
-                if (user) saveTypingResult(String(user.id), finalWpm, finalAcc, duration, 'words', words.length);
+                const challengeText = ((): string | undefined => {
+                  try {
+                    return (window as any).__bkChallengeText || document.getElementById("bk-next-challenge")?.getAttribute("data-challenge-text") || undefined;
+                  } catch { return undefined; }
+                })();
+                const award = computeXpAward(finalAcc, challengeText);
+                const run = {
+                  id: crypto.randomUUID(),
+                  ts: Date.now(),
+                  wpm: finalWpm,
+                  acc: finalAcc,
+                  durationSec: duration,
+                  mode: "words",
+                  words: words.length,
+                  difficulty: undefined,
+                  xpDelta: award.total,
+                  xpReason: award.reason,
+                } as any;
+                if (!awardedThisRun) {
+                  if (user) ingestRunStore(String(user.id), run);
+                  addXp(award.total);
+                  setAwardedThisRun(true);
+                }
+                if (user) saveTypingResult(String(user.id), finalWpm, finalAcc, duration, 'words', words.length).catch(()=>{});
+                try { window.dispatchEvent(new CustomEvent('blaze:xp', { detail: award })); } catch {}
+                if (user) {
+                  try {
+                    const uid = String(user.id);
+                    import("@/lib/historyLocal").then(({ addLocalRun }) => {
+                      addLocalRun(uid, {
+                        id: crypto.randomUUID(),
+                        ts: Date.now(),
+                        wpm: finalWpm,
+                        acc: finalAcc,
+                        durationSec: duration,
+                        mode: "words",
+                        words: words.length,
+                        difficulty: undefined,
+                        xpEarned: award.total,
+                        xpDelta: award.total,
+                        xpReason: award.reason,
+                      });
+                      window.dispatchEvent(new CustomEvent("blaze:run", { detail: { uid } }));
+                    }).catch(() => {});
+                  } catch {}
+                }
               }
             }
           }

@@ -11,9 +11,28 @@ type Props = {
 
 export default function StatsGrid({ totalXP, streak, memberSince }: Props) {
   const { user } = useAuth();
+  const [xp, setXp] = React.useState<number>(user?.xpTotal ?? totalXP ?? 0);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const have = Number(user?.xpTotal ?? 0);
+    if (have > 0) { setXp(have); return; }
+    (async () => {
+      try {
+        const res = await fetch("/api/stats/summary?range=all", { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        const fxp = Number(
+          data?.totalXP ?? data?.total_xp ?? data?.xp ?? 0
+        );
+        if (!cancelled) setXp(isFinite(fxp) ? fxp : 0);
+      } catch { if (!cancelled) setXp(0); }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.xpTotal]);
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <AnimatedXPCard xpTotal={user?.xpTotal ?? totalXP} xpToNext={1000} />
+      <AnimatedXPCard xpTotal={xp} xpMax={10000} />
 
       <div className="rounded-2xl p-4 border border-white/10 bg-gradient-to-br from-white/5 to-transparent">
         <div className="text-sm text-white/60">Current Streak</div>

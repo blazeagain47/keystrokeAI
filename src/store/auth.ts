@@ -36,8 +36,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (get().ready && !force) return;
     set({ loading: true });
     try {
-      const me = await fetchJSON<User>("/api/auth/me");
-      set({ user: me || null, error: null });
+      const raw = await fetchJSON<any>("/api/auth/me");
+      const prev = get().user;
+      const me: User | null = raw ? normalizeUser(raw, prev) : null;
+      set({ user: me, error: null });
     } catch (err: any) {
       set({ user: null, error: err?.message || "Not authenticated" });
     } finally {
@@ -48,11 +50,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   login: async (username, password) => {
     set({ error: null, loading: true });
     try {
-      const me = await fetchJSON<User>("/api/auth/login", {
+      const raw = await fetchJSON<any>("/api/auth/login", {
         method: "POST",
         body: JSON.stringify({ username, password }),
       } as any);
-      set({ user: me, ready: true });
+      set({ user: normalizeUser(raw, get().user), ready: true });
     } finally {
       set({ loading: false });
     }
@@ -61,11 +63,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   register: async (username, password, email) => {
     set({ error: null, loading: true });
     try {
-      const me = await fetchJSON<User>("/api/auth/register", {
+      const raw = await fetchJSON<any>("/api/auth/register", {
         method: "POST",
         body: JSON.stringify({ username, password, email }),
       } as any);
-      set({ user: me, ready: true });
+      set({ user: normalizeUser(raw, get().user), ready: true });
     } finally {
       set({ loading: false });
     }
@@ -83,5 +85,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 }));
+
+// Accept multiple upstream shapes and preserve previous xpTotal/streak if missing.
+function normalizeUser(raw: any, prev?: User | null): User {
+  const id = raw?.id ?? raw?.user_id ?? raw?.uid ?? 0;
+  const username = raw?.username ?? raw?.name ?? raw?.handle ?? "user";
+  const email = raw?.email ?? raw?.mail ?? null;
+  const createdAt = raw?.createdAt ?? raw?.created_at ?? raw?.joined_at ?? new Date().toISOString();
+  const xpTotal =
+    (raw?.xpTotal ?? raw?.totalXP ?? raw?.xp ?? raw?.total_xp ?? raw?.xp_total) ??
+    (prev?.xpTotal ?? 0);
+  const streak =
+    (raw?.streak ?? raw?.streak_days ?? raw?.current_streak) ??
+    (prev?.streak ?? 0);
+  return { id, username, email, xpTotal: Number(xpTotal) || 0, streak: Number(streak) || 0, createdAt };
+}
 
 

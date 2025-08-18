@@ -17,7 +17,7 @@ export default function AccountOverview({ username, email, createdAt }: Props) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 flex items-center gap-4">
+      <div className="relative rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 flex items-center gap-4">
         <div className="h-12 w-12 rounded-full bg-white/10 flex items-center justify-center text-white/90 font-semibold">
           {initials}
         </div>
