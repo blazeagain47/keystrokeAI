@@ -17,7 +17,7 @@ import AIFeedback from "@/components/feedback/AIFeedback";
 import BlazeFeedbackCard from "@/components/feedback/BlazeFeedbackCard";
 import FireSummaryCard from "@/components/test/FireSummaryCard";
 import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
-import NextTestButton from "@/components/typing/NextTestButton";
+import NextTestButton from "@/components/ui/NextTestButton";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -63,6 +63,30 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   const wpmTrend: number[] = Array.isArray(wpmSeries) ? wpmSeries.map(p => p.wpm) : [];
   const [pulseGlow, setPulseGlow] = React.useState(false);
   const prefersReducedMotion = useReducedMotion();
+  const [showNext, setShowNext] = React.useState(false);
+  const revealedRef = React.useRef(false);
+  const reveal = React.useCallback(() => {
+    if (!revealedRef.current) {
+      revealedRef.current = true;
+      setShowNext(true);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const id = window.setTimeout(reveal, prefersReducedMotion ? 300 : 3600);
+    return () => window.clearTimeout(id);
+  }, [reveal, prefersReducedMotion]);
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        try { e.preventDefault(); } catch {}
+        if (typeof onNextTest === "function") onNextTest();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onNextTest]);
   // Normalize WPM values to 0..100 for sparkline animation
   const trendPercentages: number[] | undefined = (() => {
     if (!wpmTrend || wpmTrend.length < 2) return undefined;
@@ -155,6 +179,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                       isAnimationActive={!prefersReducedMotion}
                       animationDuration={prefersReducedMotion ? 0 : 3000}
                       style={{ filter: "drop-shadow(0 0 6px rgba(255,80,0,0.4))" }}
+                      onAnimationEnd={reveal}
                     />
                     <Line
                       type="monotone"
@@ -170,6 +195,11 @@ export default function ResultsPanel(props: ResultsPanelProps) {
               </div>
             </CardContent>
           </Card>
+          {showNext && (
+            <div className="mt-6 flex w-full justify-center">
+              <NextTestButton onStart={() => { if (onNextTest) onNextTest(); }} autoFocus />
+            </div>
+          )}
         </motion.div>
 
         {/* RIGHT: Insights */}
@@ -209,16 +239,8 @@ export default function ResultsPanel(props: ResultsPanelProps) {
         </motion.div>
       </div>
 
-      {/* Fire CTA under chart and right-side commands */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: "easeOut", delay: 0.1 }}
-        className="mt-4"
-      >
-        <NextTestButton />
-      </motion.div>
-      <CommandHintsFloating variant="test" />
+      {/* Right-side commands (visible only on results screen) */}
+      <CommandHintsFloating context="results" />
     </section>
   );
 }

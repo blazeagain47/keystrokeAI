@@ -515,7 +515,7 @@ const TypingTest: React.FC = () => {
           <>
             {/* Inline status / retry for generator */}
             {isGenerating ? (
-              <div className="text-center text-sm opacity-80 my-4">Generating new text...</div>
+              <div className="text-center text-sm opacity-80 my-4">Generating new test...</div>
             ) : generateError ? (
               <div className="text-center text-sm opacity-80 my-4">
                 Couldn’t reach the generator.{" "}

@@ -36,33 +36,53 @@ export default function Header() {
             <Bell className="h-5 w-5" />
           </Link>
 
-          <Link
-            href={user ? "/account" : "/login"}
-            className={clsx(
-              "p-2 rounded-xl hover:bg-white/10 transition relative group",
-              "focus:outline-none focus:ring-2 focus:ring-white/20"
-            )}
-            aria-label={user ? "Account" : "Login"}
-          >
-            {user ? (
-              <User className="h-5 w-5" />
-            ) : (
-              <User className="h-5 w-5 opacity-70" />
-            )}
-            <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-xs opacity-0 group-hover:opacity-100 transition">
-              {user ? user.username : "Sign in"}
-            </span>
-          </Link>
-          {user && (
-            <button
-              onClick={async () => {
-                await logout();
-                router.replace("/login");
-              }}
-              className="px-3 py-1 rounded-xl border border-white/10 hover:bg-white/10 text-sm"
-            >
-              Sign out
-            </button>
+          {user ? (
+            <>
+              <Link
+                href="/account"
+                className={clsx(
+                  "p-2 rounded-xl hover:bg-white/10 transition relative group",
+                  "focus:outline-none focus:ring-2 focus:ring-white/20"
+                )}
+                aria-label="Account"
+              >
+                <User className="h-5 w-5" />
+                <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-xs opacity-0 group-hover:opacity-100 transition">
+                  {user.username}
+                </span>
+              </Link>
+              <button
+                onClick={async () => {
+                  await logout();
+                  const next = encodeURIComponent("/account");
+                  router.replace(`/login?next=${next}`);
+                }}
+                className="px-3 py-1 rounded-xl border border-white/10 hover:bg-white/10 text-sm"
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className={clsx(
+                  "px-3 py-1 rounded-xl border border-white/10 hover:bg-white/10 text-sm"
+                )}
+                aria-label="Sign in"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/login#register"
+                className={clsx(
+                  "px-3 py-1 rounded-xl bg-white text-black text-sm font-medium"
+                )}
+                aria-label="Register"
+              >
+                Register
+              </Link>
+            </>
           )}
         </div>
       </div>

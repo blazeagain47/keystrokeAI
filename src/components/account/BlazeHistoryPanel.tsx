@@ -64,15 +64,30 @@ export default function BlazeHistoryPanel() {
 				<div className="bk-tile">
 					<div className="text-sm text-white/60">Range average</div>
 					<div className="text-xl font-medium">
-						<span className="text-fire font-semibold"><CountUp value={summary?.avgWpm ?? 0} /></span> WPM ·{" "}
-						<span className="text-fire font-semibold"><CountUp value={summary?.avgAcc ?? 0} /></span>% acc
+						{summary?.sessions ? (
+							<>
+								<span className="text-fire font-semibold"><CountUp value={summary?.avgWpm ?? 0} /></span> WPM ·{" "}
+								<span className="text-fire font-semibold"><CountUp value={summary?.avgAcc ?? 0} /></span>% acc
+							</>
+						) : (
+							<>
+								<span className="text-white/50">— WPM · —% acc</span>
+							</>
+						)}
 					</div>
 					<div className="text-xs text-white/50 mt-1">{summary?.sessions ?? 0} sessions</div>
 				</div>
 			</div>
 
 			{/* Chart */}
-			<BlazeHistoryChart points={history ?? []} />
+			{(history && history.length >= 2) ? (
+				<BlazeHistoryChart points={history} />
+			) : (
+				<div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center text-white/60">
+					<div>No sessions in this range yet.</div>
+					<a href="/" className="inline-flex mt-3 items-center rounded-full px-3 py-1.5 text-sm border border-white/10 bg-white/5 hover:bg-white/10">Start a New Test</a>
+				</div>
+			)}
 
 			{/* Table */}
 			<RecentSessionsTable rows={localRows} />

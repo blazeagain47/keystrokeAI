@@ -2,10 +2,10 @@
 import { NextResponse } from "next/server";
 import { API_BASE } from "@/lib/api";
 
-function expireCookie(path: string) {
-  // Host-only cookie (no Domain), match by name + path; clear immediately.
+/** Build a Set-Cookie header that immediately expires the given cookie. */
+function expireCookie(name: string, path = "/") {
   return [
-    "ks_session=;",
+    `${name}=;`,
     `Path=${path}`,
     "HttpOnly",
     "SameSite=Lax",
@@ -15,47 +15,16 @@ function expireCookie(path: string) {
 }
 
 export async function POST() {
-  // Tell upstream (best-effort) but never block UI
+  // Best-effort upstream logout; never block UX on errors.
   try {
     await fetch(`${API_BASE}/auth/logout`, { method: "POST", cache: "no-store" }).catch(() => {});
   } catch {}
 
-  // Build response and clear the cookie for common paths
+  // Clear session cookie on common paths and return 200.
   const res = NextResponse.json({ ok: true }, { status: 200 });
-  res.headers.append("Set-Cookie", expireCookie("/"));
-  res.headers.append("Set-Cookie", expireCookie("/api"));
-  // In dev you may uncomment the next line once if you want a sledgehammer reset:
-  // res.headers.append("Clear-Site-Data", '"cookies"');
+  res.headers.append("Set-Cookie", expireCookie("ks_session", "/"));
+  res.headers.append("Set-Cookie", expireCookie("ks_session", "/api"));
   return res;
 }
-// src/app/api/auth/logout/route.ts
-import { NextResponse } from "next/server";
-import { API_BASE } from "@/lib/api";
-
-/**
- * Clears the ks_session cookie and (best-effort) notifies the backend logout endpoint.
- * Always returns 200 to keep UX snappy.
- */
-export async function POST() {
-  // Best-effort upstream logout (don't throw if backend doesn't implement it)
-  try {
-    await fetch(`${API_BASE}/auth/logout`, { method: "POST", cache: "no-store" }).catch(() => {});
-  } catch {/* noop */}
-
-  // Build response and clear cookie
-  const res = NextResponse.json({ ok: true });
-  res.headers.set("cache-control", "no-store");
-  res.cookies.set("ks_session", "", {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-    expires: new Date(0),
-  });
-  return res;
-}
-
-// Ensure no static caches are used for this handler in dev
-export const dynamic = "force-dynamic";
 
 

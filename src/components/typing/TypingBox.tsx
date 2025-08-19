@@ -574,7 +574,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
             <div className="absolute inset-0 w-12 h-12 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
           </div>
           <div className="text-center space-y-2">
-            <p className="text-gray-300 text-lg font-medium">Generating new text…</p>
+            <p className="text-gray-300 text-lg font-medium">Generating new test…</p>
             <p className="text-gray-500 text-sm">Powered by AI</p>
           </div>
         </div>
@@ -698,7 +698,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
             >
               <RotateCcw className="w-6 h-6 text-gray-400 group-hover:text-white transition-all duration-300 group-hover:rotate-180" />
               <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-gray-800 text-gray-200 text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                New Text
+                New Test
               </div>
             </button>
           </div>
