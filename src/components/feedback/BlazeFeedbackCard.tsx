@@ -66,7 +66,7 @@ export default function BlazeFeedbackCard({ rank, message, xp, streak, challenge
 
         {/* Main message */}
         <div className="flex items-start gap-2 text-white/90">
-          <p className="text-sm sm:text-base leading-6">{message}</p>
+          <div className="text-sm sm:text-base leading-6">{message}</div>
         </div>
 
         {/* XP earned pill (last run) */}

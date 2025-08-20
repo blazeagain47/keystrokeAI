@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useIdle } from "@/hooks/useIdle";
+import { useSettingsStore } from "@/store/settings";
 
 type CommandHintsFloatingProps = {
   context?: "typing" | "results" | "account";
@@ -14,12 +15,16 @@ const DOCK_KEY = "bk:cmdHints.dock";
 const COACH_KEY = "bk:cmdHints.coachShownV1";
 
 export default function CommandHintsFloating({ context = "typing", defaultMode, className }: CommandHintsFloatingProps) {
+  const settings = useSettingsStore();
   const [mode, setMode] = useState<"hidden" | "peek" | "full">(() => {
     const w = typeof window !== "undefined" ? window : undefined;
     const small = w ? w.innerWidth < 1024 : false;
     const ls = (() => { try { return localStorage.getItem(MODE_KEY) as any; } catch { return null; } })();
     if (ls === "hidden" || ls === "peek" || ls === "full") return ls;
     if (defaultMode) return defaultMode;
+    // default from settings if no LS
+    const sDefault = settings?.commands?.defaultMode;
+    if (sDefault === "hidden" || sDefault === "peek" || sDefault === "full") return sDefault;
     if (context === "typing") return small ? "hidden" : "hidden";
     if (context === "results") return small ? "full" : "full";
     if (context === "account") return small ? "hidden" : "peek";
@@ -28,24 +33,40 @@ export default function CommandHintsFloating({ context = "typing", defaultMode, 
   const [dock, setDock] = useState<"br"|"bl"|"tr"|"tl">(() => {
     const v = (() => { try { return localStorage.getItem(DOCK_KEY) as any; } catch { return null; } })();
     if (v === "br" || v === "bl" || v === "tr" || v === "tl") return v;
-    return "br";
+    const sDefault = settings?.commands?.defaultDock;
+    return (sDefault === "br" || sDefault === "bl" || sDefault === "tr" || sDefault === "tl") ? sDefault : "br";
   });
 
   const idle = useIdle(context === "typing" ? 4000 : 6000);
 
   // results: full on mount then peek
   useEffect(() => {
-    if (context === "results") {
+    if (context === "results" && settings.commands.autoShowOnResults) {
       setMode("full");
-      const t = window.setTimeout(() => setMode("peek"), 8000);
+      const delay = Math.max(2000, Math.min(20000, Number(settings.commands.autoPeekDelayMs) || 8000));
+      const t = window.setTimeout(() => setMode("peek"), delay);
       return () => window.clearTimeout(t);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [settings.commands.autoShowOnResults, settings.commands.autoPeekDelayMs]);
 
   // persist mode/dock
   useEffect(() => { try { localStorage.setItem(MODE_KEY, mode); } catch {} }, [mode]);
   useEffect(() => { try { localStorage.setItem(DOCK_KEY, dock); } catch {} }, [dock]);
+
+  // live update listener from settings drawer
+  useEffect(() => {
+    const onUpdate = () => {
+      try {
+        const m = localStorage.getItem(MODE_KEY) as any;
+        if (m === "hidden" || m === "peek" || m === "full") setMode(m);
+        const d = localStorage.getItem(DOCK_KEY) as any;
+        if (d === "br" || d === "bl" || d === "tr" || d === "tl") setDock(d);
+      } catch {}
+    };
+    window.addEventListener("bk:cmdHints:update", onUpdate as any);
+    return () => window.removeEventListener("bk:cmdHints:update", onUpdate as any);
+  }, []);
 
   // on keydown -> cycle when ? pressed; Shift+D cycles dock
   useEffect(() => {

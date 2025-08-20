@@ -1,30 +1,25 @@
 "use client";
 export type BlazeRun = {
-	id: string;
-	ts: number;           // epoch ms
-	wpm: number;
-	acc: number;          // 0..100
-	durationSec: number;
-	mode: string;         // "words" | "time" | ...
-	words?: number;       // optional count
-	difficulty?: "Easy" | "Medium" | "Hard" | string;
-	xpEarned?: number;
-	xpDelta?: number;     // per-run delta used for totals
-	xpReason?: string;    // e.g., "≥95% accuracy"
+	id: string; ts: number; wpm: number; acc: number; durationSec: number;
+	mode: string; words?: number; difficulty?: string; xpEarned?: number;
+	xpDelta?: number; xpReason?: string;
 };
 
-const KEY = (uid: string) => `bk:history:${uid}`;
+const keyFor = (uid: string) => `bk:history:${uid}`;
 
 export function getLocalHistory(uid: string): BlazeRun[] {
-	try { return JSON.parse(localStorage.getItem(KEY(uid)) || "[]") as BlazeRun[]; } catch { return []; }
+	try {
+		const raw = localStorage.getItem(keyFor(uid));
+		return raw ? JSON.parse(raw) as BlazeRun[] : [];
+	} catch { return []; }
 }
 export function setLocalHistory(uid: string, runs: BlazeRun[]) {
-	localStorage.setItem(KEY(uid), JSON.stringify(runs.slice(0, 1000))); // cap
+	try { localStorage.setItem(keyFor(uid), JSON.stringify(runs)); } catch {}
 }
 export function addLocalRun(uid: string, run: BlazeRun) {
-	const cur = getLocalHistory(uid);
-	cur.unshift(run);
-	setLocalHistory(uid, cur);
+	const runs = getLocalHistory(uid);
+	runs.unshift(run);
+	setLocalHistory(uid, runs);
 }
 
 export type RangeKey = "all" | "7d" | "1d";
@@ -32,20 +27,16 @@ export type RangeKey = "all" | "7d" | "1d";
 export function filterByRange(runs: BlazeRun[], range: RangeKey): BlazeRun[] {
 	if (range === "all") return runs;
 	const now = Date.now();
-	const ms = range === "7d" ? 7*24*3600*1000 : 24*3600*1000;
+	const ms = range === "7d" ? 7*24*60*60*1000 : 24*60*60*1000;
 	return runs.filter(r => now - r.ts <= ms);
 }
 
 export function summarize(runs: BlazeRun[]) {
-	const total = runs.length;
-	const avgWpm = total ? Math.round(runs.reduce((a,r)=>a+r.wpm,0)/total) : 0;
-	const avgAcc = total ? Math.round(runs.reduce((a,r)=>a+r.acc,0)/total) : 0;
-	const xp = runs.reduce((a,r)=> a + (Number(r.xpDelta ?? r.xpEarned)||0), 0);
-	// streak = consecutive daily days ending today
-	const days = new Set(runs.map(r => new Date(r.ts).toDateString()));
-	let streak = 0, d = new Date(); d.setHours(0,0,0,0);
-	while (days.has(d.toDateString())) { streak++; d = new Date(d.getTime()-24*3600*1000); }
-	return { sessions: total, avgWpm, avgAcc, totalXpFromRuns: xp, streak };
+	if (!runs.length) return { sessions: 0, avgWpm: 0, avgAcc: 0, totalXP: 0 };
+	let w=0, a=0, xp=0;
+	for (const r of runs) { w += r.wpm || 0; a += r.acc || 0; xp += r.xpEarned || 0; }
+	const n = runs.length;
+	return { sessions: n, avgWpm: Math.round(w/n), avgAcc: Math.round(a/n), totalXP: xp };
 }
 
 export function toDailySeries(runs: BlazeRun[], daysBack = 7) {
@@ -64,6 +55,50 @@ export function toDailySeries(runs: BlazeRun[], daysBack = 7) {
 		}
 	});
 	return buckets.map(b => ({ t: b.t, wpm: b.n ? Math.round(b.wpm/b.n) : 0, acc: b.n ? Math.round(b.acc/b.n) : 0 }));
+}
+
+// --- NEW: migrate legacy/unknown user keys so old runs show up ----
+export function migrateLegacyHistory(uid: string): BlazeRun[] {
+	if (!uid) return [];
+	const current = getLocalHistory(uid);
+	if (current.length) return current;
+
+	let bestKey: string | null = null;
+	let bestRuns: BlazeRun[] = [];
+	const looksLikeRun = (o: any) =>
+		o && typeof o === "object" &&
+		typeof o.ts === "number" &&
+		typeof o.wpm === "number" &&
+		typeof o.acc === "number";
+
+	try {
+		for (let i = 0; i < localStorage.length; i++) {
+			const k = localStorage.key(i) || "";
+			// ignore our target bucket to avoid self-pick
+			if (k === `bk:history:${uid}`) continue;
+
+			const raw = localStorage.getItem(k);
+			if (!raw) continue;
+
+			// Must be a JSON array with run-like objects
+			let parsed: any;
+			try { parsed = JSON.parse(raw); } catch { continue; }
+			if (!Array.isArray(parsed) || parsed.length === 0) continue;
+			if (!looksLikeRun(parsed[0])) continue;
+
+			if (parsed.length > bestRuns.length) {
+				bestRuns = parsed as BlazeRun[];
+				bestKey = k;
+			}
+		}
+
+		if (bestRuns.length) {
+			// Non-destructive: copy into new user bucket
+			setLocalHistory(uid, bestRuns);
+			return bestRuns;
+		}
+	} catch { /* no-op */ }
+	return [];
 }
 
 

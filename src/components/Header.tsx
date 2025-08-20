@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 // ⬇️ Stable lucide icons only
-import { Bell, User } from "lucide-react";
+import { Bell, User, Settings as Gear } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
+import { useUIStore } from "@/stores/useUIStore";
 
 export default function Header() {
   const router = useRouter();
@@ -17,6 +18,8 @@ export default function Header() {
       hydrateFromMe().catch(() => {});
     }
   }, [ready, hydrateFromMe]);
+
+  const openSettings = useUIStore(s => s.openSettings);
 
   return (
     <header className="sticky top-0 z-50 w-full backdrop-blur bg-background/60 border-b border-white/10">
@@ -35,6 +38,14 @@ export default function Header() {
           >
             <Bell className="h-5 w-5" />
           </Link>
+
+          <button
+            onClick={openSettings}
+            className="p-2 rounded-xl hover:bg-white/10 transition"
+            aria-label="Settings"
+          >
+            <Gear className="h-5 w-5" />
+          </button>
 
           {user ? (
             <>
@@ -86,6 +97,7 @@ export default function Header() {
           )}
         </div>
       </div>
+      {null}
     </header>
   );
 }

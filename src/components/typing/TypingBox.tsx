@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { saveTypingResult } from '@/lib/firebase/scores';
 import { computeXpAward } from '@/lib/xp';
 import { useStatsStore } from '@/stores/useStatsStore';
+import { addLocalRun, BlazeRun } from "@/lib/historyLocal";
 import { RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { segmentGraphemes, normalizeInputChar } from "@/utils/segments";
@@ -45,8 +46,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const VISIBLE_LINES = 5;
   const CENTER_OFFSET = Math.floor(VISIBLE_LINES / 2);
   const { user } = useAuth();
-  const addXp = useStatsStore(s=>s.addXp);
-  const ingestRunStore = useStatsStore(s=>s.ingestRun);
+  // Note: addXp was removed from stats store; we now persist the run and rehydrate
   const [awardedThisRun, setAwardedThisRun] = useState(false);
 
   /* state */
@@ -451,11 +451,12 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
                 onTestComplete(finalWpm, finalAcc, duration, typedInput + typedCharNorm);
                 const challengeText = ((): string | undefined => {
                   try {
-                    return (window as any).__bkChallengeText || document.getElementById("bk-next-challenge")?.getAttribute("data-challenge-text") || undefined;
+                    const w = window as unknown as { __bkChallengeText?: string };
+                    return w.__bkChallengeText || document.getElementById("bk-next-challenge")?.getAttribute("data-challenge-text") || undefined;
                   } catch { return undefined; }
                 })();
                 const award = computeXpAward(finalAcc, challengeText);
-                const run = {
+                const run: BlazeRun = {
                   id: crypto.randomUUID(),
                   ts: Date.now(),
                   wpm: finalWpm,
@@ -466,10 +467,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
                   difficulty: undefined,
                   xpDelta: award.total,
                   xpReason: award.reason,
-                } as any;
+                };
                 if (!awardedThisRun) {
-                  if (user) ingestRunStore(String(user.id), run);
-                  addXp(award.total);
+                  const uid = user ? String(user.id) : "guest";
+                  try {
+                    addLocalRun(uid, run);
+                  } catch {}
+                  try { useStatsStore.getState().append(run); } catch {}
                   setAwardedThisRun(true);
                 }
                 if (user) saveTypingResult(String(user.id), finalWpm, finalAcc, duration, 'words', words.length).catch(()=>{});
@@ -530,11 +534,14 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   /* attach listener */
   useEffect(() => {
+    // Signal typing mode to other UI (e.g., to block global hotkeys)
+    try { document.body.classList.add("bk-typing-active"); } catch {}
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      try { document.body.classList.remove("bk-typing-active"); } catch {}
     };
   }, [handleKeyDown, handleKeyUp]);
 

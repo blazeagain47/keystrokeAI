@@ -1,116 +1,62 @@
 "use client";
 import { create } from "zustand";
-import { RangeKey, getLocalHistory, filterByRange, summarize, toDailySeries, BlazeRun, setLocalHistory } from "@/lib/historyLocal";
+import { filterByRange, summarize, getLocalHistory, migrateLegacyHistory, RangeKey, BlazeRun } from "@/lib/historyLocal";
 
-type Summary = { totalXp?: number; streakDays?: number; memberSince?: string; avgWpm: number; avgAcc: number; sessions: number };
-type Point = { t: string; wpm: number; acc: number };
-
-type State = {
-	range: RangeKey;
-	loading: boolean;
-	error: string | null;
-	summary: Summary | null;
-	history: Point[] | null;
-	totalXP: number;
-	hydrate: (uid: string) => Promise<void>;
-	setRange: (r: RangeKey, uid: string) => Promise<void>;
-	ingestLocal: (uid: string, run: BlazeRun) => void;
-	addXp: (d: number) => void;
-	ingestRun: (uid: string, run: BlazeRun) => void;
+type StatsState = {
+  ready: boolean;
+  uid?: string | null;
+  range: RangeKey;
+  history: BlazeRun[];
+  summary: { sessions: number; avgWpm: number; avgAcc: number; totalXP: number };
+  totalXP: number;
+  setRange: (r: RangeKey) => void;
+  hydrate: (uid: string) => Promise<void>;
+  recompute: () => void;
+  append: (run: BlazeRun) => void;
 };
 
-async function fetchJSON<T>(url: string) {
-	const r = await fetch(url, { cache: "no-store", credentials: "include" });
-	if (!r.ok) throw new Error(`HTTP ${r.status}`);
-	return (await r.json()) as T;
-}
+const RANGE_LS = "bk:range";
 
-export const useStatsStore = create<State>((set, get) => ({
-	range: "7d",
-	loading: false,
-	error: null,
-	summary: null,
-	history: null,
-	totalXP: 0,
+export const useStatsStore = create<StatsState>((set, get) => ({
+  ready: false,
+  uid: null,
+  range: (() => {
+    try { const v = localStorage.getItem(RANGE_LS) as RangeKey | null; return v === "all" || v === "7d" || v === "1d" ? v : "7d"; } catch { return "7d"; }
+  })(),
+  history: [],
+  summary: { sessions: 0, avgWpm: 0, avgAcc: 0, totalXP: 0 },
+  totalXP: 0,
 
-	hydrate: async (uid: string) => {
-		const range = get().range;
-		set({ loading: true, error: null });
-		try {
-			// Try proxy endpoints first:
-			const [sum, hist] = await Promise.all([
-				fetchJSON<any>(`/api/stats/summary?range=${range}`),
-				fetchJSON<Point[]>(`/api/stats/history?granularity=daily&range=${range}`)
-			]);
-			if ((sum as any)?.detail === "fallback") {
-				const local = getLocalHistory(uid);
-				const scoped = filterByRange(local, range);
-				const s = summarize(scoped);
-				const points = toDailySeries(scoped, range === "1d" ? 1 : 7);
-				set({
-					summary: {
-						totalXp: s.totalXpFromRuns,
-						streakDays: s.streak,
-						memberSince: local.length ? new Date(local[local.length-1].ts).toISOString() : undefined,
-						avgWpm: s.avgWpm, avgAcc: s.avgAcc, sessions: s.sessions,
-					},
-					history: points,
-					loading: false,
-					totalXP: s.totalXpFromRuns ?? 0,
-				});
-			} else {
-				const backendXP = Number((sum as any)?.totalXp ?? (sum as any)?.totalXP ?? (sum as any)?.total_xp ?? (sum as any)?.xp ?? 0);
-				set({ summary: sum as Summary, history: hist, loading: false, totalXP: isFinite(backendXP) ? backendXP : 0 });
-			}
-		} catch {
-			// Fallback to local history
-			const local = getLocalHistory(uid);
-			const scoped = filterByRange(local, range);
-			const sum = summarize(scoped);
-			const points = toDailySeries(scoped, range === "1d" ? 1 : 7);
-			set({
-				summary: {
-					totalXp: sum.totalXpFromRuns,
-					streakDays: sum.streak,
-					memberSince: local.length ? new Date(local[local.length-1].ts).toISOString() : undefined,
-					avgWpm: sum.avgWpm, avgAcc: sum.avgAcc, sessions: sum.sessions,
-				},
-				history: points,
-				loading: false,
-				totalXP: sum.totalXpFromRuns ?? 0,
-			});
-		}
-	},
+  setRange: (r) => {
+    set({ range: r });
+    try { localStorage.setItem(RANGE_LS, r); } catch {}
+    get().recompute();
+  },
 
-	setRange: async (r: RangeKey, uid: string) => {
-		set({ range: r });
-		await get().hydrate(uid);
-	},
+  hydrate: async (uid: string) => {
+    const runs = (() => {
+      const mine = getLocalHistory(String(uid));
+      return mine.length ? mine : migrateLegacyHistory(String(uid));
+    })();
+    set({ uid, history: runs, ready: true });
+    get().recompute();
+  },
 
-	ingestLocal: (uid: string, run: BlazeRun) => {
-		const local = getLocalHistory(uid);
-		local.unshift(run);
-		setLocalHistory(uid, local);
-		// recompute current range view
-		const scoped = filterByRange(local, get().range);
-		const sum = summarize(scoped);
-		const points = toDailySeries(scoped, get().range === "1d" ? 1 : 7);
-		set({
-			summary: {
-				totalXp: sum.totalXpFromRuns,
-				streakDays: sum.streak,
-				memberSince: local.length ? new Date(local[local.length-1].ts).toISOString() : undefined,
-				avgWpm: sum.avgWpm, avgAcc: sum.avgAcc, sessions: sum.sessions,
-			},
-			history: points,
-			totalXP: Math.max(0, (get().totalXP || 0) + (Number(run.xpDelta ?? run.xpEarned) || 0)),
-		});
-	},
+  recompute: () => {
+    const { range, history } = get();
+    const inRange = filterByRange(history, range);
+    const s = summarize(inRange);
+    set({ summary: s, totalXP: s.totalXP });
+  },
 
-	addXp: (d: number) => set(s => ({ totalXP: Math.max(0, (s.totalXP || 0) + (Number(d) || 0)) })),
-	ingestRun: (uid: string, run: BlazeRun) => {
-		get().ingestLocal(uid, run);
-	},
+  append: (run: BlazeRun) => {
+    set((state) => {
+      const history = [...state.history, run];
+      const inRange = filterByRange(history, state.range);
+      const s = summarize(inRange);
+      return { history, summary: s, totalXP: s.totalXP };
+    });
+  },
 }));
 
 

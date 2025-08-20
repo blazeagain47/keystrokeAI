@@ -6,6 +6,8 @@ import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import Header from '@/components/Header'
 import GlobalFireBackdrop from '@/components/brand/GlobalFireBackdrop'
+import AppBoot from '@/components/AppBoot'
+import SettingsModal from '@/components/settings/SettingsModal'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -30,7 +32,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className="dark">
-      <body className={`${inter.className} page-bg min-h-dvh antialiased overflow-x-clip`}>
+      <body className={`${inter.className} page-bg bk-flame-bg min-h-dvh antialiased overflow-x-clip`}>
+        {/* Client bootstrap for auth + appearance */}
+        <AppBoot />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -43,6 +47,7 @@ export default function RootLayout({
           {/* Global auth modal gate */}
           <AuthGate />
         </ThemeProvider>
+        <SettingsModal />
       </body>
     </html>
   )

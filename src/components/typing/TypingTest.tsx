@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useSettingsStore } from '@/store/settings';
 import TypingBox from './TypingBox';
 import ResultsPanel from './ResultsPanel';
 import { 
@@ -18,6 +19,7 @@ import {
 import clsx from 'clsx';
 import { fetchJSON } from '@/lib/http';
 import SmartTestBadge from '@/components/SmartTestBadge';
+import ReadyToast from '@/components/typing/ReadyToast';
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -46,6 +48,8 @@ type FetchResponse = {
 };
 
 const TypingTest: React.FC = () => {
+  const [loading, setLoading] = useState(true);
+  const didInit = useRef(false);
   const [wpm, setWpm] = useState(0);
   const [accuracy, setAccuracy] = useState(100);
   const [time, setTime] = useState(0);
@@ -87,6 +91,15 @@ const TypingTest: React.FC = () => {
   const [avgAcc, setAvgAcc] = useState<number>(100);
   const [prevDifficulty, setPrevDifficulty] = useState<null | 'easy'|'medium'|'hard'>(null);
   const [difficultyChanged, setDifficultyChanged] = useState(false);
+
+  // Reflect zen mode to the document for global backdrop behavior
+  useEffect(() => {
+    try {
+      document.documentElement.dataset.zen = testMode === 'zen' ? '1' : '0';
+      // notify any listeners that zen mode changed
+      window.dispatchEvent(new Event('bk:zenChanged'));
+    } catch {}
+  }, [testMode]);
 
   type GeneratePayload = {
     mode: 'words' | 'time';
@@ -204,17 +217,41 @@ const TypingTest: React.FC = () => {
     }
   }, [handleRestart]);
 
-  // Fetch an initial prompt on mount with default wordCount (15)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Strict-mode safe, idempotent init
   useEffect(() => {
-    // Quick health ping via Next proxy for diagnostics
-    fetch("/api/ping").then(async (r) => {
-      const j = await r.json().catch(() => ({}));
-      console.log("[ping]", j);
+    if (didInit.current) return;
+    didInit.current = true;
+    const startTest = async () => {
+      const s = useSettingsStore.getState();
+      const t = s.test;
+      try {
+        setView('typing');
+        const len = t?.defaultLength ?? 15;
+        const opts = {
+          include_numbers: !!t?.include_numbers,
+          include_punctuation: !!t?.include_punctuation,
+        };
+        console.debug("TypingTest init: running safeRestart", { len, opts });
+        await safeRestart(len, opts);
+      } catch (err) {
+        console.warn("Init safeRestart failed, falling back to local words", err);
+        // Local fallback prompt – never leave user stuck
+        setMode('words');
+        setView('typing');
+        setCurrentPrompt(Array.from({ length: 60 }, () => "blaze").join(" "));
+      } finally {
+        setLoading(false);
+      }
+    };
+    // Kick on microtask and add safety retry to avoid spinner hangs
+    queueMicrotask(() => {
+      startTest();
+      const timer = setTimeout(() => {
+        if (loading) startTest();
+      }, 2500);
+      return () => clearTimeout(timer);
     });
-    void safeRestart(15);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safeRestart]);
+  }, [safeRestart, loading]);
 
   const handleStatsUpdate = (newWpm: number, newAccuracy: number, newTime: number) => {
     setWpm(newWpm);
@@ -265,11 +302,11 @@ const TypingTest: React.FC = () => {
     try {
       const result = await fetchJSON<{ input: string; corrections: string[]; difficulty: string; feedback: string }>(
         "/analyze",
-        { method: "POST", body: { user_text: finalTypedText } }
+        { method: "POST", body: JSON.stringify({ user_text: finalTypedText }) }
       );
       setAnalysisResult(result);
     } catch (err) {
-      console.error("AI analysis error:", err);
+      console.warn("Non-fatal: run analyze failed (offline or backend down)", err);
       setAnalysisResult({
         input: finalTypedText,
         corrections: [],
@@ -280,7 +317,7 @@ const TypingTest: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
+    <div className="min-h-dvh">
       {/* Top Navigation/Filter Bar */}
       <div className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur-xl border-b border-gray-800/50 shadow-2xl">
         <div className="max-w-7xl mx-auto px-6 py-6">
@@ -444,12 +481,14 @@ const TypingTest: React.FC = () => {
             </div>
 
             {/* Language Selector */}
-            <button className="group px-5 py-3 rounded-2xl text-sm font-semibold bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm transition-all duration-300 flex items-center gap-2 shadow-lg hover:scale-105">
+            <button data-lang-pill className="group px-5 py-3 rounded-2xl text-sm font-semibold bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm transition-all duration-300 flex items-center gap-2 shadow-lg hover:scale-105">
               <Globe className="h-4 w-4 group-hover:rotate-12 transition-transform duration-300" />
               english
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
             </button>
           </div>
+          {/* Floating toast anchored to language pill */}
+          {!isTestComplete && <ReadyToast />}
         </div>
       </div>
 
@@ -506,11 +545,8 @@ const TypingTest: React.FC = () => {
       )}
 
       {/* Main Area */}
-      <div className="flex-1 relative">
-        {/* Background Effects */}
-        <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/5 via-transparent to-blue-400/5 pointer-events-none"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-yellow-400/10 to-transparent rounded-full blur-3xl pointer-events-none"></div>
-        
+      <div className="flex-1 relative bk-surface-glow">
+
         {view === 'typing' && (
           <>
             {/* Inline status / retry for generator */}
@@ -562,8 +598,7 @@ const TypingTest: React.FC = () => {
           </>
         )}
         {view === 'results' && (
-          <div className="ks-section-gradient">
-            <div className="ks-section-divider" />
+          <div className="bk-section-gradient">
             <ResultsPanel
               wpm={wpm}
               accuracy={accuracy}
@@ -614,24 +649,7 @@ const TypingTest: React.FC = () => {
       </div>
       )}
 
-      {/* Floating Action Hint */}
-      {!isTestComplete && time === 0 && (
-        <div className="fixed top-1/2 right-8 transform -translate-y-1/2 z-20 animate-in slide-in-from-right duration-1000 delay-500">
-          <div className="bg-gradient-to-br from-yellow-400/10 to-orange-500/10 backdrop-blur-sm border border-yellow-400/20 rounded-2xl p-4 max-w-xs">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 bg-yellow-400/20 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
-                <Zap className="w-4 h-4 text-yellow-400" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-200 mb-1">Ready to type?</h3>
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  Focus on the text area and start typing to begin your test. Your speed and accuracy will be tracked in real-time.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Old bottom-corner hint removed in favor of ReadyToTypeHint under controls */}
     </div>
   );
 };
