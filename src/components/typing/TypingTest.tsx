@@ -319,7 +319,8 @@ const TypingTest: React.FC = () => {
   return (
     <div className="min-h-dvh">
       {/* Top Navigation/Filter Bar */}
-      <div className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur-xl border-b border-gray-800/50 shadow-2xl">
+      {view !== 'results' && (
+      <div className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur-xl border-b border-gray-800/50 shadow-2xl bk-filter-bar">
         <div className="max-w-7xl mx-auto px-6 py-6">
           
           {/* Main Mode Selection */}
@@ -328,10 +329,12 @@ const TypingTest: React.FC = () => {
             <button 
               className={clsx(
                 "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
+                "bk-chip bk-focus",
                 showPunctuation 
-                  ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-gray-900 shadow-yellow-400/25 hover:shadow-yellow-400/40' 
+                  ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-gray-900 shadow-yellow-400/25 hover:shadow-yellow-400/40 bk-chip--active' 
                   : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
               )}
+              aria-pressed={showPunctuation}
               onClick={async () => {
                 const next = !showPunctuation;
                 setShowPunctuation(next);
@@ -346,10 +349,12 @@ const TypingTest: React.FC = () => {
             <button 
               className={clsx(
                 "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
+                "bk-chip bk-focus",
                 showNumbers 
-                  ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-gray-900 shadow-yellow-400/25 hover:shadow-yellow-400/40' 
+                  ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-gray-900 shadow-yellow-400/25 hover:shadow-yellow-400/40 bk-chip--active' 
                   : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
               )}
+              aria-pressed={showNumbers}
               onClick={async () => {
                 const next = !showNumbers;
                 setShowNumbers(next);
@@ -365,87 +370,101 @@ const TypingTest: React.FC = () => {
             <div className="w-px h-8 bg-gradient-to-b from-transparent via-gray-600/50 to-transparent mx-3"></div>
             
             {/* Test Modes */}
-            <button 
-              className={clsx(
-                "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
-                testMode === 'time' 
-                  ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-blue-500/25 hover:shadow-blue-500/40' 
-                  : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
-              )}
-              onClick={async () => { setTestMode('time'); setMode('time'); setView('typing'); await handleRestart(); }}
-            >
-              <Clock className="h-4 w-4" />
-              time
-            </button>
-            
-            <button 
-              className={clsx(
-                "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
-                testMode === 'words' 
-                  ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-purple-500/25 hover:shadow-purple-500/40' 
-                  : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
-              )}
-              onClick={async () => { setTestMode('words'); setMode('words'); setView('typing'); await handleRestart(); }}
-            >
-              <span className="text-lg font-bold">A</span>
-              words
-            </button>
-            
-            <button 
-              className={clsx(
-                "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
-                testMode === 'quote' 
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-emerald-500/25 hover:shadow-emerald-500/40' 
-                  : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
-              )}
-              onClick={() => setTestMode('quote')}
-            >
-              <Quote className="h-4 w-4" />
-              quote
-            </button>
-            
-            <button 
-              className={clsx(
-                "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
-                testMode === 'zen' 
-                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-indigo-500/25 hover:shadow-indigo-500/40' 
-                  : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
-              )}
-              onClick={() => setTestMode('zen')}
-            >
-              <Triangle className="h-4 w-4" />
-              zen
-            </button>
-            
-            <button 
-              className={clsx(
-                "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
-                testMode === 'custom' 
-                  ? 'bg-gradient-to-r from-rose-500 to-orange-500 text-white shadow-rose-500/25 hover:shadow-rose-500/40' 
-                  : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
-              )}
-              onClick={() => setTestMode('custom')}
-            >
-              <Wrench className="h-4 w-4" />
-              custom
-            </button>
+            <div className="bk-segment bk-filter-row">
+              <button 
+                className={clsx(
+                  "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
+                  "bk-segment__item bk-focus",
+                  testMode === 'time' 
+                    ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-blue-500/25 hover:shadow-blue-500/40' 
+                    : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
+                )}
+                aria-pressed={testMode === 'time'}
+                onClick={async () => { setTestMode('time'); setMode('time'); setView('typing'); await handleRestart(); }}
+              >
+                <Clock className="h-4 w-4" />
+                time
+              </button>
+              
+              <button 
+                className={clsx(
+                  "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
+                  "bk-segment__item bk-focus",
+                  testMode === 'words' 
+                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-purple-500/25 hover:shadow-purple-500/40' 
+                    : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
+                )}
+                aria-pressed={testMode === 'words'}
+                onClick={async () => { setTestMode('words'); setMode('words'); setView('typing'); await handleRestart(); }}
+              >
+                <span className="text-lg font-bold">A</span>
+                words
+              </button>
+              
+              <button 
+                className={clsx(
+                  "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
+                  "bk-segment__item bk-focus",
+                  testMode === 'quote' 
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-emerald-500/25 hover:shadow-emerald-500/40' 
+                    : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
+                )}
+                aria-pressed={testMode === 'quote'}
+                onClick={() => setTestMode('quote')}
+              >
+                <Quote className="h-4 w-4" />
+                quote
+              </button>
+              
+              <button 
+                className={clsx(
+                  "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
+                  "bk-segment__item bk-focus",
+                  testMode === 'zen' 
+                    ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-indigo-500/25 hover:shadow-indigo-500/40' 
+                    : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
+                )}
+                aria-pressed={testMode === 'zen'}
+                onClick={() => setTestMode('zen')}
+              >
+                <Triangle className="h-4 w-4" />
+                zen
+              </button>
+              
+              <button 
+                className={clsx(
+                  "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
+                  "bk-segment__item bk-focus",
+                  testMode === 'custom' 
+                    ? 'bg-gradient-to-r from-rose-500 to-orange-500 text-white shadow-rose-500/25 hover:shadow-rose-500/40' 
+                    : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
+                )}
+                aria-pressed={testMode === 'custom'}
+                onClick={() => setTestMode('custom')}
+              >
+                <Wrench className="h-4 w-4" />
+                custom
+              </button>
+            </div>
           </div>
 
           {/* Secondary Options Row */}
           <div className="flex items-center justify-between">
             {/* Duration/Count Options */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 bk-filter-row">
               {testMode === 'time' && (
-                <div className="flex items-center gap-2 bg-gray-800/30 backdrop-blur-sm border border-gray-700/30 rounded-xl p-1">
+                <div className="flex items-center gap-2 bg-gray-800/30 backdrop-blur-sm border border-gray-700/30 rounded-xl p-1 bk-segment">
                   {[15, 30, 60, 120].map((duration) => (
                     <button 
                       key={duration}
                       className={clsx(
                         "px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 relative overflow-hidden",
+                        "bk-segment__item bk-focus",
                         durationSec === duration 
                           ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/25' 
                           : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-300'
                       )}
+                      aria-pressed={durationSec === duration}
               onClick={async () => { setDurationSec(duration); setView('typing'); await safeRestart(); }}
                     >
                       {duration}s
@@ -458,16 +477,18 @@ const TypingTest: React.FC = () => {
               )}
 
               {testMode === 'words' && (
-                <div className="flex items-center gap-2 bg-gray-800/30 backdrop-blur-sm border border-gray-700/30 rounded-xl p-1">
+                <div className="flex items-center gap-2 bg-gray-800/30 backdrop-blur-sm border border-gray-700/30 rounded-xl p-1 bk-segment">
                   {[10, 15, 20, 30, 50].map((count) => (
                     <button 
                       key={count}
                       className={clsx(
                         "px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 relative overflow-hidden",
+                        "bk-segment__item bk-focus",
                         wordCount === count 
                           ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/25' 
                           : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-300'
                       )}
+                      aria-pressed={wordCount === count}
               onClick={async () => { setWordCount(count); await safeRestart(count); }}
                     >
                       {count}
@@ -481,7 +502,7 @@ const TypingTest: React.FC = () => {
             </div>
 
             {/* Language Selector */}
-            <button data-lang-pill className="group px-5 py-3 rounded-2xl text-sm font-semibold bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm transition-all duration-300 flex items-center gap-2 shadow-lg hover:scale-105">
+            <button data-lang-pill className="group px-5 py-3 rounded-2xl text-sm font-semibold bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm transition-all duration-300 flex items-center gap-2 shadow-lg hover:scale-105 bk-lang bk-focus">
               <Globe className="h-4 w-4 group-hover:rotate-12 transition-transform duration-300" />
               english
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -491,53 +512,55 @@ const TypingTest: React.FC = () => {
           {!isTestComplete && <ReadyToast />}
         </div>
       </div>
+      )}
 
-      {/* Live Stats Bar - Only show during active typing */}
-      {time > 0 && view === 'typing' && (
-        <div className="sticky top-[120px] z-40 bg-gray-900/90 backdrop-blur-xl border-y border-gray-800/50 shadow-xl animate-in slide-in-from-top duration-500">
-          <div className="max-w-7xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-center gap-12 flex-wrap">
+      {/* Live Stats Bar - Visible during typing and results */}
+      {(time > 0 || view === 'results') && (
+        <div className="bk-stats-bar">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="bk-stats-row">
               {/* WPM */}
-              <div className="flex items-center gap-3 group">
-                <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-yellow-400/20 to-orange-500/20 rounded-xl border border-yellow-400/30">
+              <div className="flex items-center gap-3 group bk-stat" role="status" aria-live="polite">
+                <span className="bk-stat__icon flex items-center justify-center w-10 h-10 rounded-xl border border-yellow-400/30 bg-gradient-to-br from-yellow-400/20 to-orange-500/20">
                   <Zap className="w-5 h-5 text-yellow-400" />
-                </div>
+                </span>
                 <div>
-                  <div className="text-2xl font-bold text-yellow-400 font-mono leading-none">
+                  <div className="text-2xl font-bold text-yellow-400 font-mono leading-none bk-stat__value">
                     {wpm}
                   </div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wider">WPM</div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wider bk-stat__label">WPM</div>
                 </div>
               </div>
 
               {/* Accuracy */}
-              <div className="flex items-center gap-3 group">
-                <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-green-400/20 to-emerald-500/20 rounded-xl border border-green-400/30">
+              <div className="flex items-center gap-3 group bk-stat" role="status" aria-live="polite">
+                <span className="bk-stat__icon flex items-center justify-center w-10 h-10 rounded-xl border border-green-400/30 bg-gradient-to-br from-green-400/20 to-emerald-500/20">
                   <Target className="w-5 h-5 text-green-400" />
-                </div>
+                </span>
                 <div>
-                  <div className="text-2xl font-bold text-green-400 font-mono leading-none">
+                  <div className="text-2xl font-bold text-green-400 font-mono leading-none bk-stat__value">
                     {accuracy}%
                   </div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wider">Accuracy</div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wider bk-stat__label">Accuracy</div>
                 </div>
               </div>
 
               {/* Time */}
-              <div className="flex items-center gap-3 group">
-                <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-blue-400/20 to-cyan-500/20 rounded-xl border border-blue-400/30">
+              <div className="flex items-center gap-3 group bk-stat" role="status" aria-live="polite">
+                <span className="bk-stat__icon flex items-center justify-center w-10 h-10 rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-400/20 to-cyan-500/20">
                   <Timer className="w-5 h-5 text-blue-400" />
-                </div>
+                </span>
                 <div>
-                  <div className="text-2xl font-bold text-blue-400 font-mono leading-none">
+                  <div className="text-2xl font-bold text-blue-400 font-mono leading-none bk-stat__value">
                     {time.toFixed(1)}s
                   </div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wider">Time</div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wider bk-stat__label">Time</div>
                 </div>
               </div>
+
               {/* Smart Test badge */}
               {smartUsedDifficulty && (
-                <SmartTestBadge usedDifficulty={smartUsedDifficulty} difficultyChanged={difficultyChanged} />
+                <span className="bk-badge bk-badge--fire">AI Smart Test — {smartUsedDifficulty}</span>
               )}
             </div>
           </div>

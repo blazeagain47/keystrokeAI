@@ -208,6 +208,102 @@
   --bk-vignette: .9;
 }
 
+/* =================== blazeKey: filter bar UI =================== */
+
+/* Bar container: glass + subtle bottom border that blends into fire bg */
+.bk-filter-bar {
+  backdrop-filter: blur(8px);
+  background: color-mix(in oklab, var(--background), transparent 60%);
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+
+/* Horizontal groups share spacing + wrap gracefully */
+.bk-filter-row {
+  display: flex; gap: .5rem; flex-wrap: wrap; align-items: center;
+}
+
+/* Generic chip (idle) */
+.bk-chip {
+  position: relative; inline-size: max-content;
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .5rem .9rem; border-radius: 9999px;
+  color: rgb(255 255 255 / 0.82);
+  background: rgb(17 17 17 / 0.45);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+  transition: transform .12s ease, background .2s ease, box-shadow .2s ease;
+}
+.bk-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08),
+              0 0 28px rgb(255 90 0 / 0.18);
+}
+
+/* Active chip: fire gradient + glow */
+.bk-chip--active {
+  color: white;
+  background: linear-gradient(135deg, #fb923c 0%, #ef4444 55%, #f59e0b 100%);
+  border-color: rgb(255 255 255 / 0.10);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.08),
+    0 0 34px rgb(255 80 0 / 0.35);
+}
+.bk-chip--active::before {
+  content: "";
+  position: absolute; inset: -10px;
+  pointer-events: none; border-radius: 9999px;
+  background:
+    radial-gradient(40% 55% at 80% 0%, rgba(255,120,40,.25), transparent 60%),
+    radial-gradient(55% 60% at 0% 40%, rgba(255,60,0,.18), transparent 60%);
+  filter: blur(16px); opacity: .65;
+}
+
+/* Segmented group (for 10/15/20/30/50 and modes) */
+.bk-segment {
+  position: relative; display: inline-flex; gap: .25rem; padding: .25rem;
+  border-radius: 9999px; border: 1px solid rgb(255 255 255 / 0.08);
+  background: linear-gradient(180deg, rgb(17 17 17 / 0.55), rgb(17 17 17 / 0.35));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+.bk-segment__item {
+  @media (pointer: coarse) { padding: .55rem .9rem; }
+  padding: .45rem .85rem; border-radius: 9999px;
+  color: rgb(255 255 255 / 0.82);
+  transition: background .15s ease, color .15s ease, transform .12s ease;
+}
+.bk-segment__item[aria-pressed="true"],
+.bk-segment__item[data-active="true"] {
+  color: white;
+  background:
+    linear-gradient(135deg, rgba(251,146,60,.20), rgba(239,68,68,.18));
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.10),
+    0 0 22px rgb(255 86 0 / 0.25);
+}
+
+/* Language chip keeps icon + adds subtle glow on hover */
+.bk-lang {
+  padding-inline: .9rem; padding-block: .5rem; border-radius: 9999px;
+  background: rgb(17 17 17 / 0.45);
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+.bk-lang:hover {
+  box-shadow: 0 0 24px rgb(255 100 0 / 0.18);
+}
+
+/* Focus rings for keyboard accessibility */
+.bk-focus:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(255 153 0 / 0.75),
+              0 0 0 4px rgb(0 0 0 / 0.40);
+}
+
+/* Motion safe (respect reduced motion) */
+@media (prefers-reduced-motion: reduce) {
+  .bk-chip, .bk-segment__item { transition: none; }
+  .bk-chip--active::before { opacity: .45; filter: blur(12px); }
+}
+
 /* Cohesive glass card style + hover polish */
 .ks-card {
   background: color-mix(in srgb, var(--background), #ffffff 5%);
@@ -730,6 +826,64 @@ html[data-zen="1"] .bk-fire-halo { animation: none !important; }
 /* Keep right-docked toasts away from scrollbar and device safe area */
 .safe-right {
   right: max(16px, calc(env(safe-area-inset-right, 0px) + 16px));
+}
+
+/* =================== blazeKey: STATS BAR =================== */
+
+.bk-stats-bar {
+  position: sticky;
+  top: var(--bk-stats-top, 88px); /* sits below header/filters */
+  z-index: 40;
+  border-radius: 1rem;
+  border: 1px solid rgb(255 255 255 / 0.06);
+  background: linear-gradient(180deg, rgb(16 16 16 / 0.55), rgb(16 16 16 / 0.35));
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 38px rgb(255 95 0 / 0.14),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+.bk-stats-row { display: flex; align-items: center; justify-content: center; gap: 1rem; padding: .75rem 1rem; }
+
+.bk-stat {
+  display: inline-flex; align-items: center; gap: .6rem;
+  padding: .4rem .8rem; border-radius: 9999px;
+  color: rgb(255 255 255 / 0.9);
+  background: rgb(255 255 255 / 0.05);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  transition: background .15s ease, box-shadow .15s ease;
+}
+.bk-stat__icon {
+  width: 34px; height: 34px; border-radius: 9999px; display: grid; place-items: center;
+  background: radial-gradient(120% 120% at 50% 0%, rgba(255,120,40,.35), rgba(239,68,68,.20));
+  box-shadow: inset 0 0 18px rgb(255 90 0 / 0.35);
+}
+.bk-stat__value { font-weight: 800; color: white; font-size: 1.05rem; }
+.bk-stat__label { font-size: .72rem; letter-spacing: .08em; opacity: .85; }
+
+.bk-badge {
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .35rem .7rem; border-radius: 9999px; font-weight: 700; font-size: .75rem;
+  border: 1px solid rgb(255 255 255 / 0.10);
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(255 255 255 / 0.95);
+}
+.bk-badge--fire {
+  color: white;
+  background: linear-gradient(90deg, #f97316 0%, #ef4444 55%, #f59e0b 100%);
+  box-shadow: 0 0 30px rgb(255 80 0 / 0.25);
+}
+
+/* compact on small screens */
+@media (max-width: 768px) {
+  .bk-stats-row { gap: .6rem; padding: .6rem .6rem; }
+  .bk-stat__icon { width: 30px; height: 30px; }
+  .bk-stat__value { font-size: 1rem; }
+}
+
+/* motion safe */
+@media (prefers-reduced-motion: reduce) {
+  .bk-stat, .bk-badge { transition: none; }
 }
 
 /* Chart glow */
