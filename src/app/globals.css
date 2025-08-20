@@ -789,6 +789,13 @@ html, body { overflow-x: clip }
   --bk-caret-color: var(--bk-accent);
 }
 
+/* Dynamic offsets supplied by TypingTest refs */
+:root {
+  --bk-header-h: 64px;
+  --bk-filter-h: 56px;
+  --bk-stats-h: 56px; /* measured at runtime */
+}
+
 html { font-size: calc(16px * var(--bk-type-scale)); }
 .bk-card { border-radius: var(--bk-radius); backdrop-filter: blur(var(--bk-glass-blur)); background: color-mix(in oklab, rgb(10 10 12) 84%, var(--bk-accent) calc(var(--bk-glass-alpha)*10%)); box-shadow: 0 0 0 transparent, 0 0 calc(50px * var(--bk-card-glow)) 0 color-mix(in oklab, var(--bk-accent), transparent 70%); }
 
@@ -822,6 +829,20 @@ html[data-reduceMotion="1"] .bk-flame-bg::after { animation: none !important; }
 html[data-zen="1"] .bk-flame-bg::before { animation: none !important; }
 html[data-zen="1"] .bk-flame-bg::after { animation: none !important; opacity: 0 !important; }
 html[data-zen="1"] .bk-fire-halo { animation: none !important; }
+
+/* When filters are visible (typing/pre/during) place stats beneath header+filters */
+[data-view="typing"] .bk-stats-bar,
+[data-view="typing"] .bk-stats-wrap,
+[data-view="typing"] .bk-stats-container {
+  top: calc(var(--bk-header-h) + var(--bk-filter-h));
+}
+
+/* When viewing results (filters hidden) place stats beneath header only */
+[data-view="results"] .bk-stats-bar,
+[data-view="results"] .bk-stats-wrap,
+[data-view="results"] .bk-stats-container {
+  top: var(--bk-header-h);
+}
 
 /* Keep right-docked toasts away from scrollbar and device safe area */
 .safe-right {
@@ -884,6 +905,59 @@ html[data-zen="1"] .bk-fire-halo { animation: none !important; }
 /* motion safe */
 @media (prefers-reduced-motion: reduce) {
   .bk-stat, .bk-badge { transition: none; }
+}
+
+/* === Space between sticky stats header and the main content ========== */
+:root {
+  /* generous default gap for readability on large screens */
+  --bk-content-gap: clamp(20px, 4vw, 48px);
+  /* slightly tighter while the test is actively running */
+  --bk-content-gap-compact: clamp(10px, 2vw, 24px);
+}
+
+/* Default: add breathing room after the stats header */
+.bk-stats-bar {
+  margin-bottom: var(--bk-content-gap);
+}
+
+/* During the run we already flatten the bar chrome; keep a smaller gap */
+[data-view="typing"][data-run="true"] .bk-stats-bar {
+  margin-bottom: var(--bk-content-gap-compact);
+}
+
+/* Safety: ensure first section doesn’t collapse margins with the sticky bar */
+.bk-page-content {
+  /* no visual change if margin works; padding prevents margin-collapsing edge cases */
+  padding-top: 0.5px;
+}
+
+/* === During test: show only stats pills, remove bar chrome ============== */
+[data-view="typing"][data-run="true"] .bk-stats-bar {
+  position: fixed !important;
+  left: 0; right: 0;
+  margin-bottom: 0 !important;     /* fixed -> no flow space */
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* tighten vertical space a bit while running */
+[data-view="typing"][data-run="true"] .bk-stats-row {
+  max-width: 80rem;                 /* match your container width */
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+  padding-block: .25rem;            /* compact while running */
+}
+
+/* Push the page down by the bar height while running to avoid overlap */
+[data-view="typing"][data-run="true"] .bk-page-content {
+  padding-top: calc(var(--bk-stats-h, 56px) + var(--bk-content-gap-compact));
+}
+
+/* hide non-stat adornments during the run (e.g., AI Smart Test badge) */
+[data-view="typing"][data-run="true"] .bk-badge {
+  display: none !important;
 }
 
 /* Chart glow */

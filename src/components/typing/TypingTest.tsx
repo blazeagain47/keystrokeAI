@@ -316,11 +316,52 @@ const TypingTest: React.FC = () => {
     }
   };
 
+  const filterRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const statsRef  = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+
+    const headerEl =
+      (document.querySelector('[data-app-header]') as HTMLElement) ||
+      (document.querySelector('header') as HTMLElement) ||
+      null;
+
+    const setVars = () => {
+      const headerH = headerEl ? headerEl.getBoundingClientRect().height : 64;
+      const filterH = filterRef.current
+        ? filterRef.current.getBoundingClientRect().height
+        : 0;
+      const statsH  = statsRef.current
+        ? statsRef.current.getBoundingClientRect().height
+        : 0;
+      el.style.setProperty("--bk-header-h", `${Math.round(headerH)}px`);
+      el.style.setProperty("--bk-filter-h", `${Math.round(filterH)}px`);
+      el.style.setProperty("--bk-stats-h", `${Math.round(statsH)}px`);
+    };
+
+    setVars();
+    window.addEventListener("resize", setVars);
+    const ro = new ResizeObserver(setVars);
+    headerEl && ro.observe(headerEl);
+    filterRef.current && ro.observe(filterRef.current);
+    statsRef.current && ro.observe(statsRef.current);
+
+    return () => {
+      window.removeEventListener("resize", setVars);
+      ro.disconnect();
+    };
+  }, [view]);
+
+  const isRunning = view === 'typing' && !isTestComplete && time > 0;
+
   return (
-    <div className="min-h-dvh">
+    <div ref={rootRef} className="min-h-dvh" data-view={view} data-run={isRunning ? 'true' : 'false'}>
       {/* Top Navigation/Filter Bar */}
       {view !== 'results' && (
-      <div className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur-xl border-b border-gray-800/50 shadow-2xl bk-filter-bar">
+      <div ref={filterRef} className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur-xl border-b border-gray-800/50 shadow-2xl bk-filter-bar">
         <div className="max-w-7xl mx-auto px-6 py-6">
           
           {/* Main Mode Selection */}
@@ -516,7 +557,7 @@ const TypingTest: React.FC = () => {
 
       {/* Live Stats Bar - Visible during typing and results */}
       {(time > 0 || view === 'results') && (
-        <div className="bk-stats-bar">
+        <div ref={statsRef} className="bk-stats-bar sticky z-40">
           <div className="max-w-7xl mx-auto px-6">
             <div className="bk-stats-row">
               {/* WPM */}
@@ -621,7 +662,7 @@ const TypingTest: React.FC = () => {
           </>
         )}
         {view === 'results' && (
-          <div className="bk-section-gradient">
+          <div className="bk-section-gradient pb-24 md:pb-28">
             <ResultsPanel
               wpm={wpm}
               accuracy={accuracy}

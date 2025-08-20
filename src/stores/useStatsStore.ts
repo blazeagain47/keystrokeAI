@@ -7,8 +7,9 @@ type StatsState = {
   uid?: string | null;
   range: RangeKey;
   history: BlazeRun[];
-  summary: { sessions: number; avgWpm: number; avgAcc: number; totalXP: number };
+  summary: { sessions: number; avgWpm: number; avgAcc: number; totalXP: number; streakDays: number };
   totalXP: number;
+  streakDays: number;
   setRange: (r: RangeKey) => void;
   hydrate: (uid: string) => Promise<void>;
   recompute: () => void;
@@ -24,8 +25,9 @@ export const useStatsStore = create<StatsState>((set, get) => ({
     try { const v = localStorage.getItem(RANGE_LS) as RangeKey | null; return v === "all" || v === "7d" || v === "1d" ? v : "7d"; } catch { return "7d"; }
   })(),
   history: [],
-  summary: { sessions: 0, avgWpm: 0, avgAcc: 0, totalXP: 0 },
+  summary: { sessions: 0, avgWpm: 0, avgAcc: 0, totalXP: 0, streakDays: 0 },
   totalXP: 0,
+  streakDays: 0,
 
   setRange: (r) => {
     set({ range: r });
@@ -46,7 +48,7 @@ export const useStatsStore = create<StatsState>((set, get) => ({
     const { range, history } = get();
     const inRange = filterByRange(history, range);
     const s = summarize(inRange);
-    set({ summary: s, totalXP: s.totalXP });
+    set({ summary: s, totalXP: s.totalXP, streakDays: s.streakDays });
   },
 
   append: (run: BlazeRun) => {
@@ -54,7 +56,7 @@ export const useStatsStore = create<StatsState>((set, get) => ({
       const history = [...state.history, run];
       const inRange = filterByRange(history, state.range);
       const s = summarize(inRange);
-      return { history, summary: s, totalXP: s.totalXP };
+      return { history, summary: s, totalXP: s.totalXP, streakDays: s.streakDays };
     });
   },
 }));

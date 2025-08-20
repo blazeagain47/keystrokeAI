@@ -32,11 +32,61 @@ export function filterByRange(runs: BlazeRun[], range: RangeKey): BlazeRun[] {
 }
 
 export function summarize(runs: BlazeRun[]) {
-	if (!runs.length) return { sessions: 0, avgWpm: 0, avgAcc: 0, totalXP: 0 };
-	let w=0, a=0, xp=0;
-	for (const r of runs) { w += r.wpm || 0; a += r.acc || 0; xp += r.xpEarned || 0; }
-	const n = runs.length;
-	return { sessions: n, avgWpm: Math.round(w/n), avgAcc: Math.round(a/n), totalXP: xp };
+  if (!runs?.length) return { sessions: 0, avgWpm: 0, avgAcc: 0, totalXP: 0, streakDays: 0 };
+  let w = 0, a = 0, xp = 0;
+  for (const r of runs) {
+    w += Number(r.wpm ?? 0);
+    a += Number(r.acc ?? 0);
+    xp += Number((r as any).xpDelta ?? (r as any).xpEarned ?? 0);
+  }
+  const n = runs.length;
+  const streakDays = computeStreakDays(runs);
+  return {
+    sessions: n,
+    avgWpm: Math.round(w / n),
+    avgAcc: Math.round(a / n),
+    totalXP: xp,
+    streakDays,
+  };
+}
+
+// ---- Streak helpers -------------------------------------------------------
+const DAY = 24 * 60 * 60 * 1000;
+
+function startOfLocalDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/**
+ * Consecutive-day streak ending at the most-recent run day.
+ * Multiple runs per day count as 1 for the day.
+ */
+export function computeStreakDays(runs: BlazeRun[]): number {
+  if (!runs?.length) return 0;
+  const days = Array.from(
+    new Set(
+      runs
+        .map(r => startOfLocalDay(Number(r.ts ?? Date.now())))
+        .filter(Boolean)
+        .sort((a, b) => a - b)
+    )
+  );
+  if (!days.length) return 0;
+  let streak = 1;
+  let prev = days[days.length - 1];
+  for (let i = days.length - 2; i >= 0; i--) {
+    const d = days[i];
+    if (d === prev) continue;
+    if (d === prev - DAY) {
+      streak++;
+      prev = d;
+    } else {
+      break;
+    }
+  }
+  return streak;
 }
 
 export function toDailySeries(runs: BlazeRun[], daysBack = 7) {

@@ -90,7 +90,11 @@ export default function AccountPage() {
 
       {user ? (
         <>
-          <StatsGrid totalXP={user.xpTotal ?? 0} streak={user.streak ?? 0} memberSince={new Date(user.createdAt).toLocaleDateString()} />
+          {(() => { try {
+            const totalXP = useStatsStore.getState().totalXP || 0;
+            const streakDays = useStatsStore.getState().streakDays || 0;
+            return <StatsGrid totalXP={totalXP} streak={streakDays} memberSince={new Date(user.createdAt).toLocaleDateString()} />;
+          } catch { return <StatsGrid totalXP={0} streak={0} memberSince={new Date(user.createdAt).toLocaleDateString()} />; } })()}
           <BlazeHistoryPanel />
           <Leaderboard />
         </>

@@ -120,7 +120,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   }
 
   return (
-    <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6" aria-label="Results">
+    <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6 bk-page-content" aria-label="Results">
       <div className="grid gap-6 lg:grid-cols-2">
         {/* LEFT: Chart */}
         <motion.div

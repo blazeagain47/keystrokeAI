@@ -22,7 +22,7 @@ export default function Header() {
   const openSettings = useUIStore(s => s.openSettings);
 
   return (
-    <header className="sticky top-0 z-50 w-full backdrop-blur bg-background/60 border-b border-white/10">
+    <header data-app-header className="sticky top-0 z-50 w-full backdrop-blur bg-background/60 border-b border-white/10">
       <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
         <Link href="/" className="font-semibold text-lg tracking-tight">
           <span className="bg-[linear-gradient(135deg,#FF3D00,#FF6A00_55%,#FFD36E)] bg-clip-text text-transparent drop-shadow-[0_0_6px_rgba(255,106,0,0.35)]">
