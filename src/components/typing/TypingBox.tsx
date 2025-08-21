@@ -604,11 +604,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
         {/* typing display */}
         <div
-          className="relative group cursor-text"
+          className="relative group cursor-text bk-typing-surface"
           onClick={() => containerRef.current?.focus()}
           tabIndex={0}
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-gray-800/20 via-gray-700/10 to-gray-800/20 backdrop-blur-sm rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           <div className="relative text-2xl md:text-3xl lg:text-4xl leading-relaxed font-mono px-8 py-10">
             {/* Fixed-height two-line viewport */}
             <div ref={viewportRef} className="relative overflow-hidden typing-viewport">

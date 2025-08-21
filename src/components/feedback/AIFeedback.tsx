@@ -4,6 +4,11 @@ import { useMemo } from "react";
 import { rankForXP } from "@/utils/progression";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { rankStyles, mapToRankTier, shouldShimmer } from "@/utils/rankStyles";
+import { AIAura } from "@/components/results/AIAura";
+import { DeltaChip } from "@/components/results/DeltaChip";
+import { MicroSparkline } from "@/components/results/MicroSparkline";
+import { WhyThis } from "@/components/results/WhyThis";
+import { NextStepTile } from "@/components/results/NextStepTile";
 
 type Props = {
   wpmTrend: number[];      // sequential WPM samples over the run (seconds)
@@ -53,14 +58,62 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed }: Props) 
 
   // Prefer real totals from stats store only (single source of truth)
 
+  // Light plumbing: derive simple deltas vs recent average (last 5 runs)
+  const history = useStatsStore(s => s.history);
+  const recent = Array.isArray(history) && history.length ? history.slice(-5) : [] as any[];
+  const recentAvgWpm = recent.length ? Math.round(recent.reduce((a, r) => a + (Number(r.wpm) || 0), 0) / recent.length) : null;
+  const recentAvgAcc = recent.length ? Math.round(recent.reduce((a, r) => a + (Number(r.acc) || 0), 0) / recent.length) : null;
+  const currentWpm = Number(wpmTrend?.at(-1) ?? 0) || null; // fallback: last sampled WPM
+  const currentAcc = Math.round(Number(accuracyPct) || 0);
+  const deltaWpm = recentAvgWpm != null && currentWpm != null ? currentWpm - recentAvgWpm : null;
+  const deltaAcc = recentAvgAcc != null && Number.isFinite(currentAcc) ? currentAcc - recentAvgAcc : null;
+  const deltaFixes = null as number | null; // not tracked; omit unless available
+
+  // Confidence heuristic: higher if deltas are present and significant
+  const confidence = (() => {
+    const magnitude = Math.max(Math.abs(deltaWpm || 0), Math.abs(deltaAcc || 0));
+    if (magnitude >= 5) return "High" as const;
+    if (magnitude >= 2) return "Medium" as const;
+    return "Low" as const;
+  })();
+
   return (
     <>
-      {/* Heading */}
-      <div className="text-xs uppercase tracking-widest text-white/70 mb-2">AI FEEDBACK</div>
+      {/* Ember-glass container with AIAura header */}
+      <div className="relative rounded-3xl border border-orange-500/15 bg-gradient-to-br from-orange-500/10 via-amber-400/5 to-transparent backdrop-blur-sm shadow-[0_8px_40px_-10px_rgba(255,120,40,.25)] ai-card-embers">
+        <div className="p-4 md:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <AIAura confidence={confidence} />
+            {/* right-side rank badge retained below, not here */}
+          </div>
 
-      {/* Message */}
-      <div className="text-white/90 leading-relaxed">
-        {message}
+          {/* Insight sentence */}
+          <p className="mt-3 text-orange-100/95">{message}</p>
+
+          {/* Deltas row (guarded) */}
+          {(deltaWpm != null || deltaAcc != null || deltaFixes != null) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {deltaWpm != null && <DeltaChip label="WPM" delta={Math.round(deltaWpm)} />}
+              {deltaAcc != null && <DeltaChip label="Accuracy" delta={Math.round(deltaAcc)} suffix="%" />}
+              {deltaFixes != null && <DeltaChip label="Corrections" delta={Math.round(-deltaFixes)} />}
+            </div>
+          )}
+
+          {/* Optional micro sparkline */}
+          {Array.isArray(wpmTrend) && wpmTrend.length > 3 && (
+            <div className="mt-3">
+              <MicroSparkline data={wpmTrend} />
+            </div>
+          )}
+
+          {/* Pills row: Novice / Total XP / Streak are rendered below (existing) */}
+
+          {/* Explainability (placeholder-safe) */}
+          <WhyThis text={"Model-assisted summary based on speed and accuracy trend."} />
+
+          {/* Next step tile (friendly default) */}
+          <NextStepTile title={"Precision drill (30s)"} xp={40} />
+        </div>
       </div>
 
       {/* Rank / XP / Streak */}
@@ -101,10 +154,8 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed }: Props) 
         )}
       </div>
 
-      {/* Challenge */}
-      <div className="rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-gray-200 mt-2">
-        🎯 <span className="font-medium">Next challenge:</span> {challenge} <span className="opacity-80">(+{reward} XP)</span>
-      </div>
+      {/* spacer to preserve layout where the dark 'Next challenge' row used to be */}
+      <div className="ai-next-gap" aria-hidden />
     </>
   );
 }

@@ -88,31 +88,7 @@ export default function BlazeFeedbackCard({ rank, message, xp, streak, challenge
           ) : null;
         })()}
 
-        {/* Stats row */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          {authed ? (
-            <>
-              <span className="bk-cta">
-                <span className="text-white/70">Total XP:</span>
-                <span className="cta-main font-semibold ml-1"><CountUp value={xp} /></span>
-              </span>
-              <span className="bk-cta">
-                <span className="text-white/70">Streak:</span>
-                <span className="cta-main font-semibold ml-1"><CountUp value={streak} /></span>
-                <span className="text-white/60 ml-1">days</span>
-              </span>
-            </>
-          ) : (
-            <button type="button" onClick={handleLogin} className="bk-cta" aria-label="Log in to track stats with Blaze AI">
-              <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden className="opacity-80">
-                <path d="M12 2a10 10 0 1 1 0 20" stroke="rgba(255,255,255,.6)" fill="none"/>
-                <path d="M8 12h8M12 8v8" stroke="rgba(255,255,255,.85)"/>
-              </svg>
-              <span className="cta-main font-semibold">Log in</span>
-              <span className="text-white/75 ml-1">to track stats with Blaze AI</span>
-            </button>
-          )}
-        </div>
+        {/* Duplicate XP/Streak row removed — top inline pills remain inside AIFeedback */}
 
         {/* Next challenge */}
         <div className="mt-1">

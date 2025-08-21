@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSettingsStore } from '@/store/settings';
 import TypingBox from './TypingBox';
 import ResultsPanel from './ResultsPanel';
@@ -170,9 +170,11 @@ const TypingTest: React.FC = () => {
   const busyRef = useRef(false);
 
   const handleRestart = useCallback(async (desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) => {
+    // Ensure pre-test visibility immediately: not complete, time=0, view=typing
+    setIsTestComplete(false);
+    setTime(0);
     setView('typing');
     setWpmSeries([]);
-    setIsTestComplete(false);
     const hist = readHist();
     const avg = movingAvg(hist);
     setAvgWpm(avg.wpm);
@@ -354,6 +356,29 @@ const TypingTest: React.FC = () => {
       ro.disconnect();
     };
   }, [view]);
+
+  // Measure combined height of filter + stats and set CSS transform offset on root
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const applyOffset = () => {
+      const filterH = filterRef.current?.offsetHeight ?? 0;
+      const statsH  = statsRef.current?.offsetHeight ?? 0;
+      const total = filterH + statsH;
+      try { root.style.setProperty('--typing-offset', `${total}px`); } catch {}
+    };
+
+    applyOffset();
+    const ro = new ResizeObserver(applyOffset);
+    if (filterRef.current) ro.observe(filterRef.current);
+    if (statsRef.current)  ro.observe(statsRef.current);
+    window.addEventListener('resize', applyOffset);
+    return () => {
+      try { ro.disconnect(); } catch {}
+      window.removeEventListener('resize', applyOffset);
+    };
+  }, [rootRef, filterRef, statsRef]);
 
   const isRunning = view === 'typing' && !isTestComplete && time > 0;
 
@@ -555,8 +580,8 @@ const TypingTest: React.FC = () => {
       </div>
       )}
 
-      {/* Live Stats Bar - Visible during typing and results */}
-      {(time > 0 || view === 'results') && (
+      {/* Live Stats Bar - typing ONLY (hide in results) */}
+      {view === 'typing' && time > 0 && !isTestComplete && (
         <div ref={statsRef} className="bk-stats-bar sticky z-40 hide-on-test" aria-hidden={view === 'typing' && !isTestComplete && time > 0}>
           <div className="max-w-7xl mx-auto px-6">
             <div className="bk-stats-row">
@@ -628,6 +653,7 @@ const TypingTest: React.FC = () => {
               </div>
             ) : null}
 
+            <div className="typing-offsetter">
             <TypingBox 
               mode={mode}
               durationSec={durationSec}
@@ -659,10 +685,11 @@ const TypingTest: React.FC = () => {
                 return data.text;
               }}
             />
+            </div>
           </>
         )}
         {view === 'results' && (
-          <div className="bk-section-gradient pb-24 md:pb-28">
+          <div className="mt-6 md:mt-10">
             <ResultsPanel
               wpm={wpm}
               accuracy={accuracy}

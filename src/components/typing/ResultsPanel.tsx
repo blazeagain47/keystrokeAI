@@ -20,6 +20,7 @@ import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
 import NextTestButton from "@/components/ui/NextTestButton";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { useAuth } from "@/hooks/useAuth";
+import ResultsStatsBar from "./ResultsStatsBar";
 
 export interface ResultsPanelProps {
   wpm: number;
@@ -129,6 +130,16 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           transition={{ duration: 0.35, ease: "easeOut" }}
           className="min-h-[340px]"
         >
+          {/* RESULTS STATS BAR (sits above the chart) */}
+          <div className="mb-4 md:mb-5">
+            <ResultsStatsBar
+              wpm={Number(props.wpm ?? 0)}
+              accuracy={Number(props.accuracy ?? 0)}
+              durationSec={Number(props.time ?? 0)}
+              difficultyLabel={props.usedDifficulty ? props.usedDifficulty : undefined}
+            />
+          </div>
+
           <Card className="ks-card">
             <CardHeader className="pb-2">
               <div className="bk-chart-title mb-2">
