@@ -594,7 +594,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       <div className="w-full max-w-6xl mx-auto space-y-12">
         {/* status info */}
         {!hasStarted && !isComplete && (
-          <div className="text-center space-y-3">
+          <div className="text-center space-y-3 hide-on-test">
             <div className="inline-flex items-center gap-3 px-6 py-3 bg-gray-800/40 backdrop-blur-sm border border-gray-700/30 rounded-2xl">
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
               <p className="text-gray-300 text-sm font-medium">Click to focus, then start typing</p>

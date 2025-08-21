@@ -361,7 +361,7 @@ const TypingTest: React.FC = () => {
     <div ref={rootRef} className="min-h-dvh" data-view={view} data-run={isRunning ? 'true' : 'false'}>
       {/* Top Navigation/Filter Bar */}
       {view !== 'results' && (
-      <div ref={filterRef} className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur-xl border-b border-gray-800/50 shadow-2xl bk-filter-bar">
+      <div ref={filterRef} className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur-xl border-b border-gray-800/50 shadow-2xl bk-filter-bar hide-on-test" aria-hidden={view === 'typing' && !isTestComplete && time > 0}>
         <div className="max-w-7xl mx-auto px-6 py-6">
           
           {/* Main Mode Selection */}
@@ -557,7 +557,7 @@ const TypingTest: React.FC = () => {
 
       {/* Live Stats Bar - Visible during typing and results */}
       {(time > 0 || view === 'results') && (
-        <div ref={statsRef} className="bk-stats-bar sticky z-40">
+        <div ref={statsRef} className="bk-stats-bar sticky z-40 hide-on-test" aria-hidden={view === 'typing' && !isTestComplete && time > 0}>
           <div className="max-w-7xl mx-auto px-6">
             <div className="bk-stats-row">
               {/* WPM */}
@@ -683,7 +683,7 @@ const TypingTest: React.FC = () => {
 
       {/* Bottom Helper Bar - Only show during active typing */}
       {view === 'typing' && (
-      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-30 animate-in slide-in-from-bottom duration-700">
+      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-30 animate-in slide-in-from-bottom duration-700 hide-on-test" aria-hidden={view === 'typing' && !isTestComplete && time > 0}>
         <div className="bg-gray-800/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl px-8 py-4 shadow-2xl">
           <div className="flex items-center gap-8 text-sm">
             <div className="flex items-center gap-3 text-gray-400">

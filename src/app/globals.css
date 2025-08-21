@@ -993,3 +993,28 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
   }
   .animate-sparks { animation: sparks 1.1s ease-in-out infinite alternate; }
 }
+
+/* --- Minimalist typing view helpers (blazeKey) --- */
+
+/* Generic helper: any element tagged with .hide-on-test can be hidden when run is active */
+.hide-on-test {
+  /* default visible; scope the actual hiding under [data-run="true"] below */
+}
+
+/* When the typing page is active (after first keystroke), hide marked UI */
+[data-view="typing"][data-run="true"] .hide-on-test {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  display: none !important;
+  transition: opacity 120ms ease-in;
+}
+
+/* Safety: if we ever choose to rely on the body flag, keep a parallel selector.
+   (You already toggle .bk-typing-active while TypingBox is mounted.) */
+.bk-typing-active [data-view="typing"][data-run="true"] .hide-on-test {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  display: none !important;
+}
