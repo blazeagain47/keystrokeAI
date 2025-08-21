@@ -14,7 +14,8 @@ accelerate>=0.24.0
 tqdm
 numpy
 fastapi
-uvicorn
+uvicorn[standard]
 sqlalchemy
 passlib[bcrypt]
 PyJWT
+pydantic[email]
