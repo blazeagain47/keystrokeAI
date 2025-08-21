@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useStatsStore } from '@/stores/useStatsStore';
 import { useSettingsStore } from '@/store/settings';
 import TypingBox from './TypingBox';
 import ResultsPanel from './ResultsPanel';
@@ -18,6 +19,10 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { fetchJSON } from '@/lib/http';
+import { fetchWithRetry } from '@/lib/fetchWithRetry';
+import { generateLocalPrompt } from '@/lib/localPrompt';
+import { toLowerLettersOnly, ensureExactWordCount } from '@/lib/prompt/normalize';
+import { normalizePromptWords } from '@/lib/text';
 import SmartTestBadge from '@/components/SmartTestBadge';
 import ReadyToast from '@/components/typing/ReadyToast';
 
@@ -48,8 +53,11 @@ type FetchResponse = {
 };
 
 const TypingTest: React.FC = () => {
-  const [loading, setLoading] = useState(true);
-  const didInit = useRef(false);
+  type PromptLoad = 'idle'|'loading'|'ready'|'error';
+  const [promptLoad, setPromptLoad] = useState<PromptLoad>('idle');
+  const [promptError, setPromptError] = useState<string | null>(null);
+  const bootLockRef = useRef(false);
+  const bootAbortRef = useRef<AbortController | null>(null);
   const [wpm, setWpm] = useState(0);
   const [accuracy, setAccuracy] = useState(100);
   const [time, setTime] = useState(0);
@@ -72,15 +80,26 @@ const TypingTest: React.FC = () => {
   const [showPunctuation, setShowPunctuation] = useState(false);
   const [showNumbers, setShowNumbers] = useState(false);
 
+  // Keep the exact config actually used to generate the test
+  const lastUsedConfigRef = useRef<{
+    mode: 'words'|'time',
+    wordCount?: number | null,
+    durationSec?: number | null,
+    language?: string,
+    include_punctuation?: boolean,
+    include_numbers?: boolean,
+  }>({
+    mode: 'words',
+    wordCount: 15,
+    durationSec: null,
+    language: 'english',
+    include_punctuation: false,
+    include_numbers: false,
+  });
+
   // Backend prompt state
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
   const sessionUsedSeeds = useRef<Set<number>>(new Set());
-  // Robust generation state
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState<string | null>(null);
-  const lastPayloadRef = useRef<GeneratePayload | null>(null);
-  const genAbortRef = useRef<AbortController | null>(null);
-  const genSeqRef = useRef<number>(0);
   // backend base URL routed via fetchJSON
   // results-view combo restart listener (moved below to avoid forward reference)
 
@@ -113,64 +132,111 @@ const TypingTest: React.FC = () => {
     recent_accuracy?: number;
   };
 
-  const generatePrompt = useCallback(async (payload: GeneratePayload) => {
-    // cancel previous in-flight
-    if (genAbortRef.current) genAbortRef.current.abort();
-    const controller = new AbortController();
-    genAbortRef.current = controller;
+  async function loadPromptOnce(opts?: { useFallback?: boolean; overrides?: Partial<GeneratePayload> }) {
+    if (bootLockRef.current) return;
+    bootLockRef.current = true;
+    setPromptError(null);
+    setPromptLoad('loading');
 
-    const seq = ++genSeqRef.current;
-    lastPayloadRef.current = payload;
-    setIsGenerating(true);
-    setGenerateError(null);
+    try { bootAbortRef.current?.abort(); } catch {}
+    bootAbortRef.current = new AbortController();
 
     try {
-      // Prefer Next.js proxy to avoid CORS/env drift
-      const resp = await fetch("/api/generate-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal as unknown as AbortSignal,
-      });
+      let promptText: string | null = null;
 
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => "");
-        console.error("[generator] HTTP error", resp.status, errText);
-        throw new Error(`Generator HTTP ${resp.status}`);
+      if (!opts?.useFallback) {
+        const hist = readHist();
+        const avg = movingAvg(hist);
+        const useTime = mode === 'time';
+        // Prefer override when present to avoid setState race
+        const effectiveCount = useTime ? undefined : (opts?.overrides?.count ?? wordCount);
+        if (useTime) {
+          const estWpm = avg.wpm > 0 ? avg.wpm : 50;
+          const estWords = Math.ceil((estWpm * durationSec) / 60);
+          // For time mode we send a generous token count; words count is ignored
+          // (kept as undefined to rely on duration)
+        }
+
+        const payload: GeneratePayload = {
+          mode: useTime ? 'time' : 'words',
+          count: effectiveCount,
+          duration: useTime ? durationSec : undefined,
+          include_punctuation: showPunctuation,
+          include_numbers: showNumbers,
+          language: 'english',
+          difficulty: 'auto',
+          recent_wpm: avg.wpm,
+          recent_accuracy: avg.acc,
+        };
+
+        const data = await fetchWithRetry('/api/generate-proxy', {
+          attempts: 3,
+          timeoutMs: 10000,
+          backoffMs: 700,
+          factor: 1.7,
+          fetchInit: {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...payload, ...(opts?.overrides || {}) }),
+            signal: bootAbortRef.current?.signal as unknown as AbortSignal,
+          },
+        });
+        promptText = data?.text ?? data?.prompt ?? data?.data?.prompt ?? null;
+        if (data?.seed != null) try { sessionUsedSeeds.current.add(Number(data.seed)); } catch {}
+        if (data?.difficulty) { usedDifficultyRef.current = data.difficulty; setSmartUsedDifficulty(data.difficulty); }
+        if (data?.flags) setSmartFlags(data.flags);
       }
 
-      const data = (await resp.json().catch(() => null)) as FetchResponse | null;
-
-      // ignore stale
-      if (seq !== genSeqRef.current) return;
-
-      if (!data || !data.text) {
-        console.error("[generator] empty response", data);
-        throw new Error("Empty generator response");
+      if (!promptText) {
+        const useTime = mode === 'time';
+        const effectiveCount = useTime ? undefined : (opts?.overrides?.count ?? wordCount ?? 15);
+        const wc = useTime ? 200 : Number(effectiveCount ?? 15);
+        promptText = generateLocalPrompt({ wordCount: wc });
       }
 
-      sessionUsedSeeds.current.add(data.seed);
-      setCurrentPrompt(data.text);
-      if (data?.difficulty) { usedDifficultyRef.current = data.difficulty; }
-      if (data?.difficulty) setSmartUsedDifficulty(data.difficulty);
-      if (data?.flags) setSmartFlags(data.flags);
-      setIsGenerating(false);
-      console.log("[generator] success payload", data);
-    } catch (err: unknown) {
-      if (seq !== genSeqRef.current) return;
-      setIsGenerating(false);
-      const msg = err instanceof Error ? err.message : 'Failed to generate';
-      setGenerateError(msg);
-      console.error("[generator] failed", err);
-    } finally {
-      if (genAbortRef.current === controller) genAbortRef.current = null;
+      // Enforce exact words count using a single effective count and lowercase globally
+      let finalPrompt = String(promptText);
+      {
+        const useTime = mode === 'time';
+        const effectiveCount = useTime ? undefined : (opts?.overrides?.count ?? wordCount ?? 15);
+
+        // Record the effective config we just used
+        lastUsedConfigRef.current = {
+          mode: useTime ? 'time' : 'words',
+          wordCount: useTime ? null : (typeof effectiveCount === 'number' ? effectiveCount : null),
+          durationSec: useTime ? durationSec : null,
+          language: 'english',
+          include_punctuation: showPunctuation,
+          include_numbers: showNumbers,
+        };
+
+        if (!useTime) {
+          const n = Number(effectiveCount ?? 15);
+          if (Number.isFinite(n) && n > 0) {
+            finalPrompt = ensureExactWordCount(finalPrompt, n);
+          }
+        }
+      }
+      finalPrompt = toLowerLettersOnly(finalPrompt, 'en-US');
+      finalPrompt = normalizePromptWords(finalPrompt);
+
+      setIsTestComplete(false);
+      setTime(0);
+      setView('typing');
+      setCurrentPrompt(finalPrompt);
+      setPromptLoad('ready');
+    } catch (err: any) {
+      console.error('[prompt boot] error', err);
+      setPromptError(err?.message ?? 'Failed to load prompt');
+      setPromptLoad('error');
+      bootLockRef.current = false;
+      return;
     }
-  }, []);
+  }
 
   const busyRef = useRef(false);
 
   const handleRestart = useCallback(async (desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) => {
-    // Ensure pre-test visibility immediately: not complete, time=0, view=typing
     setIsTestComplete(false);
     setTime(0);
     setView('typing');
@@ -179,35 +245,14 @@ const TypingTest: React.FC = () => {
     const avg = movingAvg(hist);
     setAvgWpm(avg.wpm);
     setAvgAcc(avg.acc);
-    if (mode === 'time') {
-      const estWpm = avg.wpm > 0 ? avg.wpm : 50;
-      const estWords = Math.ceil((estWpm * durationSec) / 60);
-      const initialCount = Math.max(200, Math.ceil(estWords * 1.6));
-      await generatePrompt({
-        mode: 'time',
-        count: initialCount,
-        duration: durationSec,
-        include_punctuation: flagOverrides?.include_punctuation ?? showPunctuation,
-        include_numbers: flagOverrides?.include_numbers ?? showNumbers,
-        language: 'english',
-        difficulty: 'auto',
-        recent_wpm: avg.wpm,
-        recent_accuracy: avg.acc,
-      });
-    } else {
-      const c = desiredCount ?? wordCount;
-      await generatePrompt({
-        mode: 'words',
-        count: c,
-        include_punctuation: flagOverrides?.include_punctuation ?? showPunctuation,
-        include_numbers: flagOverrides?.include_numbers ?? showNumbers,
-        language: 'english',
-        difficulty: 'auto',
-        recent_wpm: avg.wpm,
-        recent_accuracy: avg.acc,
-      });
-    }
-  }, [durationSec, generatePrompt, showNumbers, showPunctuation, wordCount, mode]);
+    bootLockRef.current = false;
+    const overrides: Partial<GeneratePayload> = {
+      count: desiredCount,
+      include_punctuation: flagOverrides?.include_punctuation,
+      include_numbers: flagOverrides?.include_numbers,
+    };
+    await loadPromptOnce({ overrides });
+  }, []);
 
   const safeRestart = useCallback(async (desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) => {
     if (busyRef.current) return;
@@ -219,41 +264,16 @@ const TypingTest: React.FC = () => {
     }
   }, [handleRestart]);
 
-  // Strict-mode safe, idempotent init
+  // Initial boot – run once after mount, no duplicate triggers
   useEffect(() => {
-    if (didInit.current) return;
-    didInit.current = true;
-    const startTest = async () => {
-      const s = useSettingsStore.getState();
-      const t = s.test;
-      try {
-        setView('typing');
-        const len = t?.defaultLength ?? 15;
-        const opts = {
-          include_numbers: !!t?.include_numbers,
-          include_punctuation: !!t?.include_punctuation,
-        };
-        console.debug("TypingTest init: running safeRestart", { len, opts });
-        await safeRestart(len, opts);
-      } catch (err) {
-        console.warn("Init safeRestart failed, falling back to local words", err);
-        // Local fallback prompt – never leave user stuck
-        setMode('words');
-        setView('typing');
-        setCurrentPrompt(Array.from({ length: 60 }, () => "blaze").join(" "));
-      } finally {
-        setLoading(false);
-      }
+    if (typeof window === 'undefined') return;
+    if (promptLoad !== 'idle') return;
+    loadPromptOnce().catch(() => {});
+    return () => {
+      try { bootAbortRef.current?.abort(); } catch {}
     };
-    // Kick on microtask and add safety retry to avoid spinner hangs
-    queueMicrotask(() => {
-      startTest();
-      const timer = setTimeout(() => {
-        if (loading) startTest();
-      }, 2500);
-      return () => clearTimeout(timer);
-    });
-  }, [safeRestart, loading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleStatsUpdate = (newWpm: number, newAccuracy: number, newTime: number) => {
     setWpm(newWpm);
@@ -288,6 +308,17 @@ const TypingTest: React.FC = () => {
     if (current) setPrevDifficulty(current);
   }, [smartUsedDifficulty, prevDifficulty]);
 
+  // Honor deep link: /#new → start fresh test and clear hash
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.location.hash === '#new') {
+      setTimeout(() => {
+        try { void safeRestart(); } catch {}
+        try { history.replaceState(null, '', '/'); } catch {}
+      }, 0);
+    }
+  }, [safeRestart]);
+
   const handleTestComplete = async (finalWpm: number, finalAccuracy: number, finalTime: number, finalTypedText?: string) => {
     setIsTestComplete(true);
     setWpm(finalWpm);
@@ -299,6 +330,21 @@ const TypingTest: React.FC = () => {
       const items = readHist();
       items.push({ wpm: finalWpm, acc: finalAccuracy, ts: Date.now() });
       writeHist(items);
+    } catch {}
+
+    // Guarantee a normalized history append for both modes (words/time)
+    try {
+      const used = lastUsedConfigRef.current;
+      useStatsStore.getState().append({
+        id: (globalThis as any).crypto?.randomUUID ? (globalThis as any).crypto.randomUUID() : String(Date.now()),
+        ts: Date.now(),
+        wpm: finalWpm,
+        acc: finalAccuracy,
+        durationSec: Math.round(finalTime ?? 0),
+        mode: used.mode,
+        words: used.mode === 'words' ? (used.wordCount ?? undefined) : undefined,
+        // the store append() normalizes accuracyPct/completion flags
+      } as any);
     } catch {}
     if (!finalTypedText) return;
     try {
@@ -316,6 +362,20 @@ const TypingTest: React.FC = () => {
         feedback: "Could not fetch AI feedback. Please ensure backend is running.",
       });
     }
+    // Fire-and-forget: persist run to server (guest-safe)
+    try {
+      const payload = {
+        mode: view === 'typing' ? (mode === 'time' ? `time/${durationSec}` : `words/${wordCount}`) : 'words',
+        durationSec: Math.round(finalTime),
+        wordsCount: mode === 'words' ? wordCount : undefined,
+        wpm: Math.round(finalWpm),
+        accuracy: Math.round(finalAccuracy),
+      };
+      const guestId = (() => {
+        try { return localStorage.getItem('bk_guest_id') || (() => { const id = crypto.randomUUID(); localStorage.setItem('bk_guest_id', id); return id; })(); } catch { return null; }
+      })();
+      await fetch('/api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, guestId }) });
+    } catch {}
   };
 
   const filterRef = useRef<HTMLDivElement | null>(null);
@@ -638,20 +698,34 @@ const TypingTest: React.FC = () => {
 
         {view === 'typing' && (
           <>
-            {/* Inline status / retry for generator */}
-            {isGenerating ? (
-              <div className="text-center text-sm opacity-80 my-4">Generating new test...</div>
-            ) : generateError ? (
-              <div className="text-center text-sm opacity-80 my-4">
-                Couldn’t reach the generator.{" "}
-                <button
-                  className="underline decoration-dotted hover:opacity-100 opacity-80"
-                  onClick={() => { if (lastPayloadRef.current) void generatePrompt(lastPayloadRef.current); }}
-                >
-                  Retry
-                </button>
+            {/* Loader + error UI driven by promptLoad */}
+            {promptLoad === 'loading' && !currentPrompt && (
+              <div className="flex flex-col items-center gap-2 text-orange-200/80 my-6">
+                <div className="size-6 rounded-full border-2 border-orange-400/50 border-t-transparent animate-spin" />
+                <div className="text-sm">Generating new test…</div>
+                <div className="text-[11px] text-orange-200/60">Powered by model-assisted prompts</div>
               </div>
-            ) : null}
+            )}
+            {promptLoad === 'error' && !currentPrompt && (
+              <div className="flex flex-col items-center gap-2 text-orange-200/80 my-6">
+                <div className="text-sm">Couldn’t generate a test.</div>
+                <div className="flex gap-2">
+                  <button
+                    className="px-3 py-1.5 rounded-md bg-white/10 ring-1 ring-white/15 hover:bg-white/15"
+                    onClick={() => { bootLockRef.current = false; loadPromptOnce().catch(()=>{}); }}
+                  >
+                    Try again
+                  </button>
+                  <button
+                    className="px-3 py-1.5 rounded-md bg-orange-500/15 ring-1 ring-orange-400/25 hover:ring-orange-300/40"
+                    onClick={() => { bootLockRef.current = false; loadPromptOnce({ useFallback: true }).catch(()=>{}); }}
+                  >
+                    Use offline prompt
+                  </button>
+                </div>
+                {promptError && <div className="text-[11px] opacity-70">{promptError}</div>}
+              </div>
+            )}
 
             <div className="typing-offsetter">
             <TypingBox 
@@ -700,6 +774,7 @@ const TypingTest: React.FC = () => {
               avgWpm={avgWpm}
               avgAcc={avgAcc}
               flags={smartFlags ?? undefined}
+              usedConfig={lastUsedConfigRef.current}
               onNextTest={async () => { await safeRestart(); }}
             />
           </div>

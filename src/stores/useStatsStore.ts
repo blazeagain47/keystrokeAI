@@ -53,7 +53,20 @@ export const useStatsStore = create<StatsState>((set, get) => ({
 
   append: (run: BlazeRun) => {
     set((state) => {
-      const history = [...state.history, run];
+      // Normalize so downstream metrics don’t miss items
+      const normalized = {
+        ...run,
+        // prefer run.accuracyPct, else run.accuracy, else run.acc
+        accuracyPct:
+          (run as any).accuracyPct ??
+          (run as any).accuracy ??
+          (run as any).acc ??
+          undefined,
+        completed: (run as any).completed ?? true,
+        isComplete: (run as any).isComplete ?? true,
+      } as unknown as BlazeRun & { accuracyPct?: number; completed?: boolean; isComplete?: boolean };
+
+      const history = [...state.history, normalized as any];
       const inRange = filterByRange(history, state.range);
       const s = summarize(inRange);
       return { history, summary: s, totalXP: s.totalXP, streakDays: s.streakDays };

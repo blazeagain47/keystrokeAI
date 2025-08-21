@@ -3,6 +3,9 @@
  import CountUp from "@/components/ui/CountUp";
  import FireSparkline from "@/components/ui/FireSparkline";
  import EmberField from "@/components/ui/EmberField";
+ import { useStatsStore } from "@/stores/useStatsStore";
+ import { computeRecentAverages } from "@/lib/recentStats";
+ import SelectedTestChips from "@/components/results/SelectedTestChips";
 
 type Props = {
   difficulty: string;            // e.g., "easy" -> must render "Easy"
@@ -12,6 +15,14 @@ type Props = {
   trend?: number[];              // sparkline values 0..100
   error?: string | null;         // if present, show small error line
   className?: string;            // allow external glow boost
+  lastRunConfig?: {
+    mode: "words" | "time" | "quote" | "zen" | "custom";
+    wordCount?: number | null;
+    durationSec?: number | null;
+    language?: string | null;
+    punctuation?: boolean | null;
+    numbers?: boolean | null;
+  };
 };
 
 export default function FireSummaryCard({
@@ -22,6 +33,7 @@ export default function FireSummaryCard({
   trend = [30,65,58,72,63,60,68,71], // safe default
   error,
   className,
+  lastRunConfig,
 }: Props) {
   const prettyDifficulty = difficulty ? difficulty[0].toUpperCase() + difficulty.slice(1).toLowerCase() : "Easy";
 
@@ -35,6 +47,13 @@ export default function FireSummaryCard({
 
   // filter out noisy backend hint
   const noisy = typeof error === "string" && /please ensure backend is running/i.test(error);
+
+  // derive recent averages from store (fallback-safe)
+  const history = (() => { try { return useStatsStore.getState().history as any[]; } catch { return []; } })();
+  const { avgWpm, avgAcc, sampleCount } = computeRecentAverages(history, 5);
+  const recentWpmDisplay = avgWpm == null ? "—" : String(avgWpm);
+  const recentAccDisplay = avgAcc == null ? "—" : String(avgAcc);
+  const subtitle = sampleCount > 0 ? "Your recent average" : "No recent runs";
 
   return (
     <section className={`relative bk-fire-card bk-card-sheen p-4 sm:p-5 ${pulse ? "bk-pulse" : ""} ${className ?? ""}`}>
@@ -105,35 +124,38 @@ export default function FireSummaryCard({
           {/* Average */}
           <div className="bk-tile pr-14 overflow-visible">
             <div className="text-[10px] uppercase tracking-wide text-white/50 mb-1">
-              Your recent average
+              {subtitle}
             </div>
             <div className="flex items-baseline flex-wrap justify-start gap-x-6 sm:gap-x-8 gap-y-1 sm:gap-y-0 bk-gap-compact">
               <span className="flex items-baseline gap-2 whitespace-nowrap shrink-0">
                 <span className="text-2xl sm:text-3xl font-semibold text-fire leading-none">
-                  <CountUp value={averageWPM} />
+                  {recentWpmDisplay === "—" ? "—" : <CountUp value={Number(recentWpmDisplay)} />}
                 </span>
                 <span className="text-xs sm:text-sm text-white/60 leading-none tracking-tight">WPM</span>
               </span>
               <span className="flex items-baseline gap-1 flex-wrap shrink-0 -mt-0.5 sm:mt-0">
                 <span className="text-2xl sm:text-3xl font-semibold text-fire leading-none tracking-tight whitespace-nowrap">
-                  <CountUp value={accuracy} />
-                  <span className="align-baseline text-[0.9em] ml-0">%</span>
+                  {recentAccDisplay === "—" ? "—" : <><CountUp value={Number(recentAccDisplay)} /><span className="align-baseline text-[0.9em] ml-0">%</span></>}
                 </span>
                 <span className="text-xs sm:text-sm text-white/60 leading-none ml-1">acc</span>
               </span>
             </div>
           </div>
 
-          {/* Knobs */}
+          {/* This test */}
           <div className="bk-tile">
             <div className="text-[10px] uppercase tracking-wide text-white/50 mb-1">
-              Next test knobs
+              This test
             </div>
-            <div className="flex flex-wrap gap-2">
-              {knobs.map((k, i) => (
-                <span key={i} className="bk-tag">{k}</span>
-              ))}
-            </div>
+            <SelectedTestChips
+              dense
+              mode={lastRunConfig?.mode ?? "words"}
+              wordCount={lastRunConfig?.wordCount ?? null}
+              durationSec={lastRunConfig?.durationSec ?? null}
+              language={lastRunConfig?.language ?? "english"}
+              punctuation={!!lastRunConfig?.punctuation}
+              numbers={!!lastRunConfig?.numbers}
+            />
           </div>
         </div>
 

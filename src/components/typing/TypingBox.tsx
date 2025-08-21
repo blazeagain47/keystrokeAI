@@ -106,7 +106,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   /* ───────── Load prompt from prop ───────── */
   const resetFromPrompt = useCallback((text: string) => {
     setIsLoading(true);
-    const nextWords = text.split(/\s+/).filter(Boolean);
+    const nextWords = text.split(" ").filter(Boolean);
     setWords(nextWords);
     setCurrentWordIndex(0);
     setCurrentCharIndex(0);
@@ -324,6 +324,20 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       /* space */
       if (e.key === ' ') {
         e.preventDefault();
+        // Words mode: if already at/past end of last word, finalize instead of advancing
+        if (mode === 'words') {
+          const lastIdx = Math.max(0, words.length - 1);
+          const lastLen = (words[lastIdx] || '').length;
+          if (currentWordIndex >= lastIdx && currentCharIndex >= lastLen) {
+            setIsComplete(true);
+            const now = Date.now();
+            const currentTime = startTime ? (now - startTime) / 1000 : 0;
+            const finalWpm = calculateWPM(correctChars, currentTime);
+            const finalAcc = calculateAccuracy(correctChars, totalChars);
+            onTestComplete(finalWpm, finalAcc, currentTime, typedInput);
+            return;
+          }
+        }
 
         // Handle remaining characters in the current word as explicit mistakes
         const topEndIdx = lineEndsRef.current[visibleStartLine] ?? -1;

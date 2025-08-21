@@ -4,11 +4,17 @@ import { useMemo } from "react";
 import { rankForXP } from "@/utils/progression";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { rankStyles, mapToRankTier, shouldShimmer } from "@/utils/rankStyles";
-import { AIAura } from "@/components/results/AIAura";
 import { DeltaChip } from "@/components/results/DeltaChip";
 import { MicroSparkline } from "@/components/results/MicroSparkline";
 import { WhyThis } from "@/components/results/WhyThis";
 import { NextStepTile } from "@/components/results/NextStepTile";
+import { ConfidenceMeter } from "@/components/results/ConfidenceMeter";
+import { FocusTag } from "@/components/results/FocusTag";
+import { ProjectedGain } from "@/components/results/ProjectedGain";
+import { MetricChip } from "@/components/results/MetricChip";
+import { CoachPraise } from "@/components/results/CoachPraise";
+import { seriesStats, stabilityIndex, correctionsPerMin, projectedWpmGain } from "@/lib/metrics";
+import { LineChart, ShieldCheck, Target } from "lucide-react";
 
 type Props = {
   wpmTrend: number[];      // sequential WPM samples over the run (seconds)
@@ -69,49 +75,95 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed }: Props) 
   const deltaAcc = recentAvgAcc != null && Number.isFinite(currentAcc) ? currentAcc - recentAvgAcc : null;
   const deltaFixes = null as number | null; // not tracked; omit unless available
 
-  // Confidence heuristic: higher if deltas are present and significant
-  const confidence = (() => {
-    const magnitude = Math.max(Math.abs(deltaWpm || 0), Math.abs(deltaAcc || 0));
-    if (magnitude >= 5) return "High" as const;
-    if (magnitude >= 2) return "Medium" as const;
+  // 2.2 metrics and heuristics
+  const wpmSeries = wpmTrend;
+  const s = seriesStats(wpmSeries);
+  const peakWpm = s?.max ?? null;
+  const stability = stabilityIndex(wpmSeries);
+  const keystrokes: { correct?: number; error?: number } | null = null;
+  const durationSec = wpmTrend?.length ?? null;
+  const corrPerMin = correctionsPerMin(keystrokes?.correct, keystrokes?.error, durationSec);
+  const recentAvgFixes: number | null = null;
+  const currentFixes: number | null = null;
+  const projGain = projectedWpmGain(currentWpm, currentFixes, recentAvgFixes, 0.3);
+
+  const focus: "Rhythm"|"Precision"|"Endurance" | null =
+    (corrPerMin!=null && corrPerMin > 20) ? "Precision" :
+    (stability!=null && stability < 55)   ? "Rhythm" :
+    (durationSec!=null && durationSec >= 60) ? "Endurance" : "Rhythm";
+
+  const confidence = ((deltaWpm: number | null, deltaAcc: number | null) => {
+    const w = Math.abs(deltaWpm ?? 0);
+    const a = Math.abs(deltaAcc ?? 0);
+    if (w >= 10 || a >= 4) return "High" as const;
+    if (w >= 5 || a >= 2) return "Medium" as const;
     return "Low" as const;
-  })();
+  })(deltaWpm, deltaAcc);
+
+  function pickPraise(): string {
+    if (deltaWpm && deltaWpm > 0 && deltaAcc && deltaAcc >= 0) return "Great momentum—both speed and accuracy improved. Keep this rhythm!";
+    if (deltaWpm && deltaWpm > 0) return "Nice speed lift. Keep a steady cadence to lock it in.";
+    if (deltaAcc && deltaAcc > 0) return "Cleaner lines this run—fewer corrections. Excellent focus.";
+    if (stability && stability >= 65) return "Consistent pace—this is how you build durable speed.";
+    if (projGain && projGain >= 8) return "You’re close—trim a few corrections and the speed will follow.";
+    return "Strong fundamentals—stay smooth and keep your hands relaxed.";
+  }
+  const coachPraise = pickPraise();
 
   return (
     <>
-      {/* Ember-glass container with AIAura header */}
-      <div className="relative rounded-3xl border border-orange-500/15 bg-gradient-to-br from-orange-500/10 via-amber-400/5 to-transparent backdrop-blur-sm shadow-[0_8px_40px_-10px_rgba(255,120,40,.25)] ai-card-embers">
-        <div className="p-4 md:p-5">
-          <div className="flex items-start justify-between gap-3">
-            <AIAura confidence={confidence} />
-            {/* right-side rank badge retained below, not here */}
+      {/* Single-surface card with 2.2 layout */}
+      <div className="ai-card-surface relative p-4 md:p-5">
+        {/* HEADER */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="text-orange-200 font-semibold">AI Feedback</h3>
+            <span className="size-1 rounded-full bg-orange-300/60" />
+            <span className="text-[11px] text-orange-200/70">Auto-generated coaching</span>
+            <div className="ml-2">
+              <ConfidenceMeter level={confidence} />
+            </div>
           </div>
+        </div>
 
-          {/* Insight sentence */}
-          <p className="mt-3 text-orange-100/95">{message}</p>
+        {/* INSIGHT */}
+        <p className="mt-3 text-orange-100/95">{message}</p>
 
-          {/* Deltas row (guarded) */}
-          {(deltaWpm != null || deltaAcc != null || deltaFixes != null) && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {deltaWpm != null && <DeltaChip label="WPM" delta={Math.round(deltaWpm)} />}
-              {deltaAcc != null && <DeltaChip label="Accuracy" delta={Math.round(deltaAcc)} suffix="%" />}
-              {deltaFixes != null && <DeltaChip label="Corrections" delta={Math.round(-deltaFixes)} />}
-            </div>
+        {/* CHIPS */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {deltaWpm != null && <DeltaChip label="WPM" delta={Math.round(deltaWpm)} />}
+          {typeof accuracyPct === 'number' && isFinite(accuracyPct) && (
+            <MetricChip
+              icon={ShieldCheck}
+              label="Accuracy"
+              value={Math.round(accuracyPct)}
+              suffix="%"
+              tone={accuracyPct >= 95 ? "good" : accuracyPct >= 85 ? "neutral" : "warn"}
+            />
           )}
+          {stability!=null && <MetricChip icon={ShieldCheck} label="Consistency" value={`${stability}`} suffix="%" tone={stability>=65?"good":"neutral"} />}
+          {corrPerMin!=null && <MetricChip icon={Target} label="Corrections" value={`${corrPerMin}`} suffix="/min" tone={corrPerMin<=12?"good":corrPerMin>20?"warn":"neutral"} />}
+          {peakWpm!=null && <MetricChip icon={LineChart} label="Peak WPM" value={Math.round(peakWpm)} />}
+          {focus && <FocusTag focus={focus} />}
+          {projGain!=null && projGain>0 && <ProjectedGain wpm={projGain} />}
+        </div>
 
-          {/* Optional micro sparkline */}
-          {Array.isArray(wpmTrend) && wpmTrend.length > 3 && (
-            <div className="mt-3">
-              <MicroSparkline data={wpmTrend} />
-            </div>
-          )}
+        {/* Sparkline (flat) */}
+        {Array.isArray(wpmTrend) && wpmTrend.length > 3 && (
+          <div className="mt-3">
+            <MicroSparkline data={wpmTrend} flat={true} />
+            <div className="mt-1 text-[11px] text-orange-200/60">WPM trend in last run</div>
+          </div>
+        )}
 
-          {/* Pills row: Novice / Total XP / Streak are rendered below (existing) */}
+        {/* Why this? */}
+        <WhyThis text={"Model-assisted summary based on speed and accuracy trend."} />
 
-          {/* Explainability (placeholder-safe) */}
-          <WhyThis text={"Model-assisted summary based on speed and accuracy trend."} />
+        {/* Coach praise */}
+        <CoachPraise text={coachPraise} />
 
-          {/* Next step tile (friendly default) */}
+        {/* CTA */}
+        <div className="mt-4">
           <NextStepTile title={"Precision drill (30s)"} xp={40} />
         </div>
       </div>
@@ -154,7 +206,6 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed }: Props) 
         )}
       </div>
 
-      {/* spacer to preserve layout where the dark 'Next challenge' row used to be */}
       <div className="ai-next-gap" aria-hidden />
     </>
   );

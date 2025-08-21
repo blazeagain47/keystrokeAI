@@ -3,7 +3,7 @@
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 // ⬇️ Stable lucide icons only
-import { Bell, User, Settings as Gear } from "lucide-react";
+import { Bell, User, Settings as Gear, Keyboard } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
@@ -30,6 +30,15 @@ export default function Header() {
           </span>
         </Link>
         <div className="flex items-center gap-3">
+          {/* New test keyboard button (left of notifications) */}
+          <Link
+            href="/#new"
+            aria-label="Start a new typing test"
+            title="New test (Tab → Enter)"
+            className="p-2 rounded-xl hover:bg-white/10 transition"
+          >
+            <Keyboard className="h-5 w-5" />
+          </Link>
           <Link
             href="#"
             className="p-2 rounded-xl hover:bg-white/10 transition"

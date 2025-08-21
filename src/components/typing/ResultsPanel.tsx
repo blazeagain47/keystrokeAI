@@ -16,6 +16,7 @@ import {
 import AIFeedback from "@/components/feedback/AIFeedback";
 import BlazeFeedbackCard from "@/components/feedback/BlazeFeedbackCard";
 import FireSummaryCard from "@/components/test/FireSummaryCard";
+import ThisTestCard from "@/components/test/ThisTestCard";
 import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
 import NextTestButton from "@/components/ui/NextTestButton";
 import { useStatsStore } from "@/stores/useStatsStore";
@@ -38,6 +39,14 @@ export interface ResultsPanelProps {
   avgWpm?: number;
   avgAcc?: number;
   flags?: { punctuation?: boolean; numbers?: boolean };
+  usedConfig?: {
+    mode: "words" | "time" | "quote" | "zen" | "custom";
+    wordCount?: number | null;
+    durationSec?: number | null;
+    include_punctuation?: boolean;
+    include_numbers?: boolean;
+    language?: string | null;
+  };
 }
 
 const fmt = {
@@ -121,7 +130,23 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   }
 
   return (
-    <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6 bk-page-content" aria-label="Results">
+    <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6 bk-page-content results-scroll-root" aria-label="Results">
+      {/* Reordered: Blaze stats above the chart; keep two-column layout for chart + AI Feedback */}
+      {/* Move Blaze stats summary above the two-column grid */}
+      {usedDifficulty && (
+        <div className="mb-2">
+          <FireSummaryCard
+            difficulty={usedDifficulty}
+            averageWPM={Math.round(Number(avgWpm ?? 0))}
+            accuracy={Math.round(Number(avgAcc ?? 0))}
+            knobs={nextKnobs ?? ["Punctuation off", "Numbers off"]}
+            trend={trendPercentages}
+            error={aiError}
+            className={`mt-0 ${pulseGlow ? 'glow-boost' : ''}`}
+          />
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         {/* LEFT: Chart */}
         <motion.div
@@ -229,23 +254,17 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             challenge={"Beat your last WPM next run (+40 XP)"}
           />
 
-          {/* Smart next test summary (fire-themed) */}
-          {usedDifficulty && (
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, ease: "easeOut", delay: 0.08 }}
-            >
-              <FireSummaryCard
-                difficulty={usedDifficulty}
-                averageWPM={Math.round(Number(avgWpm ?? 0))}
-                accuracy={Math.round(Number(avgAcc ?? 0))}
-                knobs={nextKnobs ?? ["Punctuation off", "Numbers off"]}
-                trend={trendPercentages}
-                error={aiError}
-                className={`mt-0 ${pulseGlow ? 'glow-boost' : ''}`}
-              />
-            </motion.div>
+          {/* This test card (replaces next test knobs) */}
+          {props.usedConfig && (
+            <ThisTestCard
+              className="w-full"
+              mode={props.usedConfig.mode}
+              wordCount={props.usedConfig.wordCount}
+              durationSec={props.usedConfig.durationSec}
+              include_punctuation={props.usedConfig.include_punctuation}
+              include_numbers={props.usedConfig.include_numbers}
+              language={props.usedConfig.language}
+            />
           )}
         </motion.div>
       </div>

@@ -8,6 +8,7 @@ import Header from '@/components/Header'
 import GlobalFireBackdrop from '@/components/brand/GlobalFireBackdrop'
 import AppBoot from '@/components/AppBoot'
 import SettingsModal from '@/components/settings/SettingsModal'
+import HotkeysGlobal from '@/components/system/HotkeysGlobal'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -43,6 +44,7 @@ export default function RootLayout({
         >
           <GlobalFireBackdrop />
           <Header />
+          <HotkeysGlobal />
           {children}
           {/* Global auth modal gate */}
           <AuthGate />
