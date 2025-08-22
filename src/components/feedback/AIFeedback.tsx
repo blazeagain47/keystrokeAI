@@ -14,12 +14,20 @@ import { ProjectedGain } from "@/components/results/ProjectedGain";
 import { MetricChip } from "@/components/results/MetricChip";
 import { CoachPraise } from "@/components/results/CoachPraise";
 import { seriesStats, stabilityIndex, correctionsPerMin, projectedWpmGain } from "@/lib/metrics";
+import {
+  peakFromSeries,
+  consistencyFromSeries,
+  baselineWpmFromHistory,
+  RunSnapshot,
+} from "@/lib/typingMetrics";
 import { LineChart, ShieldCheck, Target } from "lucide-react";
 
 type Props = {
   wpmTrend: number[];      // sequential WPM samples over the run (seconds)
   accuracyPct: number;     // 0–100
   completed: boolean;      // true when test finished
+  /** finished run snapshot for better baselines */
+  runSnapshot?: RunSnapshot | null;
 };
 
 function summarize(wpmTrend: number[]) {
@@ -53,7 +61,7 @@ function nextChallenge(wpmTrend: number[], acc: number) {
   return { label: `Beat ${target} WPM next run`, reward: 50 };
 }
 
-export default function AIFeedback({ wpmTrend, accuracyPct, completed }: Props) {
+export default function AIFeedback({ wpmTrend, accuracyPct, completed, runSnapshot }: Props) {
   const message = useMemo(() => buildMessage(wpmTrend, accuracyPct), [wpmTrend, accuracyPct]);
   const { label: challenge, reward } = useMemo(() => nextChallenge(wpmTrend, accuracyPct), [wpmTrend, accuracyPct]);
 
@@ -67,19 +75,18 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed }: Props) 
   // Light plumbing: derive simple deltas vs recent average (last 5 runs)
   const history = useStatsStore(s => s.history);
   const recent = Array.isArray(history) && history.length ? history.slice(-5) : [] as any[];
-  const recentAvgWpm = recent.length ? Math.round(recent.reduce((a, r) => a + (Number(r.wpm) || 0), 0) / recent.length) : null;
-  const recentAvgAcc = recent.length ? Math.round(recent.reduce((a, r) => a + (Number(r.acc) || 0), 0) / recent.length) : null;
+  const baselineWpm = baselineWpmFromHistory(recent as any[], runSnapshot ?? null);
   const currentWpm = Number(wpmTrend?.at(-1) ?? 0) || null; // fallback: last sampled WPM
   const currentAcc = Math.round(Number(accuracyPct) || 0);
-  const deltaWpm = recentAvgWpm != null && currentWpm != null ? currentWpm - recentAvgWpm : null;
-  const deltaAcc = recentAvgAcc != null && Number.isFinite(currentAcc) ? currentAcc - recentAvgAcc : null;
+  const deltaWpm = baselineWpm != null && currentWpm != null ? currentWpm - baselineWpm : null;
+  const deltaAcc = null as number | null; // keep UI focused; accuracy chip shows absolute %
   const deltaFixes = null as number | null; // not tracked; omit unless available
 
   // 2.2 metrics and heuristics
   const wpmSeries = wpmTrend;
-  const s = seriesStats(wpmSeries);
-  const peakWpm = s?.max ?? null;
-  const stability = stabilityIndex(wpmSeries);
+  // smooth metrics: 5s MA and ignore first 3s
+  const peakWpm = wpmSeries?.length ? peakFromSeries(wpmSeries, { drop: 3, win: 5 }) : null;
+  const stability = wpmSeries?.length ? consistencyFromSeries(wpmSeries, { drop: 3, win: 5 }) : null;
   const keystrokes: { correct?: number; error?: number } | null = null;
   const durationSec = wpmTrend?.length ?? null;
   const corrPerMin = correctionsPerMin(keystrokes?.correct, keystrokes?.error, durationSec);
@@ -131,7 +138,7 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed }: Props) 
 
         {/* CHIPS */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {deltaWpm != null && <DeltaChip label="WPM" delta={Math.round(deltaWpm)} />}
+          {deltaWpm != null && Number.isFinite(deltaWpm) && <DeltaChip label="WPM" delta={Math.round(deltaWpm)} />}
           {typeof accuracyPct === 'number' && isFinite(accuracyPct) && (
             <MetricChip
               icon={ShieldCheck}
@@ -141,9 +148,9 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed }: Props) 
               tone={accuracyPct >= 95 ? "good" : accuracyPct >= 85 ? "neutral" : "warn"}
             />
           )}
-          {stability!=null && <MetricChip icon={ShieldCheck} label="Consistency" value={`${stability}`} suffix="%" tone={stability>=65?"good":"neutral"} />}
+          {stability!=null && Number.isFinite(stability) && <MetricChip icon={ShieldCheck} label="Consistency" value={Math.round(stability)} suffix="%" tone={stability>=75?"good":stability>=60?"neutral":"warn"} />}
           {corrPerMin!=null && <MetricChip icon={Target} label="Corrections" value={`${corrPerMin}`} suffix="/min" tone={corrPerMin<=12?"good":corrPerMin>20?"warn":"neutral"} />}
-          {peakWpm!=null && <MetricChip icon={LineChart} label="Peak WPM" value={Math.round(peakWpm)} />}
+          {peakWpm!=null && Number.isFinite(peakWpm) && <MetricChip icon={LineChart} label="Peak WPM" value={Math.round(peakWpm)} />}
           {focus && <FocusTag focus={focus} />}
           {projGain!=null && projGain>0 && <ProjectedGain wpm={projGain} />}
         </div>

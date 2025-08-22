@@ -135,15 +135,35 @@ export default function ResultsPanel(props: ResultsPanelProps) {
       {/* Move Blaze stats summary above the two-column grid */}
       {usedDifficulty && (
         <div className="mb-2">
-          <FireSummaryCard
-            difficulty={usedDifficulty}
-            averageWPM={Math.round(Number(avgWpm ?? 0))}
-            accuracy={Math.round(Number(avgAcc ?? 0))}
-            knobs={nextKnobs ?? ["Punctuation off", "Numbers off"]}
-            trend={trendPercentages}
-            error={aiError}
-            className={`mt-0 ${pulseGlow ? 'glow-boost' : ''}`}
-          />
+          {/*
+            Build a normalized snapshot for the Blaze Stats card.
+            Maps include_punctuation/include_numbers -> punctuation/numbers
+          */}
+          {(() => {
+            const resolvedLastRunConfig = props.usedConfig
+              ? {
+                  mode: props.usedConfig.mode,
+                  wordCount: props.usedConfig.wordCount ?? null,
+                  durationSec: props.usedConfig.durationSec ?? null,
+                  language: props.usedConfig.language ?? 'english',
+                  // normalize flags for FireSummaryCard
+                  punctuation: !!props.usedConfig.include_punctuation,
+                  numbers: !!props.usedConfig.include_numbers,
+                }
+              : undefined;
+            return (
+              <FireSummaryCard
+                difficulty={usedDifficulty}
+                averageWPM={Math.round(Number(avgWpm ?? 0))}
+                accuracy={Math.round(Number(avgAcc ?? 0))}
+                knobs={nextKnobs ?? ["Punctuation off", "Numbers off"]}
+                trend={trendPercentages}
+                error={aiError}
+                className={`mt-0 ${pulseGlow ? 'glow-boost' : ''}`}
+                lastRunConfig={resolvedLastRunConfig}
+              />
+            );
+          })()}
         </div>
       )}
 
@@ -248,7 +268,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           {/* Fire-themed AI feedback card */}
           <BlazeFeedbackCard
             rank={("" + (/* placeholder rank mapping */ "Master"))}
-            message={<AIFeedback wpmTrend={wpmTrend} accuracyPct={accuracy} completed={true} />}
+            message={<AIFeedback wpmTrend={wpmTrend} accuracyPct={accuracy} completed={true} runSnapshot={props.usedConfig ?? null} />}
             xp={totalXpStore}
             streak={userStreak}
             challenge={"Beat your last WPM next run (+40 XP)"}

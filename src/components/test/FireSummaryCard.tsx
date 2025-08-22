@@ -20,8 +20,12 @@ type Props = {
     wordCount?: number | null;
     durationSec?: number | null;
     language?: string | null;
+    // canonical flags
     punctuation?: boolean | null;
     numbers?: boolean | null;
+    // legacy/alternate names from usedConfig
+    include_punctuation?: boolean | null;
+    include_numbers?: boolean | null;
   };
 };
 
@@ -153,8 +157,13 @@ export default function FireSummaryCard({
               wordCount={lastRunConfig?.wordCount ?? null}
               durationSec={lastRunConfig?.durationSec ?? null}
               language={lastRunConfig?.language ?? "english"}
-              punctuation={!!lastRunConfig?.punctuation}
-              numbers={!!lastRunConfig?.numbers}
+              // accept both naming styles
+              punctuation={!!(
+                (lastRunConfig && "punctuation" in (lastRunConfig ?? {})) ? lastRunConfig?.punctuation : lastRunConfig?.include_punctuation
+              )}
+              numbers={!!(
+                (lastRunConfig && "numbers" in (lastRunConfig ?? {})) ? lastRunConfig?.numbers : lastRunConfig?.include_numbers
+              )}
             />
           </div>
         </div>
