@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 // ⬇️ Stable lucide icons only
 import { User, Settings as Gear, Keyboard } from "lucide-react";
 import VersionBadge from "@/components/common/VersionBadge";
@@ -23,15 +23,15 @@ export default function Header() {
   const openSettings = useUIStore(s => s.openSettings);
 
   return (
-    <header data-app-header className="sticky top-0 z-50 w-full backdrop-blur bg-background/60 border-b border-white/10">
-      <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
+    <header data-app-header className="sticky top-0 z-50 w-full backdrop-blur bg-background/60 border-b border-white/10 relative">
+      <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between pr-20">
         <Link href="/" className="font-semibold text-lg tracking-tight">
           <span className="bg-[linear-gradient(135deg,#FF3D00,#FF6A00_55%,#FFD36E)] bg-clip-text text-transparent drop-shadow-[0_0_6px_rgba(255,106,0,0.35)]">
             blazeKey
           </span>
         </Link>
-        <div className="flex items-center gap-3">
-          {/* New test keyboard button (left of notifications) */}
+        <div className="ml-auto flex items-center gap-3 justify-end">
+          {/* New test keyboard button (left of settings) */}
           <Link
             href="/#new"
             aria-label="Start a new typing test"
@@ -40,7 +40,6 @@ export default function Header() {
           >
             <Keyboard className="h-5 w-5" />
           </Link>
-          <VersionBadge />
 
           <button
             onClick={openSettings}
@@ -97,9 +96,13 @@ export default function Header() {
                 Register
               </Link>
             </>
-          )}
-        </div>
-      </div>
+                     )}
+         </div>
+       </div>
+       {/* absolute version pill pinned to the header's right edge */}
+       <div className="absolute right-3 inset-y-0 z-10 flex items-center pointer-events-auto">
+         <VersionBadge />
+       </div>
       {null}
     </header>
   );
