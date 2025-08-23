@@ -2,6 +2,7 @@
 "use client";
 
 import * as React from "react";
+import { useMemo } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
@@ -12,6 +13,8 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  ReferenceLine,
+  ReferenceDot,
 } from "recharts";
 import AIFeedback from "@/components/feedback/AIFeedback";
 import BlazeFeedbackCard from "@/components/feedback/BlazeFeedbackCard";
@@ -65,11 +68,18 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     flags,
   } = props;
 
+  // Diagnostic logging
+  console.info('[bk] header=', 'src/components/Header.tsx');
+  console.info('[bk] results=', 'src/components/typing/ResultsPanel.tsx');
+  console.info('[bk] stats=', 'src/components/typing/ResultsStatsBar.tsx');
+
   const totalXpStore = useStatsStore(s => s.totalXP);
   const { user } = useAuth();
   const userStreak = user?.streak ?? 0;
 
-  const wpmTrend: number[] = Array.isArray(wpmSeries) ? wpmSeries.map(p => p.wpm) : [];
+  const wpmTrend: number[] = Array.isArray(wpmSeries)
+    ? wpmSeries.map((p: any) => (typeof p === "number" ? p : Number(p?.wpm) || 0))
+    : [];
   const [pulseGlow, setPulseGlow] = React.useState(false);
   const prefersReducedMotion = useReducedMotion();
   const [showNext, setShowNext] = React.useState(false);
@@ -100,14 +110,15 @@ export default function ResultsPanel(props: ResultsPanelProps) {
       }
 
       if (e.key === "Enter") {
-        // Fire on bare Enter OR Tab+Enter (within a short window)
-        const recentTab = tabHeld || (Date.now() - lastTabAt <= 650);
-        if (recentTab || true) {
+        // Fire on bare Enter OR Tab+Enter pressed within a short window
+        const withinWindow = Date.now() - lastTabAt <= 650;
+        const allow = tabHeld ? withinWindow : true; // bare Enter allowed; Tab+Enter must be timely
+        if (allow) {
           try {
             e.preventDefault();
             e.stopPropagation();
           } catch {}
-          if (typeof onNextTest === "function") onNextTest();
+          onNextTest?.();
           tabHeld = false;
         }
       }
@@ -143,6 +154,57 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     const msg = analysis?.feedback || "";
     return msg.includes("Could not fetch AI feedback.") ? msg : null;
   })();
+
+  // Normalize chart series: accept either number[] or {second,wpm}[] callers
+  type Point = { second: number; wpm: number };
+  function normalizeSeries(series: any): Point[] {
+    if (!Array.isArray(series) || series.length === 0) return [];
+    if (typeof series[0] === "object" && series[0] && "second" in series[0]) return series as Point[];
+    return (series as number[]).map((wpm, i) => ({ second: i + 1, wpm: Number(wpm) || 0 }));
+  }
+  const chartData = normalizeSeries(wpmSeries);
+
+  // Debug logging for chart annotations (rename to avoid shadowing prop avgWpm)
+  const chartAvgWpm = chartData.length ? chartData.reduce((s, p) => s + p.wpm, 0) / chartData.length : undefined;
+  const peakPoint = chartData.length
+    ? chartData.reduce(
+        (acc, p) => (p.wpm > acc.wpm ? p : acc),
+        { second: 0, wpm: -Infinity as number }
+      )
+    : { second: 0, wpm: -Infinity as number };
+  const hasPeak = Number.isFinite(peakPoint.wpm);
+  const finishSec = props.time ?? (chartData.length ? chartData[chartData.length - 1].second : undefined);
+  
+  console.debug("[bk] chart meta", { chartAvgWpm, peakPoint, finishSec, n: chartData.length });
+
+  // Derive error tokens source from most recent run in history when available
+  const historyAll = useStatsStore(s => s.history);
+  const lastRun = useMemo(() => (Array.isArray(historyAll) && historyAll.length ? historyAll[historyAll.length - 1] : null), [historyAll]);
+  const errorEvents = useMemo(() => {
+    const raw = (lastRun as any)?.events ?? (lastRun as any)?.keystrokes ?? (lastRun as any)?.keyLog ?? (lastRun as any)?.keyEvents ?? [];
+    return Array.isArray(raw)
+      ? raw.map((e: any, i: number) => ({
+          key: e?.key ?? e?.char ?? e?.k ?? "",
+          isError: !!(e?.isError ?? e?.error ?? e?.mistake),
+          prevKey: e?.prevKey ?? e?.prev ?? (i > 0 ? (raw[i - 1]?.key ?? raw[i - 1]?.char ?? null) : null),
+        }))
+      : [];
+  }, [lastRun]);
+  const errorFallback = useMemo(() => {
+    const bigrams = (lastRun as any)?.errorBigrams ?? null;
+    const keys = (lastRun as any)?.mistypedKeys ?? (lastRun as any)?.errors ?? null;
+    return bigrams || keys ? { bigrams, keys } : null;
+  }, [lastRun]);
+
+  // Debug logging for error sources
+  console.debug("[bk] error sources", {
+    events: Array.isArray((lastRun as any)?.events) && (lastRun as any).events.length,
+    keyEvents: Array.isArray((lastRun as any)?.keyEvents) && (lastRun as any).keyEvents.length,
+    keystrokes: Array.isArray((lastRun as any)?.keystrokes) && (lastRun as any).keystrokes.length,
+    keyLog: Array.isArray((lastRun as any)?.keyLog) && (lastRun as any).keyLog.length,
+    bigrams: !!(lastRun as any)?.errorBigrams, 
+    keys: !!((lastRun as any)?.mistypedKeys ?? (lastRun as any)?.errors),
+  });
 
   function FireTooltipContent({ active, label, payload }: any) {
     if (!active || !payload || payload.length === 0) return null;
@@ -209,6 +271,8 @@ export default function ResultsPanel(props: ResultsPanelProps) {
               accuracy={Number(props.accuracy ?? 0)}
               durationSec={Number(props.time ?? 0)}
               difficultyLabel={props.usedDifficulty ? props.usedDifficulty : undefined}
+              errorEvents={errorEvents}
+              errorFallback={errorFallback}
             />
           </div>
 
@@ -221,7 +285,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             <CardContent className="pt-2">
               <div className="h-[260px] md:h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={wpmSeries}>
+                  <LineChart data={chartData}>
                     <defs>
                       <linearGradient id="fireStroke" x1="0" y1="0" x2="1" y2="0">
                         <stop offset="0%" stopColor="#FF3D00" />
@@ -243,6 +307,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                       tickFormatter={fmt.y}
                       stroke="currentColor"
                       opacity={0.7}
+                      label={{ value: 'WPM', angle: -90, position: 'insideLeft', fill: 'currentColor', opacity: 0.7 }}
                     >
                       <text x={0} y={0} dx={12} dy={12} transform="rotate(-90)" textAnchor="middle" className="fill-white/60 text-xs">WPM</text>
                     </YAxis>
@@ -251,6 +316,18 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                       cursor={{ stroke: "rgba(255,255,255,0.35)", strokeWidth: 1 }}
                       wrapperStyle={{ outline: "none" }}
                     />
+                    {/* average line */}
+                    {typeof chartAvgWpm === "number" && (
+                      <ReferenceLine y={chartAvgWpm} strokeDasharray="3 3" strokeOpacity={0.35}
+                        label={{ value: `Avg ${Math.round(chartAvgWpm)}`, position: "right", fill: "currentColor", opacity: 0.6 }}
+                      />
+                    )}
+                    {/* finish time hash */}
+                    {typeof finishSec === "number" && (
+                      <ReferenceLine x={finishSec} strokeOpacity={0.3} strokeDasharray="1 3"
+                        label={{ value: `${Math.round(finishSec)}s`, position: "top", fill: "currentColor", opacity: 0.6 }}
+                      />
+                    )}
                     {/* Fire-themed line + soft glow overlay */}
                     <Line
                       type="monotone"
@@ -273,6 +350,12 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                       strokeWidth={7}
                       isAnimationActive={false}
                     />
+                    {/* peak marker */}
+                    {hasPeak && (
+                      <ReferenceDot x={peakPoint.second} y={peakPoint.wpm} r={4} strokeOpacity={0.9}
+                        label={{ value: `Peak ${Math.round(peakPoint.wpm)}`, position: "right", fill: "currentColor", opacity: 0.7 }}
+                      />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -298,7 +381,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             message={<AIFeedback wpmTrend={wpmTrend} accuracyPct={accuracy} completed={true} runSnapshot={props.usedConfig ?? null} />}
             xp={totalXpStore}
             streak={userStreak}
-            challenge={"Beat your last WPM next run (+40 XP)"}
+            challenge={"Beat your last WPM (+40 XP)"}
           />
 
           {/* This test card (duplicate at bottom) — removed per design */}

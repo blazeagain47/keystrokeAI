@@ -259,6 +259,12 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   /* ───────── Keyboard handler ───────── */
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      // Ignore key events originating from click-only chips
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.("[data-click-only]")) {
+        return;
+      }
+
       // Prevent input while loading (external or internal) or when test complete
       if (externalLoading || isLoading || isComplete) return;
 

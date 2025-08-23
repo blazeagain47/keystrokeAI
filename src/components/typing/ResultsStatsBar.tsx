@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Flame, Zap, Target, Clock3, Activity } from "lucide-react";
+import { computeTopErrorTokens } from "@/lib/typing/errors";
 
 type Props = {
   wpm: number;
@@ -10,6 +11,8 @@ type Props = {
   consistency?: number; // optional % if you compute it
   keystrokes?: { correct: number; error: number }; // optional
   difficultyLabel?: string; // "Easy" | "Medium" | etc., optional
+  errorEvents?: Array<{ key: string; isError?: boolean; prevKey?: string | null } | null> | null;
+  errorFallback?: { bigrams?: Record<string, number>; keys?: Record<string, number> } | null;
 };
 
 export default function ResultsStatsBar({
@@ -19,6 +22,8 @@ export default function ResultsStatsBar({
   consistency,
   keystrokes,
   difficultyLabel,
+  errorEvents,
+  errorFallback,
 }: Props) {
   const items: Array<{
     icon: React.ReactNode;
@@ -104,6 +109,20 @@ export default function ResultsStatsBar({
               <div className="text-[10px] uppercase tracking-wider text-orange-200/70">{it.label}</div>
               <div className="text-base md:text-lg font-semibold text-orange-100">{it.value}</div>
               {it.sub && <div className="text-[11px] text-orange-200/70">{it.sub}</div>}
+              {/* Top error tokens under Accuracy */}
+              {it.label === "Accuracy" && (() => {
+                const toks = computeTopErrorTokens(errorEvents as any, errorFallback as any, 3);
+                if (!toks || toks.length === 0) return null;
+                return (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {toks.map((t) => (
+                      <span key={t} className="px-2 py-0.5 text-xs rounded-full bg-white/5 border border-white/10">
+                        {t === " " ? "␣" : t}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         ))}

@@ -141,7 +141,7 @@ export default function FireSummaryCard({
                 <span className="text-2xl sm:text-3xl font-semibold text-fire leading-none tracking-tight whitespace-nowrap">
                   {recentAccDisplay === "—" ? "—" : <><CountUp value={Number(recentAccDisplay)} /><span className="align-baseline text-[0.9em] ml-0">%</span></>}
                 </span>
-                <span className="text-xs sm:text-sm text-white/60 leading-none ml-1">acc</span>
+                <span className="text-xs sm:text-sm text-white/60 leading-none ml-1">Accuracy</span>
               </span>
             </div>
           </div>

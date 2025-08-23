@@ -54,9 +54,9 @@ export default function ThisTestCard({
       <div className="text-xl font-semibold text-orange-50">{primary}</div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {pill(`Language: ${language}`)}
-        {pill(`Punctuation ${include_punctuation ? "on" : "off"}`)}
-        {pill(`Numbers ${include_numbers ? "on" : "off"}`)}
+        {pill(`Language: ${String(language || "").slice(0,1).toUpperCase()}${String(language || "").slice(1)}`)}
+        {pill(`Punctuation: ${include_punctuation ? "On" : "Off"}`)}
+        {pill(`Numbers: ${include_numbers ? "On" : "Off"}`)}
       </div>
     </div>
   );

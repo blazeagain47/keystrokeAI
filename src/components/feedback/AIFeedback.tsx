@@ -14,6 +14,7 @@ import { ProjectedGain } from "@/components/results/ProjectedGain";
 import { MetricChip } from "@/components/results/MetricChip";
 import { CoachPraise } from "@/components/results/CoachPraise";
 import { seriesStats, stabilityIndex, correctionsPerMin, projectedWpmGain } from "@/lib/metrics";
+import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   peakFromSeries,
   consistencyFromSeries,
@@ -49,7 +50,7 @@ function buildMessage(wpmTrend: number[], acc: number) {
   if (s.improving && acc >= 98) return "🔥 You’re in the zone — speed and accuracy are elite.";
   if (s.improving && acc < 98)  return "🚀 Speed is climbing — tighten accuracy for a top score.";
   if (s.declining && acc >= 98) return "⚡ Precision is on point — reclaim early‑run speed next time.";
-  if (s.declining && acc < 95)  return "😬 Both speed and accuracy dipped — focus on rhythm and fewer corrections.";
+  if (s.declining && acc < 95)  return "😬 Speed and accuracy dipped. Keep a steady cadence and reduce backspaces next run.";
   if (s.spread <= 4)            return "🎯 Rock‑solid consistency — your flow is smooth.";
   return "Keep the cadence steady — consistency + accuracy will push your WPM up.";
 }
@@ -121,16 +122,24 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed, runSnapsh
     <>
       {/* Single-surface card with 2.2 layout */}
       <div className="ai-card-surface relative p-4 md:p-5">
-        {/* HEADER */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <h3 className="text-orange-200 font-semibold">AI Feedback</h3>
-            <span className="size-1 rounded-full bg-orange-300/60" />
-            <span className="text-[11px] text-orange-200/70">Auto-generated coaching</span>
-            <div className="ml-2">
-              <ConfidenceMeter level={confidence} />
-            </div>
-          </div>
+        {/* Confidence (with tooltip). Note: card title lives in parent container. */}
+        <div className="flex items-center justify-end">
+          <TooltipProvider delayDuration={200}>
+            <UiTooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <ConfidenceMeter level={confidence} />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">
+                  {typeof durationSec === 'number' && durationSec > 0
+                    ? `Short ${Math.round(durationSec)}s run / few samples.`
+                    : "Limited data for this run."}
+                </p>
+              </TooltipContent>
+            </UiTooltip>
+          </TooltipProvider>
         </div>
 
         {/* INSIGHT */}
@@ -138,7 +147,7 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed, runSnapsh
 
         {/* CHIPS */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {deltaWpm != null && Number.isFinite(deltaWpm) && <DeltaChip label="WPM" delta={Math.round(deltaWpm)} />}
+          {deltaWpm != null && Math.abs(deltaWpm) >= 0.5 && <DeltaChip label="WPM" delta={Math.round(deltaWpm)} />}
           {typeof accuracyPct === 'number' && isFinite(accuracyPct) && (
             <MetricChip
               icon={ShieldCheck}
@@ -208,7 +217,7 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed, runSnapsh
         {streakDays > 0 && (
           <div className="px-3 py-1 rounded-full bg-white/5 text-gray-200 text-xs sm:text-sm border border-white/10">
             Streak: <span className="font-semibold">{streakDays}</span>
-            <span className="text-white/70 text-xs ml-1">days</span>
+            <span className="text-white/70 text-xs ml-1">{streakDays === 1 ? 'day' : 'days'}</span>
           </div>
         )}
       </div>

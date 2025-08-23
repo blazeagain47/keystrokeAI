@@ -5,6 +5,7 @@ import React, { useEffect } from "react";
 // ⬇️ Stable lucide icons only
 import { User, Settings as Gear, Keyboard } from "lucide-react";
 import VersionBadge from "@/components/common/VersionBadge";
+import LogoMark from "@/components/brand/LogoMark";
 import { useAuthStore } from "@/store/auth";
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
@@ -23,13 +24,16 @@ export default function Header() {
   const openSettings = useUIStore(s => s.openSettings);
 
   return (
-    <header data-app-header className="sticky top-0 z-50 w-full backdrop-blur bg-background/60 border-b border-white/10 relative">
-      <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between pr-20">
-        <Link href="/" className="font-semibold text-lg tracking-tight">
-          <span className="bg-[linear-gradient(135deg,#FF3D00,#FF6A00_55%,#FFD36E)] bg-clip-text text-transparent drop-shadow-[0_0_6px_rgba(255,106,0,0.35)]">
-            blazeKey
-          </span>
-        </Link>
+    <header data-app-header className="sticky top-0 z-50 w-full backdrop-blur bg-background/60 border-b border-white/10">
+      <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between pr-20 relative">
+                    <div className="flex items-center gap-2">
+              <LogoMark size={75} />
+              <Link href="/" className="font-semibold text-lg tracking-tight">
+            <span className="hidden sm:inline bg-[linear-gradient(135deg,#FF3D00,#FF6A00_55%,#FFD36E)] bg-clip-text text-transparent drop-shadow-[0_0_6px_rgba(255,106,0,0.35)]">
+              blazeKey
+            </span>
+          </Link>
+        </div>
         <div className="ml-auto flex items-center gap-3 justify-end">
           {/* New test keyboard button (left of settings) */}
           <Link
@@ -99,10 +103,10 @@ export default function Header() {
                      )}
          </div>
        </div>
-       {/* absolute version pill pinned to the header's right edge */}
-       <div className="absolute right-3 inset-y-0 z-10 flex items-center pointer-events-auto">
-         <VersionBadge />
-       </div>
+               {/* absolute version pill pinned to the header's right edge */}
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex items-center pointer-events-auto">
+          <VersionBadge />
+        </div>
       {null}
     </header>
   );

@@ -56,12 +56,6 @@ export default function BlazeFeedbackCard({ rank, message, xp, streak, challenge
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-base md:text-lg font-semibold bk-wordmark">AI Feedback</h3>
-          {!!rank && (
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10" aria-label={`Tier ${rank}`}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: tierDotClass(rank) }} />
-              <span className="text-fire font-medium">{rank}</span>
-            </span>
-          )}
         </div>
 
         {/* Main message */}
@@ -104,7 +98,8 @@ export default function BlazeFeedbackCard({ rank, message, xp, streak, challenge
                 data-challenge-text={challenge || ""}
                 className="text-fire"
               >
-                {challenge}
+                {/* Shortened copy per spec */}
+                {(challenge || "").replace(/next run\s*\(\+40 XP\)/i, "(+40 XP)").replace(/next run/i, "") || challenge}
               </span>
             </span>
           </div>

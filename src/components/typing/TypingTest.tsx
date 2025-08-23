@@ -25,6 +25,7 @@ import { normalizePromptWords } from '@/lib/text';
 import ReadyToast from '@/components/typing/ReadyToast';
 import LogoLoader from '@/components/common/LogoLoader';
 import PreTestOverlay from '@/components/typing/PreTestOverlay';
+import ClickOnly from '@/components/common/ClickOnly';
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -476,7 +477,7 @@ const TypingTest: React.FC = () => {
           {/* Main Mode Selection */}
           <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
             {/* Special Features */}
-            <button 
+            <ClickOnly
               className={clsx(
                 "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
                 "bk-chip bk-focus",
@@ -494,9 +495,9 @@ const TypingTest: React.FC = () => {
               <AtSign className="h-4 w-4" />
               punctuation
               {showPunctuation && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>}
-            </button>
+            </ClickOnly>
             
-            <button 
+            <ClickOnly
               className={clsx(
                 "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
                 "bk-chip bk-focus",
@@ -514,7 +515,7 @@ const TypingTest: React.FC = () => {
               <Hash className="h-4 w-4" />
               numbers
               {showNumbers && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>}
-            </button>
+            </ClickOnly>
             
             {/* Separator */}
             <div className="w-px h-8 bg-gradient-to-b from-transparent via-gray-600/50 to-transparent mx-3"></div>
@@ -790,7 +791,7 @@ const TypingTest: React.FC = () => {
           </>
         )}
         {/* Single, centered logo loader */}
-        <LogoLoader show={promptLoad === 'loading' && !currentPrompt} text="Generating new test..." />
+        <LogoLoader show={promptLoad === 'loading' && !currentPrompt} />
         {view === 'results' && (
           <div className="mt-6 md:mt-10">
             <ResultsPanel

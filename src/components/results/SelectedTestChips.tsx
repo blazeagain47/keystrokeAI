@@ -2,6 +2,7 @@
 
 import React from "react";
 import clsx from "clsx";
+import { formatSettingChip } from "@/lib/tests/formatSettingChip";
 
 type Props = {
   mode: "words" | "time" | "quote" | "zen" | "custom";
@@ -27,9 +28,9 @@ export default function SelectedTestChips({
   const wc = Number(wordCount ?? 0);
   const title =
     mode === "words"
-      ? `Words • ${Number.isFinite(wc) && wc > 0 ? wc : "—"}`
+      ? formatSettingChip("words", Number.isFinite(wc) && wc > 0 ? wc : "—")
       : mode === "time"
-      ? `Time • ${Number(durationSec ?? 0)}s`
+      ? formatSettingChip("time", `${Number(durationSec ?? 0)}s`)
       : mode === "quote"
       ? "Quote"
       : mode === "zen"
@@ -43,11 +44,9 @@ export default function SelectedTestChips({
   return (
     <div className={clsx("flex flex-wrap items-center gap-2", className)}>
       <span className={clsx(chipBase, labelCls)}>{title}</span>
-      {language && (
-        <span className={chipBase}>language: {String(language).toLowerCase()}</span>
-      )}
-      <span className={chipBase}>{punctuation ? "Punctuation on" : "Punctuation off"}</span>
-      <span className={chipBase}>{numbers ? "Numbers on" : "Numbers off"}</span>
+      {language && <span className={chipBase}>{formatSettingChip("language", String(language))}</span>}
+      <span className={chipBase}>{formatSettingChip("punctuation", !!punctuation)}</span>
+      <span className={chipBase}>{formatSettingChip("numbers", !!numbers)}</span>
     </div>
   );
 }
