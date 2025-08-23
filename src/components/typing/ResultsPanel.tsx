@@ -88,22 +88,42 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   }, [reveal, prefersReducedMotion]);
 
   React.useEffect(() => {
-    const lastTabRef = { current: 0 };
+    let tabHeld = false;
+    let lastTabAt = 0;
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Tab") {
-        lastTabRef.current = Date.now();
+        // Keep focus in place on results; record Tab for combo detection
+        tabHeld = true;
+        lastTabAt = Date.now();
+        try { e.preventDefault(); } catch {}
         return;
       }
+
       if (e.key === "Enter") {
-        // Only handle bare Enter; defer Tab+Enter to HotkeysGlobal (/#new)
-        const recentTab = Date.now() - lastTabRef.current <= 750;
-        if (recentTab) return;
-        try { e.preventDefault(); } catch {}
-        if (typeof onNextTest === "function") onNextTest();
+        // Fire on bare Enter OR Tab+Enter (within a short window)
+        const recentTab = tabHeld || (Date.now() - lastTabAt <= 650);
+        if (recentTab || true) {
+          try {
+            e.preventDefault();
+            e.stopPropagation();
+          } catch {}
+          if (typeof onNextTest === "function") onNextTest();
+          tabHeld = false;
+        }
       }
     };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Tab") tabHeld = false;
+    };
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
   }, [onNextTest]);
   // Normalize WPM values to 0..100 for sparkline animation
   const trendPercentages: number[] | undefined = (() => {
