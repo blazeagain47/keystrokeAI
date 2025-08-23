@@ -586,22 +586,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   /* ──────────────────────────────────────────────────────────── */
   /* render                                                     */
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh]">
-        <div className="flex flex-col items-center space-y-6">
-          <div className="relative">
-            <div className="w-12 h-12 border-2 border-yellow-400/30 rounded-full animate-spin"></div>
-            <div className="absolute inset-0 w-12 h-12 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-          <div className="text-center space-y-2">
-            <p className="text-gray-300 text-lg font-medium">Generating new test…</p>
-            <p className="text-gray-500 text-sm">Powered by AI</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) { return null; }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-4" ref={containerRef}>

@@ -25,6 +25,8 @@ import { toLowerLettersOnly, ensureExactWordCount } from '@/lib/prompt/normalize
 import { normalizePromptWords } from '@/lib/text';
 import SmartTestBadge from '@/components/SmartTestBadge';
 import ReadyToast from '@/components/typing/ReadyToast';
+import LogoLoader from '@/components/common/LogoLoader';
+import PreTestOverlay from '@/components/typing/PreTestOverlay';
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -443,14 +445,13 @@ const TypingTest: React.FC = () => {
   const isRunning = view === 'typing' && !isTestComplete && time > 0;
 
   return (
-    <div ref={rootRef} className="min-h-dvh" data-view={view} data-run={isRunning ? 'true' : 'false'}>
+    <div ref={rootRef} className="min-h-dvh relative" data-view={view} data-run={isRunning ? 'true' : 'false'} data-bk-generating={promptLoad === 'loading' && !currentPrompt ? 'true' : 'false'}>
       {/* Top Navigation/Filter Bar */}
-      {view !== 'results' && (
-      <div ref={filterRef} className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur-xl border-b border-gray-800/50 shadow-2xl bk-filter-bar hide-on-test" aria-hidden={view === 'typing' && !isTestComplete && time > 0}>
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          
+      {/* Pin the filter bar to the top of the viewport (fixed), higher than before */}
+      <PreTestOverlay show={view !== 'results' && !(view === 'typing' && !isTestComplete && time > 0)} position="fixed" topClass="top-12 sm:top-14 md:top-16 lg:top-18" z="z-40">
+        <div ref={filterRef} className="max-w-7xl mx-auto px-6 py-4">
           {/* Main Mode Selection */}
-          <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
+          <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
             {/* Special Features */}
             <button 
               className={clsx(
@@ -637,8 +638,7 @@ const TypingTest: React.FC = () => {
           {/* Floating toast anchored to language pill */}
           {!isTestComplete && <ReadyToast />}
         </div>
-      </div>
-      )}
+      </PreTestOverlay>
 
       {/* Live Stats Bar - typing ONLY (hide in results) */}
       {view === 'typing' && time > 0 && !isTestComplete && (
@@ -699,13 +699,8 @@ const TypingTest: React.FC = () => {
         {view === 'typing' && (
           <>
             {/* Loader + error UI driven by promptLoad */}
-            {promptLoad === 'loading' && !currentPrompt && (
-              <div className="flex flex-col items-center gap-2 text-orange-200/80 my-6">
-                <div className="size-6 rounded-full border-2 border-orange-400/50 border-t-transparent animate-spin" />
-                <div className="text-sm">Generating new test…</div>
-                <div className="text-[11px] text-orange-200/60">Powered by model-assisted prompts</div>
-              </div>
-            )}
+            {/* centralized loader; inline spinner removed */}
+            {promptLoad === 'loading' && !currentPrompt && null}
             {promptLoad === 'error' && !currentPrompt && (
               <div className="flex flex-col items-center gap-2 text-orange-200/80 my-6">
                 <div className="text-sm">Couldn’t generate a test.</div>
@@ -762,6 +757,8 @@ const TypingTest: React.FC = () => {
             </div>
           </>
         )}
+        {/* Single, centered logo loader */}
+        <LogoLoader show={promptLoad === 'loading' && !currentPrompt} text="Generating new test..." />
         {view === 'results' && (
           <div className="mt-6 md:mt-10">
             <ResultsPanel

@@ -1123,3 +1123,20 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
   pointer-events: auto !important;
   display: revert !important; /* restore natural layout */
 }
+
+/* --- Logo loader styles --- */
+@keyframes bkNeonPulse {
+  0%   { transform: scale(1);    filter: drop-shadow(0 0 0 rgba(255, 80, 40, .45)); }
+  50%  { transform: scale(1.04); filter: drop-shadow(0 0 18px rgba(255, 80, 40, .85)); }
+  100% { transform: scale(1);    filter: drop-shadow(0 0 0 rgba(255, 80, 40, .45)); }
+}
+@keyframes bkOrb {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 80, 40, .15); }
+  70%  { box-shadow: 0 0 0 24px rgba(255, 80, 40, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 80, 40, 0); }
+}
+.bk-logo-glow { animation: bkNeonPulse 1.6s ease-in-out infinite; }
+.bk-logo-orb  { border-radius: 9999px; border: 1px solid rgba(255, 80, 40, .18); animation: bkOrb 1.8s ease-out infinite; }
+
+/* During generation, suppress any legacy inline spinners if they slip through */
+html[data-bk-generating="true"] .bk-inline-spinner { display: none !important; }
