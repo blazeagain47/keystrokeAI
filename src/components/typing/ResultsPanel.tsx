@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import AIFeedback from "@/components/feedback/AIFeedback";
 import BlazeFeedbackCard from "@/components/feedback/BlazeFeedbackCard";
+import AIFeedbackCardRevamp from "@/components/feedback/AIFeedbackCardRevamp";
 import FireSummaryCard from "@/components/test/FireSummaryCard";
 import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
 import NextTestButton from "@/components/ui/NextTestButton";
@@ -373,13 +374,12 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           transition={{ duration: 0.4, ease: "easeOut", delay: 0.05 }}
           className="flex flex-col gap-6"
         >
-          {/* Fire-themed AI feedback card */}
-          <BlazeFeedbackCard
-            rank={("" + (/* placeholder rank mapping */ "Master"))}
-            message={<AIFeedback wpmTrend={wpmTrend} accuracyPct={accuracy} completed={true} runSnapshot={props.usedConfig ?? null} />}
-            xp={totalXpStore}
-            streak={userStreak}
-            challenge={"Beat your last WPM (+40 XP)"}
+          {/* Revamped AI feedback card */}
+          <AIFeedbackCardRevamp
+            wpmTrend={wpmTrend}
+            accuracyPct={accuracy}
+            completed={true}
+            runSnapshot={props.usedConfig ?? null}
           />
 
           {/* This test card (duplicate at bottom) — removed per design */}

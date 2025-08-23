@@ -1,10 +1,9 @@
 // src/components/feedback/AIFeedback.tsx
 "use client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { rankForXP } from "@/utils/progression";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { rankStyles, mapToRankTier, shouldShimmer } from "@/utils/rankStyles";
-import { DeltaChip } from "@/components/results/DeltaChip";
 import { MicroSparkline } from "@/components/results/MicroSparkline";
 import { WhyThis } from "@/components/results/WhyThis";
 import { NextStepTile } from "@/components/results/NextStepTile";
@@ -12,8 +11,9 @@ import { ConfidenceMeter } from "@/components/results/ConfidenceMeter";
 import { FocusTag } from "@/components/results/FocusTag";
 import { ProjectedGain } from "@/components/results/ProjectedGain";
 import { MetricChip } from "@/components/results/MetricChip";
+import { DeltaChip } from "@/components/results/DeltaChip";
 import { CoachPraise } from "@/components/results/CoachPraise";
-import { seriesStats, stabilityIndex, correctionsPerMin, projectedWpmGain } from "@/lib/metrics";
+import { correctionsPerMin, projectedWpmGain } from "@/lib/metrics";
 import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   peakFromSeries,
@@ -21,7 +21,9 @@ import {
   baselineWpmFromHistory,
   RunSnapshot,
 } from "@/lib/typingMetrics";
-import { LineChart, ShieldCheck, Target } from "lucide-react";
+import { ShieldCheck, LineChart, Target } from "lucide-react";
+// Inline chips here to avoid missing path issues if not compiled yet
+import type { BlazeRun } from "@/lib/historyLocal";
 
 type Props = {
   wpmTrend: number[];      // sequential WPM samples over the run (seconds)
@@ -63,6 +65,7 @@ function nextChallenge(wpmTrend: number[], acc: number) {
 }
 
 export default function AIFeedback({ wpmTrend, accuracyPct, completed, runSnapshot }: Props) {
+  const [expanded, setExpanded] = useState(false);
   const message = useMemo(() => buildMessage(wpmTrend, accuracyPct), [wpmTrend, accuracyPct]);
   const { label: challenge, reward } = useMemo(() => nextChallenge(wpmTrend, accuracyPct), [wpmTrend, accuracyPct]);
 
@@ -74,8 +77,8 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed, runSnapsh
   // Prefer real totals from stats store only (single source of truth)
 
   // Light plumbing: derive simple deltas vs recent average (last 5 runs)
-  const history = useStatsStore(s => s.history);
-  const recent = Array.isArray(history) && history.length ? history.slice(-5) : [] as any[];
+  const historyForBaseline = useStatsStore(s => s.history);
+  const recent = Array.isArray(historyForBaseline) && historyForBaseline.length ? historyForBaseline.slice(-5) : [] as any[];
   const baselineWpm = baselineWpmFromHistory(recent as any[], runSnapshot ?? null);
   const currentWpm = Number(wpmTrend?.at(-1) ?? 0) || null; // fallback: last sampled WPM
   const currentAcc = Math.round(Number(accuracyPct) || 0);
@@ -88,9 +91,8 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed, runSnapsh
   // smooth metrics: 5s MA and ignore first 3s
   const peakWpm = wpmSeries?.length ? peakFromSeries(wpmSeries, { drop: 3, win: 5 }) : null;
   const stability = wpmSeries?.length ? consistencyFromSeries(wpmSeries, { drop: 3, win: 5 }) : null;
-  const keystrokes: { correct?: number; error?: number } | null = null;
   const durationSec = wpmTrend?.length ?? null;
-  const corrPerMin = correctionsPerMin(keystrokes?.correct, keystrokes?.error, durationSec);
+  const corrPerMin = null as number | null;
   const recentAvgFixes: number | null = null;
   const currentFixes: number | null = null;
   const projGain = projectedWpmGain(currentWpm, currentFixes, recentAvgFixes, 0.3);
@@ -100,13 +102,39 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed, runSnapsh
     (stability!=null && stability < 55)   ? "Rhythm" :
     (durationSec!=null && durationSec >= 60) ? "Endurance" : "Rhythm";
 
-  const confidence = ((deltaWpm: number | null, deltaAcc: number | null) => {
+  // Improved confidence: prefer duration + stability (fallback to delta heuristics)
+  const confidence = (() => {
+    const dur = Number(durationSec ?? 0);
+    const stab = Number(stability ?? 0);
+    if (dur >= 45 && stab >= 70) return "High" as const;
+    if (dur >= 20 && stab >= 55) return "Medium" as const;
+    // fallback to deltas when series is tiny
     const w = Math.abs(deltaWpm ?? 0);
-    const a = Math.abs(deltaAcc ?? 0);
-    if (w >= 10 || a >= 4) return "High" as const;
-    if (w >= 5 || a >= 2) return "Medium" as const;
+    if (w >= 10) return "High" as const;
+    if (w >= 5) return "Medium" as const;
     return "Low" as const;
-  })(deltaWpm, deltaAcc);
+  })();
+
+  // Tiny helper: best time of day by grouping recent runs
+  const historyAll = useStatsStore(s => s.history);
+  const bestTimeOfDay = useMemo(() => {
+    const runs = Array.isArray(historyAll) ? (historyAll as BlazeRun[]) : [];
+    if (!runs.length) return null as string | null;
+    const buckets = { morning: { sum: 0, n: 0 }, afternoon: { sum: 0, n: 0 }, evening: { sum: 0, n: 0 }, night: { sum: 0, n: 0 } };
+    for (const r of runs.slice(-20)) {
+      const ts = Number((r as any).ts ?? Date.now());
+      const hr = new Date(ts).getHours();
+      const wpm = Number((r as any).wpm ?? 0);
+      if (!Number.isFinite(wpm)) continue;
+      const key = hr >= 5 && hr < 12 ? "morning" : hr >= 12 && hr < 18 ? "afternoon" : hr >= 18 && hr < 23 ? "evening" : "night";
+      buckets[key as keyof typeof buckets].sum += wpm; buckets[key as keyof typeof buckets].n++;
+    }
+    const entries = Object.entries(buckets).map(([k, v]) => ({ k, avg: v.n ? v.sum / v.n : -Infinity }));
+    const best = entries.sort((a,b)=>b.avg-a.avg)[0];
+    if (!best || best.avg === -Infinity) return null as string | null;
+    const label = best.k === "morning" ? "morning" : best.k === "afternoon" ? "afternoon" : best.k === "evening" ? "evening" : "late night";
+    return label;
+  }, [historyAll]);
 
   function pickPraise(): string {
     if (deltaWpm && deltaWpm > 0 && deltaAcc && deltaAcc >= 0) return "Great momentum—both speed and accuracy improved. Keep this rhythm!";
@@ -158,30 +186,49 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed, runSnapsh
             />
           )}
           {stability!=null && Number.isFinite(stability) && <MetricChip icon={ShieldCheck} label="Consistency" value={Math.round(stability)} suffix="%" tone={stability>=75?"good":stability>=60?"neutral":"warn"} />}
-          {corrPerMin!=null && <MetricChip icon={Target} label="Corrections" value={`${corrPerMin}`} suffix="/min" tone={corrPerMin<=12?"good":corrPerMin>20?"warn":"neutral"} />}
           {peakWpm!=null && Number.isFinite(peakWpm) && <MetricChip icon={LineChart} label="Peak WPM" value={Math.round(peakWpm)} />}
+          {corrPerMin!=null && <MetricChip icon={Target} label="Corrections" value={`${corrPerMin}`} suffix="/min" tone={corrPerMin<=12?"good":corrPerMin>20?"warn":"neutral"} />}
           {focus && <FocusTag focus={focus} />}
           {projGain!=null && projGain>0 && <ProjectedGain wpm={projGain} />}
         </div>
 
-        {/* Sparkline (flat) */}
-        {Array.isArray(wpmTrend) && wpmTrend.length > 3 && (
-          <div className="mt-3">
-            <MicroSparkline data={wpmTrend} flat={true} />
-            <div className="mt-1 text-[11px] text-orange-200/60">WPM trend in last run</div>
-          </div>
+        {bestTimeOfDay && (
+          <div className="mt-2 text-[11px] text-orange-200/70">You usually peak in the {bestTimeOfDay}.</div>
         )}
 
-        {/* Why this? */}
-        <WhyThis text={"Model-assisted summary based on speed and accuracy trend."} />
-
-        {/* Coach praise */}
-        <CoachPraise text={coachPraise} />
-
-        {/* CTA */}
-        <div className="mt-4">
-          <NextStepTile title={"Precision drill (30s)"} xp={40} />
+        {/* Details toggle */}
+        <div className="mt-3">
+          <button
+            type="button"
+            className="text-xs text-orange-200/80 hover:text-orange-100 underline"
+            onClick={() => setExpanded(v => !v)}
+          >
+            {expanded ? "Hide details" : "Show details"}
+          </button>
         </div>
+
+        {expanded && (
+            <div className="mt-3">
+              {/* Sparkline (flat) */}
+              {Array.isArray(wpmTrend) && wpmTrend.length > 3 && (
+                <div className="mt-1">
+                  <MicroSparkline data={wpmTrend} flat={true} />
+                  <div className="mt-1 text-[11px] text-orange-200/60">WPM trend in last run</div>
+                </div>
+              )}
+
+              {/* Why this? */}
+              <WhyThis text={"Model-assisted summary based on speed and accuracy trend."} />
+
+              {/* Coach praise */}
+              <CoachPraise text={coachPraise} />
+
+              {/* CTA */}
+              <div className="mt-4">
+                <NextStepTile title={"Precision drill (30s)"} xp={40} />
+              </div>
+            </div>
+        )}
       </div>
 
       {/* Rank / XP / Streak */}
