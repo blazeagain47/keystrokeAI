@@ -16,7 +16,6 @@ import {
 import AIFeedback from "@/components/feedback/AIFeedback";
 import BlazeFeedbackCard from "@/components/feedback/BlazeFeedbackCard";
 import FireSummaryCard from "@/components/test/FireSummaryCard";
-import ThisTestCard from "@/components/test/ThisTestCard";
 import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
 import NextTestButton from "@/components/ui/NextTestButton";
 import { useStatsStore } from "@/stores/useStatsStore";
@@ -302,18 +301,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             challenge={"Beat your last WPM next run (+40 XP)"}
           />
 
-          {/* This test card (replaces next test knobs) */}
-          {props.usedConfig && (
-            <ThisTestCard
-              className="w-full"
-              mode={props.usedConfig.mode}
-              wordCount={props.usedConfig.wordCount}
-              durationSec={props.usedConfig.durationSec}
-              include_punctuation={props.usedConfig.include_punctuation}
-              include_numbers={props.usedConfig.include_numbers}
-              language={props.usedConfig.language}
-            />
-          )}
+          {/* This test card (duplicate at bottom) — removed per design */}
         </motion.div>
       </div>
 

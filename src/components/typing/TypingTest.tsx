@@ -660,6 +660,30 @@ const TypingTest: React.FC = () => {
           </div>
           {/* Floating toast anchored to language pill */}
           {!isTestComplete && <ReadyToast />}
+
+          {/* Inline error notice positioned below the filter bar */}
+          {promptLoad === 'error' && !currentPrompt && (
+            <div className="pointer-events-auto mx-auto mt-6 sm:mt-8 max-w-md">
+              <div className="flex flex-col items-center gap-2 text-orange-200/80">
+                <div className="text-sm">Couldn’t generate a test.</div>
+                <div className="flex gap-2">
+                  <button
+                    className="px-3 py-1.5 rounded-md bg-white/10 ring-1 ring-white/15 hover:bg-white/15"
+                    onClick={() => { bootLockRef.current = false; loadPromptOnce().catch(()=>{}); }}
+                  >
+                    Try again
+                  </button>
+                  <button
+                    className="px-3 py-1.5 rounded-md bg-orange-500/15 ring-1 ring-orange-400/25 hover:ring-orange-300/40"
+                    onClick={() => { bootLockRef.current = false; loadPromptOnce({ useFallback: true }).catch(()=>{}); }}
+                  >
+                    Use offline prompt
+                  </button>
+                </div>
+                {promptError && <div className="text-[11px] opacity-70">{promptError}</div>}
+              </div>
+            </div>
+          )}
         </div>
       </PreTestOverlay>
 
@@ -724,26 +748,7 @@ const TypingTest: React.FC = () => {
             {/* Loader + error UI driven by promptLoad */}
             {/* centralized loader; inline spinner removed */}
             {promptLoad === 'loading' && !currentPrompt && null}
-            {promptLoad === 'error' && !currentPrompt && (
-              <div className="flex flex-col items-center gap-2 text-orange-200/80 my-6">
-                <div className="text-sm">Couldn’t generate a test.</div>
-                <div className="flex gap-2">
-                  <button
-                    className="px-3 py-1.5 rounded-md bg-white/10 ring-1 ring-white/15 hover:bg-white/15"
-                    onClick={() => { bootLockRef.current = false; loadPromptOnce().catch(()=>{}); }}
-                  >
-                    Try again
-                  </button>
-                  <button
-                    className="px-3 py-1.5 rounded-md bg-orange-500/15 ring-1 ring-orange-400/25 hover:ring-orange-300/40"
-                    onClick={() => { bootLockRef.current = false; loadPromptOnce({ useFallback: true }).catch(()=>{}); }}
-                  >
-                    Use offline prompt
-                  </button>
-                </div>
-                {promptError && <div className="text-[11px] opacity-70">{promptError}</div>}
-              </div>
-            )}
+            {promptLoad === 'error' && !currentPrompt && null}
 
             <div
               className="typing-offsetter"
