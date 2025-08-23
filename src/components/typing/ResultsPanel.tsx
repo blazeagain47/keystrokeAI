@@ -25,6 +25,7 @@ import NextTestButton from "@/components/ui/NextTestButton";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { useAuth } from "@/hooks/useAuth";
 import ResultsStatsBar from "./ResultsStatsBar";
+import { sanitizeWpmForChart } from "@/lib/typingMetrics";
 
 export interface ResultsPanelProps {
   wpm: number;
@@ -79,6 +80,16 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   const wpmTrend: number[] = Array.isArray(wpmSeries)
     ? wpmSeries.map((p: any) => (typeof p === "number" ? p : Number(p?.wpm) || 0))
     : [];
+
+  // Build a pleasant chart series from the raw wpmTrend.
+  // Dynamic params: short runs drop proportionally less.
+  const chartWpm: number[] = React.useMemo(() => {
+    const n = Math.max(0, wpmTrend.length);
+    if (n === 0) return [];
+    const drop = Math.min(3, Math.floor(n * 0.15));       // up to 15% of run, max 3s
+    const win  = Math.min(5, Math.max(3, Math.floor(n * 0.10))); // 3–5s MA
+    return sanitizeWpmForChart(wpmTrend, { drop, win, clipP: 0.98, floor: 0 });
+  }, [wpmTrend]);
   const [pulseGlow, setPulseGlow] = React.useState(false);
   const prefersReducedMotion = useReducedMotion();
   const [showNext, setShowNext] = React.useState(false);
@@ -136,11 +147,11 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   }, [onNextTest]);
   // Normalize WPM values to 0..100 for sparkline animation
   const trendPercentages: number[] | undefined = (() => {
-    if (!wpmTrend || wpmTrend.length < 2) return undefined;
-    const min = Math.min(...wpmTrend);
-    const max = Math.max(...wpmTrend);
+    if (!chartWpm || chartWpm.length < 2) return undefined;
+    const min = Math.min(...chartWpm);
+    const max = Math.max(...chartWpm);
     const range = Math.max(1, max - min);
-    return wpmTrend.map(v => Math.round(((v - min) / range) * 100));
+    return chartWpm.map((v) => Math.round(((v - min) / range) * 100));
   })();
   const nextKnobs: string[] | undefined = (() => {
     if (!flags) return undefined;
@@ -154,14 +165,11 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     return msg.includes("Could not fetch AI feedback.") ? msg : null;
   })();
 
-  // Normalize chart series: accept either number[] or {second,wpm}[] callers
-  type Point = { second: number; wpm: number };
-  function normalizeSeries(series: any): Point[] {
-    if (!Array.isArray(series) || series.length === 0) return [];
-    if (typeof series[0] === "object" && series[0] && "second" in series[0]) return series as Point[];
-    return (series as number[]).map((wpm, i) => ({ second: i + 1, wpm: Number(wpm) || 0 }));
-  }
-  const chartData = normalizeSeries(wpmSeries);
+  // Map sanitized series to chart data points
+  const chartData = React.useMemo(
+    () => chartWpm.map((v, i) => ({ second: i + 1, wpm: Math.round(v) })),
+    [chartWpm]
+  );
 
   // Debug logging for chart annotations (rename to avoid shadowing prop avgWpm)
   const chartAvgWpm = chartData.length ? chartData.reduce((s, p) => s + p.wpm, 0) / chartData.length : undefined;
@@ -302,8 +310,8 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                       <text x="50%" y="100%" dy={28} textAnchor="middle" className="fill-white/60 text-xs">Time (s)</text>
                     </XAxis>
                     <YAxis
-                      domain={["auto", "auto"]}
                       tickFormatter={fmt.y}
+                      domain={[0, (dataMax: number) => Math.max(80, Math.round(dataMax * 1.1))]}
                       stroke="currentColor"
                       opacity={0.7}
                       label={{ value: 'WPM', angle: -90, position: 'insideLeft', fill: 'currentColor', opacity: 0.7 }}
@@ -328,33 +336,42 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                       />
                     )}
                     {/* Fire-themed line + soft glow overlay */}
-                    <Line
-                      type="monotone"
-                      dataKey="wpm"
-                      dot={false}
-                      activeDot={{ r: 4, className: "chart-point-glow" }}
-                      stroke="url(#fireStroke)"
-                      strokeWidth={2.5}
-                      isAnimationActive={!prefersReducedMotion}
-                      animationDuration={prefersReducedMotion ? 0 : 3000}
-                      style={{ filter: "drop-shadow(0 0 6px rgba(255,80,0,0.4))" }}
-                      onAnimationEnd={reveal}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="wpm"
-                      dot={false}
-                      stroke="url(#fireStroke)"
-                      strokeOpacity={0.25}
-                      strokeWidth={7}
-                      isAnimationActive={false}
-                    />
-                    {/* peak marker */}
-                    {hasPeak && (
-                      <ReferenceDot x={peakPoint.second} y={peakPoint.wpm} r={4} strokeOpacity={0.9}
-                        label={{ value: `Peak ${Math.round(peakPoint.wpm)}`, position: "right", fill: "currentColor", opacity: 0.7 }}
+                    {chartData.length >= 3 ? (
+                      <Line
+                        type="monotone"
+                        dataKey="wpm"
+                        dot={false}
+                        activeDot={{ r: 4, className: "chart-point-glow" }}
+                        stroke="url(#fireStroke)"
+                        strokeWidth={2.5}
+                        isAnimationActive={!prefersReducedMotion}
+                        animationDuration={prefersReducedMotion ? 0 : 3000}
+                        style={{ filter: "drop-shadow(0 0 6px rgba(255,80,0,0.4))" }}
+                        onAnimationEnd={reveal}
+                      />
+                    ) : (
+                      // Optional: tiny placeholder for ultra-short runs
+                      <Line
+                        type="monotone"
+                        dataKey="wpm"
+                        dot={false}
+                        stroke="url(#fireStroke)"
+                        strokeOpacity={0.4}
+                        strokeWidth={2.5}
+                        isAnimationActive={!prefersReducedMotion}
+                        animationDuration={prefersReducedMotion ? 0 : 3000}
+                        onAnimationEnd={reveal}
                       />
                     )}
+                                         <Line
+                       type="monotone"
+                       dataKey="wpm"
+                       dot={false}
+                       stroke="url(#fireStroke)"
+                       strokeOpacity={0.25}
+                       strokeWidth={7}
+                       isAnimationActive={false}
+                     />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

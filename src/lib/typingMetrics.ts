@@ -94,4 +94,56 @@ export function baselineWpmFromHistory(
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
+/**
+ * Smooth and de-noise a WPM series for CHART DISPLAY ONLY.
+ * - Drops the first N seconds (startup noise)
+ * - Applies moving average
+ * - Clips extreme outliers by percentile (e.g., a single spike)
+ * - Floors negatives to 0
+ */
+export function sanitizeWpmForChart(
+  series: number[],
+  {
+    drop = 3,
+    win = 5,
+    clipP = 0.98,
+    floor = 0,
+  }: { drop?: number; win?: number; clipP?: number; floor?: number } = {}
+): number[] {
+  const cleaned = (series ?? []).map(Number).filter(Number.isFinite);
+  const trimmed = cleaned.slice(Math.max(0, drop));
+  if (!trimmed.length) return [];
+
+  // movingAverage already exists; if it returns empty, fall back to trimmed
+  const ma = movingAverage(trimmed, win);
+  const xs = ma?.length ? ma : trimmed;
+
+  // clip at P98 to remove a single wild point
+  const sorted = [...xs].sort((a, b) => a - b);
+  const pIdx = Math.min(sorted.length - 1, Math.floor(sorted.length * clipP));
+  const cap = sorted[pIdx] ?? sorted.at(-1) ?? 0;
+
+  return xs.map((v) => Math.max(floor, Math.min(v, cap)));
+}
+
+/**
+ * Optional helper if/when we want a more stable source series:
+ * convert per-second char counts into a rolling-window WPM.
+ *   perSecondChars[i] = chars typed during second i (delta of cumulative)
+ */
+export function rollingWindowWpm(perSecondChars: number[], windowSec = 3): number[] {
+  const w = Math.max(1, Math.floor(windowSec));
+  if (!perSecondChars?.length) return [];
+  const out: number[] = [];
+  let sum = 0;
+  for (let i = 0; i < perSecondChars.length; i++) {
+    sum += perSecondChars[i] ?? 0;
+    if (i >= w) sum -= perSecondChars[i - w] ?? 0;
+    // words = chars/5; minutes = windowSec/60
+    const wpm = (sum / 5) / (w / 60);
+    out.push(wpm);
+  }
+  return out;
+}
+
 
