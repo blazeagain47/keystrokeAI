@@ -11,9 +11,13 @@ export default function BlazeHistoryPanel() {
   const userId = useAuthStore(s => s.user?.id);
 
   useEffect(() => {
-    if (!ready && userId) {
-      void hydrate(String(userId));
-    }
+    if (!userId || ready) return;
+    const ac = new AbortController();
+    (async () => {
+      try { await hydrate(String(userId), { signal: ac.signal }); }
+      catch (e) { /* ignore; hydrate handles abort logging */ }
+    })();
+    return () => ac.abort();
   }, [ready, userId, hydrate]);
 
   return (
@@ -25,7 +29,7 @@ export default function BlazeHistoryPanel() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Tile label="Total XP" value={totalXP} />
-        <Tile label="Current Streak" value={0} suffix="days" />
+        <Tile label="Current Streak" value={useStatsStore.getState().streakDays || 0} suffix="days" />
         <Tile label="Range average" value={sessions ? `${avgWpm} WPM · ${avgAcc}% acc` : "— WPM · —% acc"} helper={`${sessions} session${sessions===1? "": "s"}`} />
       </div>
 

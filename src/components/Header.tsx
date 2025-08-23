@@ -3,7 +3,8 @@
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 // ⬇️ Stable lucide icons only
-import { Bell, User, Settings as Gear, Keyboard } from "lucide-react";
+import { User, Settings as Gear, Keyboard } from "lucide-react";
+import VersionBadge from "@/components/common/VersionBadge";
 import { useAuthStore } from "@/store/auth";
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
@@ -39,14 +40,7 @@ export default function Header() {
           >
             <Keyboard className="h-5 w-5" />
           </Link>
-          <Link
-            href="#"
-            className="p-2 rounded-xl hover:bg-white/10 transition"
-            aria-label="Notifications"
-            onClick={(e) => e.preventDefault()}
-          >
-            <Bell className="h-5 w-5" />
-          </Link>
+          <VersionBadge />
 
           <button
             onClick={openSettings}

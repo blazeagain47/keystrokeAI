@@ -1,3 +1,4 @@
+import { isAbort } from "@/lib/isAbort";
 "use client";
 import * as React from "react";
 import AnimatedXPCard from "./AnimatedXPCard";
@@ -14,20 +15,20 @@ export default function StatsGrid({ totalXP, streak, memberSince }: Props) {
   const [xp, setXp] = React.useState<number>(user?.xpTotal ?? totalXP ?? 0);
 
   React.useEffect(() => {
-    let cancelled = false;
     const have = Number(user?.xpTotal ?? 0);
     if (have > 0) { setXp(have); return; }
+    const ac = new AbortController();
     (async () => {
       try {
-        const res = await fetch("/api/stats/summary?range=all", { cache: "no-store" });
+        const res = await fetch("/api/stats/summary?range=all", { cache: "no-store", signal: ac.signal });
         const data = await res.json().catch(() => ({}));
-        const fxp = Number(
-          data?.totalXP ?? data?.total_xp ?? data?.xp ?? 0
-        );
-        if (!cancelled) setXp(isFinite(fxp) ? fxp : 0);
-      } catch { if (!cancelled) setXp(0); }
+        const fxp = Number(data?.totalXP ?? data?.total_xp ?? data?.xp ?? 0);
+        setXp(isFinite(fxp) ? fxp : 0);
+      } catch (e) {
+        if (!isAbort(e)) console.warn("[summary] fetch failed:", e);
+      }
     })();
-    return () => { cancelled = true; };
+    return () => ac.abort();
   }, [user?.xpTotal]);
 
   return (

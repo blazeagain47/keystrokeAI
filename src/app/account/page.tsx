@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import ProfileSummaryCard from "@/components/account/AccountOverview";
-import StatsGrid from "@/components/account/StatsGrid";
 import Leaderboard from "@/components/account/Leaderboard";
 import BlazeHistoryPanel from "@/components/account/BlazeHistoryPanel";
 import CommandHints from "@/components/account/CommandHints";
@@ -90,11 +89,7 @@ export default function AccountPage() {
 
       {user ? (
         <>
-          {(() => { try {
-            const totalXP = useStatsStore.getState().totalXP || 0;
-            const streakDays = useStatsStore.getState().streakDays || 0;
-            return <StatsGrid totalXP={totalXP} streak={streakDays} memberSince={new Date(user.createdAt).toLocaleDateString()} />;
-          } catch { return <StatsGrid totalXP={0} streak={0} memberSince={new Date(user.createdAt).toLocaleDateString()} />; } })()}
+          {/* Duplicate stats row removed in favor of the Blaze history section below */}
           <BlazeHistoryPanel />
           <Leaderboard />
         </>

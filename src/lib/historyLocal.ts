@@ -26,9 +26,16 @@ export type RangeKey = "all" | "7d" | "1d";
 
 export function filterByRange(runs: BlazeRun[], range: RangeKey): BlazeRun[] {
 	if (range === "all") return runs;
-	const now = Date.now();
-	const ms = range === "7d" ? 7*24*60*60*1000 : 24*60*60*1000;
-	return runs.filter(r => now - r.ts <= ms);
+	try {
+		const helpers = require("@/lib/historyNormalize");
+		if (range === "1d") return runs.filter(r => helpers.isTodayLocal(Number((r as any).ts)));
+		if (range === "7d") return runs.filter(r => helpers.inLastNDaysLocal(Number((r as any).ts), 7));
+		return runs;
+	} catch {
+		const now = Date.now();
+		const ms = range === "7d" ? 7*24*60*60*1000 : 24*60*60*1000;
+		return runs.filter(r => now - r.ts <= ms);
+	}
 }
 
 export function summarize(runs: BlazeRun[]) {

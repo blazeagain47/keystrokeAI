@@ -112,9 +112,7 @@ export default function Dashboard() {
               <button className="text-gray-300 hover:text-white p-2 rounded-lg hover:bg-neutral-700 transition-all duration-200">
                 <Settings className="h-5 w-5" />
               </button>
-              <button className="text-gray-300 hover:text-white p-2 rounded-lg hover:bg-neutral-700 transition-all duration-200">
-                <Bell className="h-5 w-5" />
-              </button>
+              {/* Replace bell with version badge in dashboard header area if shown */}
               <button className="text-gray-300 hover:text-white p-2 rounded-lg hover:bg-neutral-700 transition-all duration-200">
                 <User className="h-5 w-5" />
               </button>
