@@ -8,14 +8,11 @@ import React from "react";
 export default function PreTestOverlay({
   show,
   children,
-  topClass = "top-12 sm:top-14 md:top-16 lg:top-18",
   position = "fixed",
   z = "z-40",
 }: {
   show: boolean;
   children: React.ReactNode;
-  /** Tailwind classes controlling the top offset per breakpoint */
-  topClass?: string;
   /** "fixed" or "absolute" */
   position?: "fixed" | "absolute";
   /** Tailwind z-index utility */
@@ -30,8 +27,8 @@ export default function PreTestOverlay({
         "max-w-6xl px-4",
         "pointer-events-auto",
         z,
-        topClass,
       ].join(" ")}
+      style={{ top: "var(--bk-header-h, 64px)" }}
       aria-hidden={false}
     >
       {children}

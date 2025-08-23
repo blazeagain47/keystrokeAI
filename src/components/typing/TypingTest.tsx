@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStatsStore } from '@/stores/useStatsStore';
-import { useSettingsStore } from '@/store/settings';
 import TypingBox from './TypingBox';
 import ResultsPanel from './ResultsPanel';
 import { 
@@ -23,7 +22,6 @@ import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { generateLocalPrompt } from '@/lib/localPrompt';
 import { toLowerLettersOnly, ensureExactWordCount } from '@/lib/prompt/normalize';
 import { normalizePromptWords } from '@/lib/text';
-import SmartTestBadge from '@/components/SmartTestBadge';
 import ReadyToast from '@/components/typing/ReadyToast';
 import LogoLoader from '@/components/common/LogoLoader';
 import PreTestOverlay from '@/components/typing/PreTestOverlay';
@@ -72,6 +70,7 @@ const TypingTest: React.FC = () => {
     difficulty: string;
     feedback: string;
   }>(null);
+  const [offsetPx, setOffsetPx] = React.useState(0);
 
   // Test configuration state
   const [testMode, setTestMode] = useState<'time' | 'words' | 'quote' | 'zen' | 'custom'>('words');
@@ -110,8 +109,80 @@ const TypingTest: React.FC = () => {
   const [smartFlags, setSmartFlags] = useState<null | { punctuation?: boolean; numbers?: boolean }>(null);
   const [avgWpm, setAvgWpm] = useState<number>(0);
   const [avgAcc, setAvgAcc] = useState<number>(100);
-  const [prevDifficulty, setPrevDifficulty] = useState<null | 'easy'|'medium'|'hard'>(null);
-  const [difficultyChanged, setDifficultyChanged] = useState(false);
+  // Keep last difficulty if needed in future UI; currently unused
+  // const [prevDifficulty, setPrevDifficulty] = useState<null | 'easy'|'medium'|'hard'>(null);
+
+  // Refs used for measurement and layout offsets
+  const filterRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const statsRef  = useRef<HTMLDivElement | null>(null);
+
+  // overlay is visible before the test actually starts
+  const overlayVisible =
+    view !== 'results' && !(view === 'typing' && !isTestComplete && time > 0);
+
+  const isRunning = view === 'typing' && !isTestComplete && time > 0;
+
+  // Consolidated measurement and CSS var writer
+  const recalcOffsets = React.useCallback(() => {
+    const root = rootRef.current;
+    
+    const headerEl =
+      (document.querySelector('[data-app-header]') as HTMLElement) ||
+      (document.querySelector('header') as HTMLElement) ||
+      null;
+    
+    const headerH = headerEl?.getBoundingClientRect().height ?? 64;
+    const filterH = filterRef.current?.getBoundingClientRect().height ?? 0;
+    const statsH  = statsRef.current?.getBoundingClientRect().height ?? 0;
+    
+    // Write globals for other components (header, filter, stats)
+    const writeVars = (el: HTMLElement | null) => {
+      if (!el) return;
+      el.style.setProperty('--bk-header-h', `${Math.round(headerH)}px`);
+      el.style.setProperty('--bk-filter-h', `${Math.round(filterH)}px`);
+      el.style.setProperty('--bk-stats-h', `${Math.round(statsH)}px`);
+    };
+    writeVars(document.documentElement);
+    writeVars(root ?? null);
+    
+    // *** Use state for spacer instead of CSS variable ***
+    setOffsetPx(overlayVisible ? Math.round(filterH) : 0);
+  }, [overlayVisible]);
+
+  useLayoutEffect(() => {
+    const raf = requestAnimationFrame(recalcOffsets);
+
+    const observers: ResizeObserver[] = [];
+
+    const headerEl =
+      (document.querySelector('[data-app-header]') as HTMLElement) ||
+      (document.querySelector('header') as HTMLElement) ||
+      null;
+    if (headerEl) {
+      const ro = new ResizeObserver(recalcOffsets);
+      ro.observe(headerEl);
+      observers.push(ro);
+    }
+    if (filterRef.current) {
+      const ro = new ResizeObserver(recalcOffsets);
+      ro.observe(filterRef.current);
+      observers.push(ro);
+    }
+    if (statsRef.current) {
+      const ro = new ResizeObserver(recalcOffsets);
+      ro.observe(statsRef.current);
+      observers.push(ro);
+    }
+
+    try { window.addEventListener('resize', recalcOffsets, { passive: true } as AddEventListenerOptions); } catch { window.addEventListener('resize', recalcOffsets); }
+
+    return () => {
+      try { cancelAnimationFrame(raf); } catch {}
+      for (const ro of observers) { try { ro.disconnect(); } catch {} }
+      window.removeEventListener('resize', recalcOffsets);
+    };
+  }, [recalcOffsets, view, overlayVisible, isTestComplete, time, promptLoad, showPunctuation, showNumbers, testMode, durationSec]);
 
   // Reflect zen mode to the document for global backdrop behavior
   useEffect(() => {
@@ -153,8 +224,6 @@ const TypingTest: React.FC = () => {
         // Prefer override when present to avoid setState race
         const effectiveCount = useTime ? undefined : (opts?.overrides?.count ?? wordCount);
         if (useTime) {
-          const estWpm = avg.wpm > 0 ? avg.wpm : 50;
-          const estWords = Math.ceil((estWpm * durationSec) / 60);
           // For time mode we send a generous token count; words count is ignored
           // (kept as undefined to rely on duration)
         }
@@ -227,9 +296,12 @@ const TypingTest: React.FC = () => {
       setView('typing');
       setCurrentPrompt(finalPrompt);
       setPromptLoad('ready');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[prompt boot] error', err);
-      setPromptError(err?.message ?? 'Failed to load prompt');
+      const message = err instanceof Error
+        ? err.message
+        : (typeof err === 'object' && err && 'message' in err ? String((err as { message?: string }).message) : 'Failed to load prompt');
+      setPromptError(message);
       setPromptLoad('error');
       bootLockRef.current = false;
       return;
@@ -263,8 +335,14 @@ const TypingTest: React.FC = () => {
       await handleRestart(desiredCount, flagOverrides);
     } finally {
       busyRef.current = false;
+      try {
+        requestAnimationFrame(() => {
+          try { recalcOffsets(); } catch {}
+          try { rootRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' }); } catch {}
+        });
+      } catch {}
     }
-  }, [handleRestart]);
+  }, [handleRestart, recalcOffsets]);
 
   // Initial boot – run once after mount, no duplicate triggers
   useEffect(() => {
@@ -299,16 +377,11 @@ const TypingTest: React.FC = () => {
     return () => clearInterval(id);
   }, [view, isTestComplete]);
 
-  // Track difficulty changes to animate badge
-  useEffect(() => {
-    const current = smartUsedDifficulty;
-    if (current && prevDifficulty && current !== prevDifficulty) {
-      setDifficultyChanged(true);
-      const t = setTimeout(() => setDifficultyChanged(false), 1500);
-      return () => clearTimeout(t);
-    }
-    if (current) setPrevDifficulty(current);
-  }, [smartUsedDifficulty, prevDifficulty]);
+  // Track difficulty changes to update prevDifficulty (animation removed)
+  // useEffect(() => {
+  //   const current = smartUsedDifficulty;
+  //   if (current) setPrevDifficulty(current);
+  // }, [smartUsedDifficulty]);
 
   // Honor deep link: /#new → start fresh test and clear hash
   useEffect(() => {
@@ -337,16 +410,18 @@ const TypingTest: React.FC = () => {
     // Guarantee a normalized history append for both modes (words/time)
     try {
       const used = lastUsedConfigRef.current;
-      useStatsStore.getState().append({
-        id: (globalThis as any).crypto?.randomUUID ? (globalThis as any).crypto.randomUUID() : String(Date.now()),
+      const globalWithCrypto = globalThis as unknown as { crypto?: { randomUUID?: () => string } };
+      const id = globalWithCrypto.crypto?.randomUUID ? globalWithCrypto.crypto.randomUUID() : String(Date.now());
+      // append expects a run-like object; cast narrowly to avoid 'any'
+      (useStatsStore.getState().append as unknown as (run: unknown) => void)({
+        id,
         ts: Date.now(),
         wpm: finalWpm,
         acc: finalAccuracy,
         durationSec: Math.round(finalTime ?? 0),
         mode: used.mode,
         words: used.mode === 'words' ? (used.wordCount ?? undefined) : undefined,
-        // the store append() normalizes accuracyPct/completion flags
-      } as any);
+      });
     } catch {}
     if (!finalTypedText) return;
     try {
@@ -380,75 +455,13 @@ const TypingTest: React.FC = () => {
     } catch {}
   };
 
-  const filterRef = useRef<HTMLDivElement | null>(null);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const statsRef  = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const el = rootRef.current;
-    if (!el) return;
-
-    const headerEl =
-      (document.querySelector('[data-app-header]') as HTMLElement) ||
-      (document.querySelector('header') as HTMLElement) ||
-      null;
-
-    const setVars = () => {
-      const headerH = headerEl ? headerEl.getBoundingClientRect().height : 64;
-      const filterH = filterRef.current
-        ? filterRef.current.getBoundingClientRect().height
-        : 0;
-      const statsH  = statsRef.current
-        ? statsRef.current.getBoundingClientRect().height
-        : 0;
-      el.style.setProperty("--bk-header-h", `${Math.round(headerH)}px`);
-      el.style.setProperty("--bk-filter-h", `${Math.round(filterH)}px`);
-      el.style.setProperty("--bk-stats-h", `${Math.round(statsH)}px`);
-    };
-
-    setVars();
-    window.addEventListener("resize", setVars);
-    const ro = new ResizeObserver(setVars);
-    headerEl && ro.observe(headerEl);
-    filterRef.current && ro.observe(filterRef.current);
-    statsRef.current && ro.observe(statsRef.current);
-
-    return () => {
-      window.removeEventListener("resize", setVars);
-      ro.disconnect();
-    };
-  }, [view]);
-
-  // Measure combined height of filter + stats and set CSS transform offset on root
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-
-    const applyOffset = () => {
-      const filterH = filterRef.current?.offsetHeight ?? 0;
-      const statsH  = statsRef.current?.offsetHeight ?? 0;
-      const total = filterH + statsH;
-      try { root.style.setProperty('--typing-offset', `${total}px`); } catch {}
-    };
-
-    applyOffset();
-    const ro = new ResizeObserver(applyOffset);
-    if (filterRef.current) ro.observe(filterRef.current);
-    if (statsRef.current)  ro.observe(statsRef.current);
-    window.addEventListener('resize', applyOffset);
-    return () => {
-      try { ro.disconnect(); } catch {}
-      window.removeEventListener('resize', applyOffset);
-    };
-  }, [rootRef, filterRef, statsRef]);
-
-  const isRunning = view === 'typing' && !isTestComplete && time > 0;
+  // (old header/filter/stats measuring effect removed; consolidated above)
 
   return (
     <div ref={rootRef} className="min-h-dvh relative" data-view={view} data-run={isRunning ? 'true' : 'false'} data-bk-generating={promptLoad === 'loading' && !currentPrompt ? 'true' : 'false'}>
       {/* Top Navigation/Filter Bar */}
       {/* Pin the filter bar to the top of the viewport (fixed), higher than before */}
-      <PreTestOverlay show={view !== 'results' && !(view === 'typing' && !isTestComplete && time > 0)} position="fixed" topClass="top-12 sm:top-14 md:top-16 lg:top-18" z="z-40">
+      <PreTestOverlay show={view !== 'results' && !(view === 'typing' && !isTestComplete && time > 0)} position="fixed" z="z-40">
         <div ref={filterRef} className="max-w-7xl mx-auto px-6 py-4">
           {/* Main Mode Selection */}
           <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
@@ -722,7 +735,10 @@ const TypingTest: React.FC = () => {
               </div>
             )}
 
-            <div className="typing-offsetter">
+            <div
+              className="typing-offsetter"
+              style={{ paddingTop: `${offsetPx}px` }}
+            >
             <TypingBox 
               mode={mode}
               durationSec={durationSec}

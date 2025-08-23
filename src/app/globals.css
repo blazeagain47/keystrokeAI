@@ -1043,7 +1043,7 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
 .ai-card-embers::after{
   content:""; pointer-events:none; position:absolute; inset:0;
   background-image: radial-gradient(rgba(255,160,64,.12) 2px, transparent 2px);
-  background-size: 18px 18px; opacity:.08; mix-blend: screen;
+  background-size: 18px 18px; opacity:.08; mix-blend-mode: screen;
 }
 
 /* Smooth programmatic/anchor scrolling only on results view */
@@ -1088,13 +1088,12 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
 
 /* --- Lock typing area vertical position using measured top UI height --- */
 .typing-offsetter {
-  will-change: transform;
-  transform: translateY(var(--typing-offset, 0px));
+  /* padding-top now set via inline style in React */
 }
 
-/* Smooth but subtle; not enough to be perceived as a "jump" */
+/* Smooth but subtle */
 [data-view="typing"] .typing-offsetter {
-  transition: transform 120ms ease;
+  transition: padding-top 120ms ease;
 }
 
 /* When the typing page is active (after first keystroke), hide marked UI */
