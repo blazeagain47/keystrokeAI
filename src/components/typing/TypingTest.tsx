@@ -205,7 +205,7 @@ const TypingTest: React.FC = () => {
     recent_accuracy?: number;
   };
 
-  async function loadPromptOnce(opts?: { useFallback?: boolean; overrides?: Partial<GeneratePayload> }) {
+  const loadPromptOnce = useCallback(async (opts?: { useFallback?: boolean; overrides?: Partial<GeneratePayload> }) => {
     if (bootLockRef.current) return;
     bootLockRef.current = true;
     setPromptError(null);
@@ -221,12 +221,7 @@ const TypingTest: React.FC = () => {
         const hist = readHist();
         const avg = movingAvg(hist);
         const useTime = mode === 'time';
-        // Prefer override when present to avoid setState race
         const effectiveCount = useTime ? undefined : (opts?.overrides?.count ?? wordCount);
-        if (useTime) {
-          // For time mode we send a generous token count; words count is ignored
-          // (kept as undefined to rely on duration)
-        }
 
         const payload: GeneratePayload = {
           mode: useTime ? 'time' : 'words',
@@ -265,13 +260,11 @@ const TypingTest: React.FC = () => {
         promptText = generateLocalPrompt({ wordCount: wc });
       }
 
-      // Enforce exact words count using a single effective count and lowercase globally
       let finalPrompt = String(promptText);
       {
         const useTime = mode === 'time';
         const effectiveCount = useTime ? undefined : (opts?.overrides?.count ?? wordCount ?? 15);
 
-        // Record the effective config we just used
         lastUsedConfigRef.current = {
           mode: useTime ? 'time' : 'words',
           wordCount: useTime ? null : (typeof effectiveCount === 'number' ? effectiveCount : null),
@@ -306,11 +299,15 @@ const TypingTest: React.FC = () => {
       bootLockRef.current = false;
       return;
     }
-  }
+  }, [mode, durationSec, wordCount, showPunctuation, showNumbers]);
 
   const busyRef = useRef(false);
+  const lastRestartRef = useRef<number>(0);
 
   const handleRestart = useCallback(async (desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) => {
+    // Clear prompt immediately to prevent typing on stale content
+    setCurrentPrompt("");
+
     setIsTestComplete(false);
     setTime(0);
     setView('typing');
@@ -326,10 +323,18 @@ const TypingTest: React.FC = () => {
       include_numbers: flagOverrides?.include_numbers,
     };
     await loadPromptOnce({ overrides });
-  }, []);
+  }, [loadPromptOnce]);
 
   const safeRestart = useCallback(async (desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) => {
+    console.log('safeRestart called', { view, busy: busyRef.current, t: Date.now() });
     if (busyRef.current) return;
+    // Prevent rapid restarts (1000ms cooldown)
+    const now = Date.now();
+    if (now - lastRestartRef.current < 1000) {
+      console.log('safeRestart blocked by cooldown');
+      return;
+    }
+    lastRestartRef.current = now;
     busyRef.current = true;
     try {
       await handleRestart(desiredCount, flagOverrides);
@@ -387,12 +392,17 @@ const TypingTest: React.FC = () => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (window.location.hash === '#new') {
+      // Don't restart if already in typing or if busy
+      if (view === 'typing' || busyRef.current) {
+        try { history.replaceState(null, '', '/'); } catch {}
+        return;
+      }
       setTimeout(() => {
         try { void safeRestart(); } catch {}
         try { history.replaceState(null, '', '/'); } catch {}
       }, 0);
     }
-  }, [safeRestart]);
+  }, [safeRestart, view]);
 
   const handleTestComplete = async (finalWpm: number, finalAccuracy: number, finalTime: number, finalTypedText?: string) => {
     setIsTestComplete(true);
@@ -745,6 +755,7 @@ const TypingTest: React.FC = () => {
               onStatsUpdate={handleStatsUpdate}
               onTestComplete={handleTestComplete}
               prompt={currentPrompt}
+              isLoading={promptLoad === 'loading'}
               onRequestNewPrompt={async () => { await safeRestart(); }}
               onRequestAppendPrompt={async () => {
                 const extraCount = 120;

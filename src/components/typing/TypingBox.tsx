@@ -37,9 +37,10 @@ interface TypingBoxProps {
   prompt?: string;
   onRequestNewPrompt?: () => void | Promise<void>;
   onRequestAppendPrompt?: () => Promise<string> | string;
+  isLoading?: boolean;
 }
 
-const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt }) => {
+const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt, isLoading: externalLoading = false }) => {
   // Fallback; will be replaced by measured DOM line-height
   const LINE_H = 38; // px fixed line-height for precise viewport math
   // Bigger viewport and center focus
@@ -258,7 +259,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   /* ───────── Keyboard handler ───────── */
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (isLoading || isComplete) return;
+      // Prevent input while loading (external or internal) or when test complete
+      if (externalLoading || isLoading || isComplete) return;
 
       /* start timer */
       if (!hasStarted && e.key.length === 1) {
@@ -522,6 +524,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     [
       user,
       isLoading,
+      externalLoading,
       isComplete,
       hasStarted,
       startTime,

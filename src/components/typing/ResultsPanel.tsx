@@ -88,14 +88,22 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   }, [reveal, prefersReducedMotion]);
 
   React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const lastTabRef = { current: 0 };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Tab") {
+        lastTabRef.current = Date.now();
+        return;
+      }
       if (e.key === "Enter") {
+        // Only handle bare Enter; defer Tab+Enter to HotkeysGlobal (/#new)
+        const recentTab = Date.now() - lastTabRef.current <= 750;
+        if (recentTab) return;
         try { e.preventDefault(); } catch {}
         if (typeof onNextTest === "function") onNextTest();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [onNextTest]);
   // Normalize WPM values to 0..100 for sparkline animation
   const trendPercentages: number[] | undefined = (() => {
