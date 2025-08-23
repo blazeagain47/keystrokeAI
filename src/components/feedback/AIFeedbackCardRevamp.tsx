@@ -50,6 +50,119 @@ function buildMessage(wpmTrend: number[], acc: number) {
   return "Keep the cadence steady — consistency + accuracy will push your WPM up.";
 }
 
+// ---- Dynamic personalized feedback ----------------------------------------
+type ErrorMetrics = {
+  backspaceCount: number;
+  commonErrors: string[];
+  errorRate: number; // errors per minute
+};
+
+function deriveErrorData(lastRun: any, wpmTrend: number[]): ErrorMetrics {
+  const durationSec = Number((lastRun?.durationSec ?? wpmTrend?.length ?? 0)) || 0;
+  const raw = Array.isArray(lastRun?.events)
+    ? lastRun.events
+    : Array.isArray(lastRun?.keystrokes)
+    ? lastRun.keystrokes
+    : Array.isArray(lastRun?.keyLog)
+    ? lastRun.keyLog
+    : Array.isArray(lastRun?.keyEvents)
+    ? lastRun.keyEvents
+    : [];
+  let backspaceCount = 0;
+  let errorCount = 0;
+  try {
+    for (const e of raw) {
+      const k = (e?.key ?? e?.char ?? e?.k ?? "").toString();
+      if (k.toLowerCase() === "backspace") backspaceCount++;
+      if (e?.isError || e?.error || e?.mistake) errorCount++;
+    }
+  } catch {}
+  // bigrams/keys
+  const bigrams = lastRun?.errorBigrams || {};
+  const keys = lastRun?.mistypedKeys || lastRun?.errors || {};
+  const commonErrors: string[] = (() => {
+    const pairs: Array<[string, number]> = [];
+    try { for (const k of Object.keys(bigrams)) pairs.push([k, Number((bigrams as any)[k] ?? 0)]); } catch {}
+    try { for (const k of Object.keys(keys)) pairs.push([k, Number((keys as any)[k] ?? 0)]); } catch {}
+    return pairs.sort((a,b)=> (b[1]||0)-(a[1]||0)).slice(0,3).map(p=>p[0]);
+  })();
+  const errorRate = durationSec > 0 ? Math.round((errorCount / durationSec) * 60) : 0;
+  return { backspaceCount, commonErrors, errorRate };
+}
+
+function generatePersonalizedFeedback(
+  wpmTrend: number[],
+  accuracyPct: number,
+  errorData: ErrorMetrics | null,
+  userPatterns: any
+): string {
+  const start = wpmTrend[0] || 0;
+  const end = wpmTrend[wpmTrend.length - 1] || 0;
+  const improving = end > start + 2;
+  const declining = end < start - 2;
+  const consistency = consistencyFromSeries(wpmTrend);
+
+  const backspaceCount = errorData?.backspaceCount || 0;
+  const commonErrors = errorData?.commonErrors || [];
+  const errorRate = errorData?.errorRate || 0;
+  const durationSec = wpmTrend.length;
+
+  const isShortSession = durationSec < 20;
+  const highErrorRate = errorRate > 15;
+  const manyBackspaces = backspaceCount > durationSec / 2;
+
+  let primaryIssue: "accuracy"|"consistency"|"endurance"|"controlled"|"maintenance" = "maintenance";
+  if (accuracyPct < 85) primaryIssue = "accuracy";
+  else if (consistency < 60) primaryIssue = "consistency";
+  else if (declining) primaryIssue = "endurance";
+  else if (improving && accuracyPct < 95) primaryIssue = "controlled";
+
+  let suggestion = "";
+  switch (primaryIssue) {
+    case "accuracy":
+      if (manyBackspaces) suggestion = "Try to reduce backspacing by reading ahead and trusting your muscle memory.";
+      else if (commonErrors.length > 0) suggestion = `Focus on the "${commonErrors[0]}" combination—it's your most frequent error.`;
+      else if (highErrorRate) suggestion = "Slow down slightly to improve accuracy. Speed follows precision.";
+      else suggestion = "Practice tougher texts to stress-test accuracy under pressure.";
+      break;
+    case "consistency":
+      if (isShortSession) suggestion = "Try longer sessions to build steady rhythm and endurance.";
+      else if (wpmTrend.filter(w => w < end * 0.7).length > 2) suggestion = "You had several big drops. Aim for a more even pace.";
+      else suggestion = "Use a rhythmic drill to improve cadence stability.";
+      break;
+    case "endurance":
+      if (end < start * 0.8) suggestion = "You faded late—start at a sustainable pace and finish strong.";
+      else suggestion = "Build stamina with progressively longer sessions.";
+      break;
+    case "controlled":
+      suggestion = "Speed is rising but accuracy dipped—nudge pace while keeping clean keystrokes.";
+      break;
+    default:
+      {
+        const encouragements = [
+          "Excellent balance of speed and accuracy!",
+          "Great consistency throughout your session!",
+          "Impressive control and precision!",
+          "You're maintaining excellent form!",
+          "Outstanding rhythm and flow!",
+        ];
+        suggestion = encouragements[Math.floor(Math.random() * encouragements.length)];
+      }
+  }
+
+  if (userPatterns?.bestTime && new Date().getHours() === userPatterns.bestTime) {
+    suggestion += " You're practicing during your peak performance hours!";
+  }
+
+  let emoji = "";
+  if (accuracyPct >= 95 && consistency >= 80) emoji = "🔥 ";
+  else if (accuracyPct >= 90) emoji = "🚀 ";
+  else if (accuracyPct >= 85) emoji = "⚡ ";
+  else emoji = "🎯 ";
+
+  return `${emoji}${suggestion}`;
+}
+
 export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed, runSnapshot, className }: Props) {
   const [viewMode, setViewMode] = useState<'quick' | 'detailed'>("quick");
   const prefersReducedMotion = useReducedMotion();
@@ -70,6 +183,11 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
 
   const currentHour = new Date().getHours();
   const timeOfDay = currentHour < 12 ? "morning" : currentHour < 17 ? "afternoon" : "evening";
+
+  // Error metrics from last run (best-effort)
+  const lastRun = Array.isArray(history) && history.length ? (history as any[])[(history as any[]).length - 1] : null;
+  const errorData = useMemo<ErrorMetrics>(() => deriveErrorData(lastRun, wpmTrend), [lastRun, wpmTrend]);
+  const feedbackMessage = useMemo(() => generatePersonalizedFeedback(wpmTrend, accuracyPct, errorData, null), [wpmTrend, accuracyPct, errorData]);
 
   return (
     <motion.div
@@ -105,7 +223,7 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
                   <span>Good {timeOfDay}!</span>
                   <span className="flex items-center gap-1"><Flame className="w-3 h-3" />{streakDays} day streak</span>
                 </div>
-                <p className="text-sm text-white/90 leading-relaxed">{buildMessage(wpmTrend, accuracyPct)}</p>
+                <p className="text-sm text-white/90 leading-relaxed">{feedbackMessage}</p>
                 <div className="flex gap-3 justify-between">
                   <div className="flex items-center gap-1 text-xs"><Target className="w-3 h-3 text-green-400" /><span className="text-white/80">{Math.round(accuracyPct)}%</span></div>
                   <div className="flex items-center gap-1 text-xs"><Gauge className="w-3 h-3 text-blue-400" /><span className="text-white/80">{Math.round(currentWpm)} WPM</span></div>

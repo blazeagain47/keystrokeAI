@@ -54,10 +54,21 @@ const config: Config = {
       keyframes: {
         "fade-in": { from: { opacity: "0" }, to: { opacity: "1" } },
         "slide-up": { from: { transform: "translateY(12px)" }, to: { transform: "translateY(0)" } },
+        float: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+        glow: {
+          "0%": { boxShadow: "0 0 5px #ffa726, 0 0 10px #ffa726, 0 0 15px #ffa726" },
+          "100%": { boxShadow: "0 0 10px #ffa726, 0 0 20px #ffa726, 0 0 30px #ffa726" },
+        },
       },
       animation: {
         "fade-in": "fade-in .4s ease-out both",
         "slide-up": "slide-up .4s ease-out both",
+        "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        float: "float 6s ease-in-out infinite",
+        glow: "glow 2s ease-in-out infinite alternate",
       },
     },
   },
