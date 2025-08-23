@@ -10,6 +10,7 @@ import { useAuthStore } from "@/store/auth";
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
 import { useUIStore } from "@/stores/useUIStore";
+import { BK_EVENTS } from "@/lib/events";
 
 export default function Header() {
   const router = useRouter();
@@ -20,6 +21,10 @@ export default function Header() {
       hydrateFromMe().catch(() => {});
     }
   }, [ready, hydrateFromMe]);
+
+  useEffect(() => {
+    console.info("[bk:new] header= src/components/Header.tsx"); // remove after verification
+  }, []);
 
   const openSettings = useUIStore(s => s.openSettings);
 
@@ -41,6 +46,15 @@ export default function Header() {
             aria-label="Start a new typing test"
             title="New test (Tab → Enter)"
             className="p-2 rounded-xl hover:bg-white/10 transition"
+            onClick={(e) => {
+              try { e.preventDefault(); e.stopPropagation(); } catch {}
+              try {
+                window.dispatchEvent(new Event(BK_EVENTS.NEW_TEST as unknown as string));
+                const { pathname, search } = window.location;
+                window.history.replaceState(null, "", pathname + search);
+              } catch {}
+            }}
+            data-bk="kbd-newtest"
           >
             <Keyboard className="h-5 w-5" />
           </Link>

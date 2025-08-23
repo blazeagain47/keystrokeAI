@@ -69,9 +69,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   } = props;
 
   // Diagnostic logging
-  console.info('[bk] header=', 'src/components/Header.tsx');
-  console.info('[bk] results=', 'src/components/typing/ResultsPanel.tsx');
-  console.info('[bk] stats=', 'src/components/typing/ResultsStatsBar.tsx');
+  console.info('[bk:new] results= src/components/typing/ResultsPanel.tsx'); // remove after verification
 
   const totalXpStore = useStatsStore(s => s.totalXP);
   const { user } = useAuth();

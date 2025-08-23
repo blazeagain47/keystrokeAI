@@ -26,6 +26,7 @@ import ReadyToast from '@/components/typing/ReadyToast';
 import LogoLoader from '@/components/common/LogoLoader';
 import PreTestOverlay from '@/components/typing/PreTestOverlay';
 import ClickOnly from '@/components/common/ClickOnly';
+import { BK_EVENTS } from "@/lib/events";
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -389,21 +390,38 @@ const TypingTest: React.FC = () => {
   //   if (current) setPrevDifficulty(current);
   // }, [smartUsedDifficulty]);
 
-  // Honor deep link: /#new → start fresh test and clear hash
+  // Honor deep link (#new) and a central NEW_TEST event
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (window.location.hash === '#new') {
-      // Don't restart if already in typing or if busy
-      if (view === 'typing' || busyRef.current) {
-        try { history.replaceState(null, '', '/'); } catch {}
-        return;
+    if (typeof window === "undefined") return;
+
+    console.info("[bk:new] typing= src/components/typing/TypingTest.tsx"); // remove after verification
+
+    const runNewTest = () => {
+      void safeRestart?.();
+    };
+
+    const onCustom = () => runNewTest();
+
+    const checkHash = () => {
+      if (window.location.hash === "#new") {
+        runNewTest();
+        try {
+          const { pathname, search } = window.location;
+          window.history.replaceState(null, "", pathname + search);
+        } catch {}
       }
-      setTimeout(() => {
-        try { void safeRestart(); } catch {}
-        try { history.replaceState(null, '', '/'); } catch {}
-      }, 0);
-    }
-  }, [safeRestart, view]);
+    };
+
+    // On mount and on hash changes
+    checkHash();
+    window.addEventListener(BK_EVENTS.NEW_TEST as unknown as string, onCustom as EventListener);
+    window.addEventListener("hashchange", checkHash);
+
+    return () => {
+      window.removeEventListener(BK_EVENTS.NEW_TEST as unknown as string, onCustom as EventListener);
+      window.removeEventListener("hashchange", checkHash);
+    };
+  }, [safeRestart]);
 
   const handleTestComplete = async (finalWpm: number, finalAccuracy: number, finalTime: number, finalTypedText?: string) => {
     setIsTestComplete(true);
