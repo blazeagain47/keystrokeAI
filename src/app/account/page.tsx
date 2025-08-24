@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import ProfileSummaryCard from "@/components/account/AccountOverview";
-import Leaderboard from "@/components/account/Leaderboard";
+import LeaderboardCTA from "@/components/account/LeaderboardCTA";
 import BlazeHistoryPanel from "@/components/account/BlazeHistoryPanel";
 import CommandHints from "@/components/account/CommandHints";
 import { useStatsStore } from "@/stores/useStatsStore";
@@ -101,7 +101,7 @@ export default function AccountPage() {
         <>
           {/* Duplicate stats row removed in favor of the Blaze history section below */}
           <BlazeHistoryPanel />
-          <Leaderboard />
+          <LeaderboardCTA />
         </>
       ) : (
         <Card className="rounded-2xl border border-white/10 bg-gray-900/40 backdrop-blur-md hover:shadow-[0_0_30px_rgba(255,110,0,.15)] transition-shadow">

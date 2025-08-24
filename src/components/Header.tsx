@@ -3,7 +3,7 @@
 import Link from "next/link";
 import React, { useEffect } from "react";
 // ⬇️ Stable lucide icons only
-import { User, Settings as Gear, Keyboard } from "lucide-react";
+import { User, Settings as Gear, Keyboard, Trophy } from "lucide-react";
 import VersionBadge from "@/components/common/VersionBadge";
 import LogoMark from "@/components/brand/LogoMark";
 import { useAuthStore } from "@/store/auth";
@@ -40,7 +40,8 @@ export default function Header() {
           </Link>
         </div>
         <div className="ml-auto flex items-center gap-3 justify-end">
-          {/* New test keyboard button (left of settings) */}
+          {/* ORDER (left → right within the header’s right cluster):
+              Keyboard • Leaderboard • Settings • Account • Sign out */}
           <Link
             href="/#new"
             aria-label="Start a new typing test"
@@ -57,6 +58,16 @@ export default function Header() {
             data-bk="kbd-newtest"
           >
             <Keyboard className="h-5 w-5" />
+          </Link>
+
+          {/* NEW: Leaderboard button */}
+          <Link
+            href="/leaderboard"
+            aria-label="Leaderboard"
+            title="Leaderboard"
+            className="p-2 rounded-xl hover:bg-white/10 transition"
+          >
+            <Trophy className="h-5 w-5" />
           </Link>
 
           <button

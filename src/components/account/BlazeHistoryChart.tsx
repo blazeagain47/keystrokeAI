@@ -56,7 +56,7 @@ export default function BlazeHistoryChart({ points }: { points: Pt[] }) {
   }, [dWpm]);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+    <figure className="rounded-2xl border border-white/10 bg-white/5 p-3">
       <div className="flex items-center gap-3 px-1 pb-1 text-sm">
         <span className="inline-flex items-center gap-2 text-white/80">
           <span className="inline-block h-2 w-4 rounded-sm" style={{ background: "linear-gradient(135deg,#FF3D00,#FF6A00 55%,#FFD36E)" }} />
@@ -122,10 +122,11 @@ export default function BlazeHistoryChart({ points }: { points: Pt[] }) {
         )}
       </svg>
 
-      <div className="px-1 pt-1 text-xs text-white/60">
-        WPM by day for the selected range. Hover points for exact values (native tooltips).
-      </div>
-    </div>
+      <figcaption className="mt-3 text-xs text-white/70 flex items-center gap-2 px-1">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400" aria-hidden />
+        <span>WPM by day for the selected range. Hover points for exact values (native tooltips).</span>
+      </figcaption>
+    </figure>
   );
 }
 
