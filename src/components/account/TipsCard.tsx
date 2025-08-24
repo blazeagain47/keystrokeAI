@@ -1,14 +1,18 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Activity } from "lucide-react";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { isTodayLocal } from "@/lib/historyNormalize";
+import { useTotalsStore } from "@/stores/useTotalsStore";
 
 export default function TipsCard({ className = "" }: { className?: string }) {
   const history = useStatsStore((s) => s.history);
-  const streak = useStatsStore((s) => s.streakDays);
+  const totalsReady = useTotalsStore((s) => s.ready);
+  const streak = useTotalsStore((s) => s.streakDays) || 0;
+  const hydrateTotals = useTotalsStore(s => s.hydrate);
+  React.useEffect(() => { void hydrateTotals(); }, [hydrateTotals]);
 
   const today = useMemo(() => {
     const runs = Array.isArray(history) ? history.filter((r: any) => isTodayLocal(Number((r as any).ts))) : [];

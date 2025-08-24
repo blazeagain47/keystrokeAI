@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
         avgAcc: x.avgAcc ?? null,
         totalTimeSec: x.totalTimeSec ?? 0,
         lastActiveUTC: x.lastActiveUTC ?? null,
+        lastStreakUTC: x.lastStreakUTC ?? null,
         streakDays: x.streakDays ?? 0,
       }
     }, { status: 200 });

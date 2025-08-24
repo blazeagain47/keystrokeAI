@@ -6,6 +6,7 @@ import { useAuthStore } from "@/store/auth";
 import RangeTabs from "./RangeTabs";
 import BlazeHistoryChart from "./BlazeHistoryChart";
 import { toDailySeries } from "@/lib/historyLocal";
+import { useTotalsStore } from "@/stores/useTotalsStore";
 
 export default function BlazeHistoryPanel() {
   const ready = useStatsStore(s => s.ready);
@@ -14,6 +15,9 @@ export default function BlazeHistoryPanel() {
   const history = useStatsStore(s => s.history);
   const range = useStatsStore(s => s.range);
   const userId = useAuthStore(s => s.user?.id);
+  const streakFromTotals = useTotalsStore(s => s.streakDays) || 0;
+  const hydrateTotals = useTotalsStore(s => s.hydrate);
+  React.useEffect(() => { void hydrateTotals(); }, [hydrateTotals]);
 
   useEffect(() => {
     if (!userId || ready) return;
@@ -36,7 +40,7 @@ export default function BlazeHistoryPanel() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Tile label="Total XP" value={totalXP} />
-        <Tile label="Current Streak" value={useStatsStore.getState().streakDays || 0} suffix="days" />
+        <Tile label="Current Streak" value={streakFromTotals} suffix="days" />
         <Tile label="Range average" value={sessions ? `${avgWpm} WPM · ${avgAcc}% acc` : "— WPM · —% acc"} helper={`${sessions} session${sessions===1? "": "s"}`} />
       </div>
 

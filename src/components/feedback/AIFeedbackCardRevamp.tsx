@@ -5,6 +5,7 @@ import * as React from "react";
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useStatsStore } from "@/stores/useStatsStore";
+import { useTotalsStore } from "@/stores/useTotalsStore";
 import { rankForXP } from "@/utils/progression";
 import {
   consistencyFromSeries,
@@ -167,8 +168,10 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
   const [viewMode, setViewMode] = useState<'quick' | 'detailed'>("quick");
   const prefersReducedMotion = useReducedMotion();
 
-  const totalXp = useStatsStore(s => s.totalXP) || 0;
-  const streakDays = useStatsStore(s => s.streakDays) || 0;
+  const totalXp = useTotalsStore(s => s.totalXP) || 0;
+  const streakDays = useTotalsStore(s => s.streakDays) || 0;
+  const hydrateTotals = useTotalsStore(s => s.hydrate);
+  React.useEffect(() => { void hydrateTotals(); }, [hydrateTotals]);
   const history = useStatsStore(s => s.history);
   const rank = rankForXP(totalXp);
 

@@ -40,6 +40,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const prev = get().user;
       const me: User | null = raw ? normalizeUser(raw, prev) : null;
       set({ user: me, error: null });
+      try { const { pingStreak } = await import("@/lib/streakClient"); await pingStreak(); } catch {}
     } catch (err: any) {
       set({ user: null, error: err?.message || "Not authenticated" });
     } finally {
@@ -55,6 +56,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         body: JSON.stringify({ username, password }),
       } as any);
       set({ user: normalizeUser(raw, get().user), ready: true });
+      try { const { pingStreak } = await import("@/lib/streakClient"); await pingStreak(); } catch {}
     } finally {
       set({ loading: false });
     }
@@ -68,6 +70,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         body: JSON.stringify({ username, password, email }),
       } as any);
       set({ user: normalizeUser(raw, get().user), ready: true });
+      try { const { pingStreak } = await import("@/lib/streakClient"); await pingStreak(); } catch {}
     } finally {
       set({ loading: false });
     }

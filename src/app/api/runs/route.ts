@@ -63,7 +63,10 @@ export async function POST(req: NextRequest) {
             avgAcc: Number(accuracy),
             totalTimeSec: Number(durationSec || 0),
             lastActiveUTC: now,
-            streakDays: 1,
+            // streak handled by /api/streak/ping; seed at 0 under new model
+            streakDays: 0,
+            lastStreakUTC: null,
+            streakModel: "login-utc@2025-08-24",
           }, { merge: true });
         } else {
           const prev = snap.data() as any;
@@ -81,15 +84,8 @@ export async function POST(req: NextRequest) {
             avgWpm,
             avgAcc,
             totalTimeSec,
+            // NOTE: streak is login-based now; runs only "touch" lastActiveUTC.
             lastActiveUTC: now,
-            streakDays: ((): number => {
-              const today = new Date(); today.setUTCHours(0,0,0,0);
-              const lastUTC = new Date(Number(prev?.lastActiveUTC || now)); lastUTC.setUTCHours(0,0,0,0);
-              const yesterdayUTC = new Date(today); yesterdayUTC.setUTCDate(today.getUTCDate() - 1);
-              if (lastUTC.getTime() === today.getTime()) return Number(prev?.streakDays || 1);
-              if (lastUTC.getTime() === yesterdayUTC.getTime()) return Number(prev?.streakDays || 0) + 1;
-              return 1;
-            })(),
           }, { merge: true });
         }
       } catch (e: any) {

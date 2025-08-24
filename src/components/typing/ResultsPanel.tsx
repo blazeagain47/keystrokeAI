@@ -24,6 +24,7 @@ import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
 import NextTestButton from "@/components/ui/NextTestButton";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { useAuth } from "@/hooks/useAuth";
+import { useTotalsStore } from "@/stores/useTotalsStore";
 import ResultsStatsBar from "./ResultsStatsBar";
 import { sanitizeWpmForChart } from "@/lib/typingMetrics";
 
@@ -75,7 +76,9 @@ export default function ResultsPanel(props: ResultsPanelProps) {
 
   const totalXpStore = useStatsStore(s => s.totalXP);
   const { user } = useAuth();
-  const userStreak = user?.streak ?? 0;
+  const userStreak = useTotalsStore(s => s.streakDays) || 0;
+  const hydrateTotals = useTotalsStore(s => s.hydrate);
+  React.useEffect(() => { void hydrateTotals(); }, [hydrateTotals]);
 
   const wpmTrend: number[] = Array.isArray(wpmSeries)
     ? wpmSeries.map((p: any) => (typeof p === "number" ? p : Number(p?.wpm) || 0))

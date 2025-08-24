@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { rankForXP } from "@/utils/progression";
 import { useStatsStore } from "@/stores/useStatsStore";
+import { useTotalsStore } from "@/stores/useTotalsStore";
 import { rankStyles, mapToRankTier, shouldShimmer } from "@/utils/rankStyles";
 import { MicroSparkline } from "@/components/results/MicroSparkline";
 import { WhyThis } from "@/components/results/WhyThis";
@@ -69,9 +70,11 @@ export default function AIFeedback({ wpmTrend, accuracyPct, completed, runSnapsh
   const message = useMemo(() => buildMessage(wpmTrend, accuracyPct), [wpmTrend, accuracyPct]);
   const { label: challenge, reward } = useMemo(() => nextChallenge(wpmTrend, accuracyPct), [wpmTrend, accuracyPct]);
 
-  // Source of truth for totals from stats store (history-derived)
-  const totalXp = useStatsStore(s => s.totalXP) || 0;
-  const streakDays = useStatsStore(s => s.streakDays) || 0;
+  const totalXp = useTotalsStore(s => s.totalXP) || 0;
+  const streakDays = useTotalsStore(s => s.streakDays) || 0;
+  const hydrateTotals = useTotalsStore(s => s.hydrate);
+  // lazy hydrate once mounted
+  React.useEffect(() => { void hydrateTotals(); }, [hydrateTotals]);
   const rank = rankForXP(totalXp);
 
   // Prefer real totals from stats store only (single source of truth)
