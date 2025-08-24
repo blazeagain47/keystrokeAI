@@ -13,6 +13,7 @@ import TipsCard from "@/components/account/TipsCard";
 import { Card, CardContent } from "@/components/ui/card";
 import AchievementsGrid from "@/components/account/AchievementsGrid";
 import { computeAchievements } from "@/lib/achievements";
+import { syncProfileUsername } from "@/lib/profileApi";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -25,6 +26,15 @@ export default function AccountPage() {
   useEffect(() => {
     if (!ready) { void hydrateFromMe(); }
   }, [ready, hydrateFromMe]);
+
+  // mirror username to Firestore for leaderboard labels (best-effort)
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      const u = useAuthStore.getState().user;
+      if (u?.username) void syncProfileUsername(String(u.username));
+    } catch {}
+  }, [ready]);
 
   // hydrate stats store once user is available
   useEffect(() => {
