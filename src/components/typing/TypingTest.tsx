@@ -478,9 +478,31 @@ const TypingTest: React.FC = () => {
         accuracy: Math.round(finalAccuracy),
       };
       const guestId = (() => {
-        try { return localStorage.getItem('bk_guest_id') || (() => { const id = crypto.randomUUID(); localStorage.setItem('bk_guest_id', id); return id; })(); } catch { return null; }
+        try {
+          return localStorage.getItem('bk_guest_id') || (() => {
+            const id = crypto.randomUUID();
+            localStorage.setItem('bk_guest_id', id);
+            return id;
+          })();
+        } catch {
+          return null;
+        }
       })();
-      await fetch('/api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, guestId }) });
+
+      const { getIdTokenEnsured } = await import("@/lib/idToken");
+      let authHeader: Record<string, string> = {};
+      try {
+        const token = await getIdTokenEnsured();
+        authHeader = { Authorization: `Bearer ${token}` };
+      } catch {
+        // proceed without token; server will treat as guest
+      }
+
+      await fetch('/api/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader },
+        body: JSON.stringify({ ...payload, guestId })
+      });
     } catch {}
   };
 

@@ -41,5 +41,17 @@ service cloud.firestore {
     match /challengeProgress/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // Runs written by server; a user may read only their own runs
+    match /runs_v1/{runId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.uid;
+      allow write: if false; // writes via Admin only
+    }
+
+    // Per-user totals; user can read only their own totals
+    match /user_totals_v1/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false; // writes via Admin only
+    }
   }
 }
