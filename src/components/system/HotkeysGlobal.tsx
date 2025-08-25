@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { tl } from "@/lib/timeline";
+import { devLog } from "@/lib/devLog";
 
 export default function HotkeysGlobal() {
   const lastTabTs = useRef<number>(0);
@@ -10,10 +12,9 @@ export default function HotkeysGlobal() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // Defer to TypingBox when active
       if (document.body.classList.contains("bk-typing-active")) return;
+      if (document.body.classList.contains("bk-results-active")) return;
 
-      // Skip when focused in inputs/contenteditable
       const el = e.target as HTMLElement | null;
       if (el) {
         const tag = el.tagName?.toLowerCase();
@@ -31,6 +32,8 @@ export default function HotkeysGlobal() {
         const dt = Date.now() - lastTabTs.current;
         if (dt >= 0 && dt <= 750) {
           e.preventDefault();
+          try { tl("global TabEnter", { from: pathname }); } catch {}
+          try { devLog("shortcut: tab-enter", { from: pathname }); } catch {}
           router.push("/#new");
           lastTabTs.current = 0;
         }

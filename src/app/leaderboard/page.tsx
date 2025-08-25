@@ -5,6 +5,8 @@ import { Trophy, Crown, Medal, Award, Search } from "lucide-react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
 import { Card, CardContent } from "@/components/ui/card";
+import { tl } from "@/lib/timeline";
+import { devLog } from "@/lib/devLog";
 
 type Row = { id: string; username: string; xpTotal: number; bestWpm?: number|null; streakDays?: number|null };
 
@@ -47,10 +49,8 @@ export default function LeaderboardPage() {
         </div>
       </header>
 
-      {/* Podium */}
       <Podium rows={filtered.slice(0,3) as Row[]} meId={me?.id ? String(me.id) : null} />
 
-      {/* Full table */}
       <Card className="rounded-2xl border border-white/10 bg-white/5">
         <CardContent className="p-0">
           {!rows ? (
@@ -86,10 +86,9 @@ export default function LeaderboardPage() {
         </CardContent>
       </Card>
 
-      {/* CTA to practice */}
       <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-gradient-to-r from-orange-500/10 to-amber-300/10 p-4">
         <div className="text-white/80 text-sm">Want to climb faster? Practice a quick test.</div>
-        <Link href="/#new" className="px-3 py-1.5 rounded-xl bg-white text-black text-sm font-medium">New test</Link>
+        <Link href="/#new" className="px-3 py-1.5 rounded-xl bg-white text-black text-sm font-medium" onClick={() => { try { tl("leaderboard New test click"); } catch {} ; try { devLog("nav: leaderboard new test"); } catch {} }}>New test</Link>
       </div>
     </div>
   );

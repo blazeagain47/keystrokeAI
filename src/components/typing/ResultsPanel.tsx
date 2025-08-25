@@ -27,6 +27,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTotalsStore } from "@/stores/useTotalsStore";
 import ResultsStatsBar from "./ResultsStatsBar";
 import { sanitizeWpmForChart } from "@/lib/typingMetrics";
+import { tl } from "@/lib/timeline";
+import { devLog } from "@/lib/devLog";
 
 export interface ResultsPanelProps {
   wpm: number;
@@ -382,7 +384,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           </Card>
           {showNext && (
             <div className="mt-6 flex w-full justify-center">
-              <NextTestButton onStart={() => { if (onNextTest) onNextTest(); }} autoFocus />
+              <NextTestButton onStart={() => { try { tl('results New test click'); } catch {} ; try { devLog('results New test click'); } catch {} ; if (onNextTest) onNextTest(); }} autoFocus />
             </div>
           )}
         </motion.div>

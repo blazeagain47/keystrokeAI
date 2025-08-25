@@ -28,6 +28,8 @@ import PreTestOverlay from '@/components/typing/PreTestOverlay';
 import ClickOnly from '@/components/common/ClickOnly';
 import { BK_EVENTS } from "@/lib/events";
 import { useLastTestStore, readLastTestSafe } from "@/stores/useLastTestStore";
+import { tl } from '@/lib/timeline';
+import { devLog } from '@/lib/devLog';
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -83,9 +85,16 @@ const TypingTest: React.FC = () => {
   const [wordCount, setWordCount] = useState<number>(15);
   const [showPunctuation, setShowPunctuation] = useState(false);
   const [showNumbers, setShowNumbers] = useState(false);
-
+  
   // Gate to ensure we apply last-used config before first prompt loads
   const [bootConfigured, setBootConfigured] = useState(false);
+
+  // Reentrancy/coordination for new-test triggers
+  const newReqTokenRef = useRef(0);
+  const applyingRef = useRef(false);
+  // Serialize prompt loads and drop stale results
+  const loadTokenRef = useRef(0);
+  const activeControllerRef = useRef<AbortController | null>(null);
 
   // Keep the exact config actually used to generate the test
   const lastUsedConfigRef = useRef<{
@@ -115,8 +124,19 @@ const TypingTest: React.FC = () => {
   const [smartFlags, setSmartFlags] = useState<null | { punctuation?: boolean; numbers?: boolean }>(null);
   const [avgWpm, setAvgWpm] = useState<number>(0);
   const [avgAcc, setAvgAcc] = useState<number>(100);
-  // Keep last difficulty if needed in future UI; currently unused
-  // const [prevDifficulty, setPrevDifficulty] = useState<null | 'easy'|'medium'|'hard'>(null);
+
+  useEffect(() => {
+    try { tl('TypingTest mount'); } catch {}
+    try { devLog('TypingTest mount'); } catch {}
+    return () => { try { tl('TypingTest unmount'); } catch {} ; try { devLog('TypingTest unmount'); } catch {} };
+  }, []);
+
+  // Mark results-active on <body> so global hotkeys can back off
+  useEffect(() => {
+    const on = view === 'results';
+    try { document.body.classList.toggle('bk-results-active', on); } catch {}
+    return () => { try { document.body.classList.remove('bk-results-active'); } catch {} };
+  }, [view]);
 
   // Refs used for measurement and layout offsets
   const filterRef = useRef<HTMLDivElement | null>(null);
@@ -206,32 +226,23 @@ const TypingTest: React.FC = () => {
       try { return useLastTestStore.getState().last ?? readLastTestSafe(); } catch { return null; }
     })();
     if (saved) {
-      if (saved.mode === 'time') {
+      try { devLog('applyFromLastTest', saved); } catch {}
+      if ((saved as any).mode === 'time') {
         setMode('time');
         setTestMode('time');
-        if (typeof saved.durationSec === 'number') setDurationSec(saved.durationSec);
-      } else if (saved.mode === 'words') {
+        if (typeof (saved as any).durationSec === 'number') setDurationSec((saved as any).durationSec as number);
+        if (typeof (saved as any).duration === 'number') setDurationSec((saved as any).duration as number);
+      } else if ((saved as any).mode === 'words') {
         setMode('words');
         setTestMode('words');
-        if (typeof saved.wordCount === 'number') setWordCount(saved.wordCount);
+        if (typeof (saved as any).wordCount === 'number') setWordCount((saved as any).wordCount as number);
+        if (typeof (saved as any).count === 'number') setWordCount((saved as any).count as number);
       }
-      if (typeof saved.include_numbers === 'boolean') setShowNumbers(saved.include_numbers);
-      if (typeof saved.include_punctuation === 'boolean') setShowPunctuation(saved.include_punctuation);
+      if (typeof (saved as any).include_numbers === 'boolean') setShowNumbers((saved as any).include_numbers as boolean);
+      if (typeof (saved as any).include_punctuation === 'boolean') setShowPunctuation((saved as any).include_punctuation as boolean);
     }
     setBootConfigured(true);
   }, []);
-
-  // Initial boot – run once after mount, after bootConfigured
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!bootConfigured) return;
-    if (promptLoad !== 'idle') return;
-    loadPromptOnce().catch(() => {});
-    return () => {
-      try { bootAbortRef.current?.abort(); } catch {}
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bootConfigured]);
 
   type GeneratePayload = {
     mode: 'words' | 'time';
@@ -246,13 +257,18 @@ const TypingTest: React.FC = () => {
   };
 
   const loadPromptOnce = useCallback(async (opts?: { useFallback?: boolean; overrides?: Partial<GeneratePayload> }) => {
+    const myToken = ++loadTokenRef.current;
     if (bootLockRef.current) return;
     bootLockRef.current = true;
     setPromptError(null);
     setPromptLoad('loading');
+    try { devLog('prompt:begin', { token: myToken, opts }); } catch {}
 
     try { bootAbortRef.current?.abort(); } catch {}
-    bootAbortRef.current = new AbortController();
+    try { activeControllerRef.current?.abort(); } catch {}
+    const ac = new AbortController();
+    bootAbortRef.current = ac;
+    activeControllerRef.current = ac;
 
     try {
       let promptText: string | null = null;
@@ -274,6 +290,8 @@ const TypingTest: React.FC = () => {
           recent_wpm: avg.wpm,
           recent_accuracy: avg.acc,
         };
+        try { tl('prompt->request', { reqId: Date.now(), cfg: payload }); } catch {}
+        try { devLog('prompt:request', payload); } catch {}
 
         const data = await fetchWithRetry('/api/generate-proxy', {
           attempts: 3,
@@ -291,6 +309,8 @@ const TypingTest: React.FC = () => {
         if (data?.seed != null) try { sessionUsedSeeds.current.add(Number(data.seed)); } catch {}
         if (data?.difficulty) { usedDifficultyRef.current = data.difficulty; setSmartUsedDifficulty(data.difficulty); }
         if (data?.flags) setSmartFlags(data.flags);
+        try { tl('prompt->received', { reqId: 'auto', promptId: data?.seed ?? 'n/a' }); } catch {}
+        try { devLog('prompt:received', { seed: data?.seed }); } catch {}
       }
 
       if (!promptText) {
@@ -316,8 +336,8 @@ const TypingTest: React.FC = () => {
         lastUsedConfigRef.current = usedCfg;
         try { useLastTestStore.getState().save({
           mode: usedCfg.mode,
-          wordCount: usedCfg.wordCount ?? undefined,
-          durationSec: usedCfg.durationSec ?? undefined,
+          count: usedCfg.wordCount == null ? undefined : usedCfg.wordCount,
+          duration: usedCfg.durationSec == null ? undefined : usedCfg.durationSec,
           include_numbers: usedCfg.include_numbers,
           include_punctuation: usedCfg.include_punctuation,
         }); } catch {}
@@ -331,12 +351,14 @@ const TypingTest: React.FC = () => {
       }
       finalPrompt = toLowerLettersOnly(finalPrompt, 'en-US');
       finalPrompt = normalizePromptWords(finalPrompt);
-
+      if (myToken !== loadTokenRef.current) { try { devLog('prompt:drop-stale', { token: myToken }); } catch {}; return; }
       setIsTestComplete(false);
       setTime(0);
       setView('typing');
       setCurrentPrompt(finalPrompt);
       setPromptLoad('ready');
+      try { tl('prompt->apply', { promptId: 'n/a' }); } catch {}
+      try { devLog('prompt:apply'); } catch {}
     } catch (err: unknown) {
       console.error('[prompt boot] error', err);
       const message = err instanceof Error
@@ -353,6 +375,7 @@ const TypingTest: React.FC = () => {
   const lastRestartRef = useRef<number>(0);
 
   const handleRestart = useCallback(async (desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) => {
+    try { devLog('restartTest()', { desiredCount, flags: flagOverrides }); } catch {}
     // Clear prompt immediately to prevent typing on stale content
     setCurrentPrompt("");
 
@@ -370,6 +393,7 @@ const TypingTest: React.FC = () => {
       include_punctuation: flagOverrides?.include_punctuation,
       include_numbers: flagOverrides?.include_numbers,
     };
+    try { tl('restartTest()', { reason: 'handleRestart', prevRunId: 'n/a' }); } catch {}
     await loadPromptOnce({ overrides });
   }, [loadPromptOnce]);
 
@@ -397,16 +421,40 @@ const TypingTest: React.FC = () => {
     }
   }, [handleRestart, recalcOffsets]);
 
-  // Initial boot – run once after mount, no duplicate triggers
+  // Unified path: enqueue a new test from any trigger
+  const enqueueNewTest = useCallback((reason: string) => {
+    const token = ++newReqTokenRef.current;
+    try { tl('enqueueNewTest', { token, reason }); } catch {}
+    if (applyingRef.current) return;
+    applyingRef.current = true;
+    try {
+      if (typeof window !== 'undefined' && window.location.hash === '#new') {
+        const { pathname, search } = window.location;
+        window.history.replaceState(null, "", pathname + search);
+        try { tl('hash cleared'); } catch {}
+      }
+    } catch {}
+    void safeRestart?.().finally(() => {
+      applyingRef.current = false;
+    });
+  }, [safeRestart]);
+
+  // Initial boot – run once after mount, after bootConfigured
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!bootConfigured) return;
+    // Skip boot if deep link requests a new test; let enqueue path handle it
+    if (window.location.hash === '#new') {
+      return;
+    }
     if (promptLoad !== 'idle') return;
-    loadPromptOnce().catch(() => {});
+    try { tl('boot->loadPromptOnce()'); } catch {}
+    loadPromptOnce().then(() => { try { tl('boot->loadPromptOnce done'); } catch {} }).catch(() => {});
     return () => {
       try { bootAbortRef.current?.abort(); } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [bootConfigured]);
 
   const handleStatsUpdate = (newWpm: number, newAccuracy: number, newTime: number) => {
     setWpm(newWpm);
@@ -442,24 +490,21 @@ const TypingTest: React.FC = () => {
 
     console.info("[bk:new] typing= src/components/typing/TypingTest.tsx"); // remove after verification
 
-    const runNewTest = () => {
-      void safeRestart?.();
-    };
-
-    const onCustom = () => runNewTest();
+    const onCustom = () => { try { tl('event BK_EVENTS.NEW_TEST'); } catch {} ; try { devLog('event BK_EVENTS.NEW_TEST'); } catch {} ; enqueueNewTest('event'); };
 
     const checkHash = () => {
       if (window.location.hash === "#new") {
-        runNewTest();
-        try {
-          const { pathname, search } = window.location;
-          window.history.replaceState(null, "", pathname + search);
-        } catch {}
+        try { tl('hash #new detected (hashchange)'); } catch {}
+        try { devLog('hash #new'); } catch {}
+        enqueueNewTest('hash');
       }
     };
 
     // On mount and on hash changes
-    checkHash();
+    if (window.location.hash === "#new") {
+      try { devLog('hash #new (mount)'); } catch {}
+      enqueueNewTest('mount');
+    }
     window.addEventListener(BK_EVENTS.NEW_TEST as unknown as string, onCustom as EventListener);
     window.addEventListener("hashchange", checkHash);
 
@@ -467,7 +512,7 @@ const TypingTest: React.FC = () => {
       window.removeEventListener(BK_EVENTS.NEW_TEST as unknown as string, onCustom as EventListener);
       window.removeEventListener("hashchange", checkHash);
     };
-  }, [safeRestart]);
+  }, [enqueueNewTest]);
 
   const handleTestComplete = async (finalWpm: number, finalAccuracy: number, finalTime: number, finalTypedText?: string) => {
     setIsTestComplete(true);
@@ -755,7 +800,7 @@ const TypingTest: React.FC = () => {
                 <div className="text-sm">Couldn’t generate a test.</div>
                 <div className="flex gap-2">
                   <button
-                    className="px-3 py-1.5 rounded-md bg-white/10 ring-1 ring-white/15 hover:bg-white/15"
+                    className="px-3 py-1.5 rounded-md bg_WHITE/10 ring-1 ring-white/15 hover:bg-white/15"
                     onClick={() => { bootLockRef.current = false; loadPromptOnce().catch(()=>{}); }}
                   >
                     Try again
@@ -781,7 +826,7 @@ const TypingTest: React.FC = () => {
             <div className="bk-stats-row">
               {/* WPM */}
               <div className="flex items-center gap-3 group bk-stat" role="status" aria-live="polite">
-                <span className="bk-stat__icon flex items-center justify-center w-10 h-10 rounded-xl border border-yellow-400/30 bg-gradient-to-br from-yellow-400/20 to-orange-500/20">
+                <span className="bk-stat__icon flex items-center justify_center w-10 h-10 rounded-xl border border-yellow-400/30 bg-gradient_to-br from-yellow-400/20 to-orange-500/20">
                   <Zap className="w-5 h-5 text-yellow-400" />
                 </span>
                 <div>
@@ -794,7 +839,7 @@ const TypingTest: React.FC = () => {
 
               {/* Accuracy */}
               <div className="flex items-center gap-3 group bk-stat" role="status" aria-live="polite">
-                <span className="bk-stat__icon flex items-center justify-center w-10 h-10 rounded-xl border border-green-400/30 bg-gradient-to-br from-green-400/20 to-emerald-500/20">
+                <span className="bk-stat__icon flex items-center justify_center w-10 h-10 rounded-xl border border-green-400/30 bg-gradient_to-br from-green-400/20 to-emerald-500/20">
                   <Target className="w-5 h-5 text-green-400" />
                 </span>
                 <div>
@@ -807,7 +852,7 @@ const TypingTest: React.FC = () => {
 
               {/* Time */}
               <div className="flex items-center gap-3 group bk-stat" role="status" aria-live="polite">
-                <span className="bk-stat__icon flex items-center justify-center w-10 h-10 rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-400/20 to-cyan-500/20">
+                <span className="bk-stat__icon flex items_center justify_center w-10 h-10 rounded-xl border border-blue-400/30 bg-gradient_to-br from-blue-400/20 to-cyan-500/20">
                   <Timer className="w-5 h-5 text-blue-400" />
                 </span>
                 <div>
@@ -891,7 +936,7 @@ const TypingTest: React.FC = () => {
               avgAcc={avgAcc}
               flags={smartFlags ?? undefined}
               usedConfig={lastUsedConfigRef.current}
-              onNextTest={async () => { await safeRestart(); }}
+              onNextTest={async () => { try { tl('results New test click'); } catch {} ; await safeRestart(); }}
             />
           </div>
         )}

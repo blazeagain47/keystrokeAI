@@ -11,6 +11,8 @@ import clsx from "clsx";
 import { useRouter } from "next/navigation";
 import { useUIStore } from "@/stores/useUIStore";
 import { BK_EVENTS } from "@/lib/events";
+import { tl } from "@/lib/timeline";
+import { devLog } from "@/lib/devLog";
 
 export default function Header() {
   const router = useRouter();
@@ -23,7 +25,7 @@ export default function Header() {
   }, [ready, hydrateFromMe]);
 
   useEffect(() => {
-    console.info("[bk:new] header= src/components/Header.tsx"); // remove after verification
+    console.info("[bk:new] header= src/components/Header.tsx");
   }, []);
 
   const openSettings = useUIStore(s => s.openSettings);
@@ -40,14 +42,14 @@ export default function Header() {
           </Link>
         </div>
         <div className="ml-auto flex items-center gap-3 justify-end">
-          {/* ORDER (left → right within the header’s right cluster):
-              Keyboard • Leaderboard • Settings • Account • Sign out */}
           <Link
             href="/#new"
             aria-label="Start a new typing test"
             title="New test (Tab → Enter)"
             className="p-2 rounded-xl hover:bg-white/10 transition"
             onClick={(e) => {
+              try { tl("header keyboard click"); } catch {}
+              try { devLog("nav: keyboard icon"); } catch {}
               try {
                 const atHome = typeof window !== "undefined" && window.location.pathname === "/";
                 if (atHome) {
@@ -57,7 +59,6 @@ export default function Header() {
                   const { pathname, search } = window.location;
                   window.history.replaceState(null, "", pathname + search);
                 }
-                // else: allow Link to navigate to "/#new"
               } catch {}
             }}
             data-bk="kbd-newtest"
@@ -65,7 +66,6 @@ export default function Header() {
             <Keyboard className="h-5 w-5" />
           </Link>
 
-          {/* NEW: Leaderboard button */}
           <Link
             href="/leaderboard"
             aria-label="Leaderboard"
@@ -133,8 +133,7 @@ export default function Header() {
                      )}
          </div>
        </div>
-               {/* absolute version pill pinned to the header's right edge */}
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex items-center pointer-events-auto">
+               <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex items-center pointer-events-auto">
           <VersionBadge />
         </div>
       {null}

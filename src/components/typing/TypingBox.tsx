@@ -11,6 +11,8 @@ import clsx from 'clsx';
 import { segmentGraphemes, normalizeInputChar } from "@/utils/segments";
 import { sameChar, stripInvisibles } from "@/lib/typing/compare";
 import { useSearchParams } from "next/navigation";
+import { tl } from "@/lib/timeline";
+import { devLog } from "@/lib/devLog";
 
 /* NEW – bring in the modernised Shadcn results panel */
 // Legacy StatsPanel removed in favor of modern ResultsPanel
@@ -270,6 +272,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
       /* start timer */
       if (!hasStarted && e.key.length === 1) {
+        try { tl('first key', { key: e.key, runId: 'n/a' }); } catch {}
+        try { devLog('first keydown', e.key); } catch {}
         setHasStarted(true);
         setStartTime(Date.now());
         if (mode === 'time') {
@@ -288,6 +292,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         const recentTab = lastTabDownAtRef.current && (Date.now() - lastTabDownAtRef.current <= 500);
         if (isTabHeldRef.current || recentTab) {
           e.preventDefault();
+          try { tl('TypingBox TabEnter restart'); } catch {}
           if (onRequestNewPrompt) {
             void onRequestNewPrompt();
           } else if (prompt) {

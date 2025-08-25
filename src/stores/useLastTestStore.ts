@@ -12,9 +12,18 @@ export type LastTestConfig = {
   ts?: number;
 };
 
+export type LastTestCfg = {
+  mode: "words" | "time" | "quote" | "custom";
+  count?: number;        // for words-like modes
+  duration?: number;     // for time mode
+  include_numbers: boolean;
+  include_punctuation: boolean;
+  difficulty?: "easy" | "normal" | "hard" | "auto";
+};
+
 type LastTestState = {
-  last: LastTestConfig | null;
-  save: (cfg: LastTestConfig) => void;
+  last: LastTestConfig | LastTestCfg | null;
+  save: (cfg: LastTestConfig | LastTestCfg) => void;
   clear: () => void;
 };
 
@@ -22,7 +31,7 @@ export const useLastTestStore = create<LastTestState>()(
   persist(
     (set) => ({
       last: null,
-      save: (cfg) => set({ last: { ...cfg, ts: Date.now() } }),
+      save: (cfg) => set({ last: { ...(cfg as any), ts: Date.now() } }),
       clear: () => set({ last: null }),
     }),
     { name: "bk:lastTest:v1", version: 1 }
@@ -30,7 +39,7 @@ export const useLastTestStore = create<LastTestState>()(
 );
 
 /** Fallback reader for hydration race: read directly from localStorage if needed. */
-export function readLastTestSafe(): LastTestConfig | null {
+export function readLastTestSafe(): LastTestConfig | LastTestCfg | null {
   try {
     const raw = localStorage.getItem("bk:lastTest:v1");
     if (!raw) return null;
