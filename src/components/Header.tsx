@@ -48,11 +48,16 @@ export default function Header() {
             title="New test (Tab → Enter)"
             className="p-2 rounded-xl hover:bg-white/10 transition"
             onClick={(e) => {
-              try { e.preventDefault(); e.stopPropagation(); } catch {}
               try {
-                window.dispatchEvent(new Event(BK_EVENTS.NEW_TEST as unknown as string));
-                const { pathname, search } = window.location;
-                window.history.replaceState(null, "", pathname + search);
+                const atHome = typeof window !== "undefined" && window.location.pathname === "/";
+                if (atHome) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  window.dispatchEvent(new Event(BK_EVENTS.NEW_TEST as unknown as string));
+                  const { pathname, search } = window.location;
+                  window.history.replaceState(null, "", pathname + search);
+                }
+                // else: allow Link to navigate to "/#new"
               } catch {}
             }}
             data-bk="kbd-newtest"

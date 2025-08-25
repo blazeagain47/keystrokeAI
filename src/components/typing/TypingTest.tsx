@@ -27,6 +27,7 @@ import LogoLoader from '@/components/common/LogoLoader';
 import PreTestOverlay from '@/components/typing/PreTestOverlay';
 import ClickOnly from '@/components/common/ClickOnly';
 import { BK_EVENTS } from "@/lib/events";
+import { useLastTestStore, readLastTestSafe } from "@/stores/useLastTestStore";
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -82,6 +83,9 @@ const TypingTest: React.FC = () => {
   const [wordCount, setWordCount] = useState<number>(15);
   const [showPunctuation, setShowPunctuation] = useState(false);
   const [showNumbers, setShowNumbers] = useState(false);
+
+  // Gate to ensure we apply last-used config before first prompt loads
+  const [bootConfigured, setBootConfigured] = useState(false);
 
   // Keep the exact config actually used to generate the test
   const lastUsedConfigRef = useRef<{
@@ -195,6 +199,40 @@ const TypingTest: React.FC = () => {
     } catch {}
   }, [testMode]);
 
+  // Apply last-used config before first load
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = (() => {
+      try { return useLastTestStore.getState().last ?? readLastTestSafe(); } catch { return null; }
+    })();
+    if (saved) {
+      if (saved.mode === 'time') {
+        setMode('time');
+        setTestMode('time');
+        if (typeof saved.durationSec === 'number') setDurationSec(saved.durationSec);
+      } else if (saved.mode === 'words') {
+        setMode('words');
+        setTestMode('words');
+        if (typeof saved.wordCount === 'number') setWordCount(saved.wordCount);
+      }
+      if (typeof saved.include_numbers === 'boolean') setShowNumbers(saved.include_numbers);
+      if (typeof saved.include_punctuation === 'boolean') setShowPunctuation(saved.include_punctuation);
+    }
+    setBootConfigured(true);
+  }, []);
+
+  // Initial boot – run once after mount, after bootConfigured
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!bootConfigured) return;
+    if (promptLoad !== 'idle') return;
+    loadPromptOnce().catch(() => {});
+    return () => {
+      try { bootAbortRef.current?.abort(); } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootConfigured]);
+
   type GeneratePayload = {
     mode: 'words' | 'time';
     count?: number;
@@ -267,14 +305,22 @@ const TypingTest: React.FC = () => {
         const useTime = mode === 'time';
         const effectiveCount = useTime ? undefined : (opts?.overrides?.count ?? wordCount ?? 15);
 
-        lastUsedConfigRef.current = {
+        const usedCfg = {
           mode: useTime ? 'time' : 'words',
           wordCount: useTime ? null : (typeof effectiveCount === 'number' ? effectiveCount : null),
           durationSec: useTime ? durationSec : null,
           language: 'english',
           include_punctuation: showPunctuation,
           include_numbers: showNumbers,
-        };
+        } as const;
+        lastUsedConfigRef.current = usedCfg;
+        try { useLastTestStore.getState().save({
+          mode: usedCfg.mode,
+          wordCount: usedCfg.wordCount ?? undefined,
+          durationSec: usedCfg.durationSec ?? undefined,
+          include_numbers: usedCfg.include_numbers,
+          include_punctuation: usedCfg.include_punctuation,
+        }); } catch {}
 
         if (!useTime) {
           const n = Number(effectiveCount ?? 15);
