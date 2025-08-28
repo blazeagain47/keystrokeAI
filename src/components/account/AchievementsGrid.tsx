@@ -7,7 +7,7 @@ import AchievementBadge from "@/components/account/AchievementBadge";
 
 export default function AchievementsGrid({ bundle }: { bundle: AchievementsBundle }) {
   return (
-    <Card className="rounded-2xl border border-white/10 bg-white/5">
+    <Card className="rounded-2xl border border-white/10 bg_white/5 cv-auto cv-300">
       <CardContent className="p-4 md:p-5">
         <div className="flex items-center justify-between mb-3">
           <div className="text-white/90 font-medium">Achievements</div>

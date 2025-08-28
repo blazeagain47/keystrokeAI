@@ -170,6 +170,7 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
 
   const totalXp = useTotalsStore(s => s.totalXP) || 0;
   const streakDays = useTotalsStore(s => s.streakDays) || 0;
+  const totalsReady = useTotalsStore(s => s.ready);
   const hydrateTotals = useTotalsStore(s => s.hydrate);
   React.useEffect(() => { void hydrateTotals(); }, [hydrateTotals]);
   const history = useStatsStore(s => s.history);
@@ -223,8 +224,14 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
             >
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-xs text-amber-200/80">
-                  <span>Good {timeOfDay}!</span>
-                  <span className="flex items-center gap-1"><Flame className="w-3 h-3" />{streakDays} day streak</span>
+                  {totalsReady ? (
+                    <>
+                      <span>Good {timeOfDay}!</span>
+                      <span className="flex items-center gap-1"><Flame className="w-3 h-3" />{streakDays} day streak</span>
+                    </>
+                  ) : (
+                    <span className="w-40 h-3 bg-white/10 rounded animate-pulse" />
+                  )}
                 </div>
                 <p className="text-sm text-white/90 leading-relaxed">{feedbackMessage}</p>
                 <div className="flex gap-3 justify-between">
@@ -233,18 +240,24 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
                   <div className="flex items-center gap-1 text-xs"><TrendingUp className="w-3 h-3 text-purple-400" /><span className={deltaWpm && deltaWpm > 0 ? "text-green-400" : "text-rose-400"}>{deltaWpm!=null ? `${deltaWpm>0?"+":""}${Math.round(deltaWpm)}` : "--"}</span></div>
                 </div>
                 <div className="pt-2">
-                  <div className="flex justify-between text-xs text-amber-200/70 mb-1">
-                    <span>Next rank</span>
-                    <span>{totalXp} / {rank.nextAt}</span>
-                  </div>
-                  <div className="w-full bg-gray-800 rounded-full h-1.5">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.min(100, Math.round((totalXp / Math.max(1, rank.nextAt)) * 100))}%` }}
-                      transition={{ duration: prefersReducedMotion ? 0 : 0.8, ease: "easeOut" }}
-                      className="h-1.5 rounded-full bg-gradient-to-r from-amber-400 to-orange-500"
-                    />
-                  </div>
+                  {totalsReady ? (
+                    <>
+                      <div className="flex justify-between text-xs text-amber-200/70 mb-1">
+                        <span>Next rank</span>
+                        <span>{totalXp} / {rank.nextAt}</span>
+                      </div>
+                      <div className="w-full bg-gray-800 rounded-full h-1.5">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(100, Math.round((totalXp / Math.max(1, rank.nextAt)) * 100))}%` }}
+                          transition={{ duration: prefersReducedMotion ? 0 : 0.8, ease: "easeOut" }}
+                          className="h-1.5 rounded-full bg-gradient-to-r from-amber-400 to-orange-500"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-full h-1.5 bg-white/10 rounded animate-pulse" />
+                  )}
                 </div>
               </div>
             </motion.div>

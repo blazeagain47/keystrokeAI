@@ -4,6 +4,7 @@ import { filterByRange, summarize, getLocalHistory, migrateLegacyHistory, RangeK
 import { normalizeMany, dedupeByIdThenTime } from "@/lib/historyNormalize";
 import { computeXpAward } from "@/lib/xp";
 import { isAbort } from "@/lib/isAbort";
+import { mark, measure } from "@/lib/perf";
 
 type StatsState = {
   ready: boolean;
@@ -39,6 +40,7 @@ export const useStatsStore = create<StatsState>((set, get) => ({
   },
 
   hydrate: async (uid: string, opts?: { signal?: AbortSignal }) => {
+    mark('stores:hydrate:stats:start');
     const id = String(uid);
     const local = (() => { try { return getLocalHistory(id); } catch { return []; } })() || [];
     let remote: any[] = [];
@@ -50,6 +52,8 @@ export const useStatsStore = create<StatsState>((set, get) => ({
     set({ uid: id, history: merged as any, ready: true });
     try { const { setLocalHistory } = await import("@/lib/historyLocal"); setLocalHistory(id, merged as any); } catch {}
     try { get().recompute(); } catch (e) { if (!isAbort(e)) console.warn("[stats.hydrate] recompute failed:", e); }
+    mark('stores:hydrate:stats:end');
+    measure('stores:hydrate:stats:start','stores:hydrate:stats:end');
   },
 
   recompute: () => {

@@ -31,6 +31,12 @@ export interface SettingsState {
     defaultLength: 15;             // 10|15|20|30|50
     include_numbers: boolean;      // false
     include_punctuation: boolean;  // false
+    stopOnError: boolean;          // false: allow advance with mistakes
+    strictSpace: boolean;          // false: Monkeytype-like spacing
+  };
+  fx: {
+    fxEnabled: boolean;            // true
+    fxIntensity: "low" | "med" | "high"; // "med"
   };
   appearance: AppearanceSettings;
   privacy: {
@@ -57,6 +63,12 @@ const DEFAULTS: SettingsState = {
     defaultLength: 15,
     include_numbers: false,
     include_punctuation: false,
+    stopOnError: false,
+    strictSpace: false,
+  },
+  fx: {
+    fxEnabled: true,
+    fxIntensity: "med",
   },
   appearance: {
     accent: { preset: "blaze", h: 24, s: 95, l: 55 },
@@ -124,6 +136,8 @@ export const useSettingsStore = create<SettingsState>()(persist((set, get) => ({
         if ([10,15,20,30,50].includes(Number(t.defaultLength))) next.defaultLength = Number(t.defaultLength);
         if (typeof t.include_numbers === "boolean") next.include_numbers = t.include_numbers;
         if (typeof t.include_punctuation === "boolean") next.include_punctuation = t.include_punctuation;
+        if (typeof t.stopOnError === "boolean") next.stopOnError = t.stopOnError;
+        if (typeof t.strictSpace === "boolean") next.strictSpace = t.strictSpace;
         set(s => ({ ...s, test: next }));
       }
       if (obj.privacy) {
@@ -140,5 +154,11 @@ export const useSettingsStore = create<SettingsState>()(persist((set, get) => ({
     } catch {}
   },
 }), { name: "bk:settings:v1", version: 1, migrate: (state: any) => ({ ...DEFAULTS, ...(state||{}) }) }));
+
+// Selectors (future proof)
+export const useStopOnError = () => useSettingsStore(s => s.test.stopOnError);
+export const useStrictSpace = () => useSettingsStore(s => s.test.strictSpace);
+export const useFxEnabled = () => useSettingsStore(s => s.fx.fxEnabled);
+export const useFxIntensity = () => useSettingsStore(s => s.fx.fxIntensity);
 
 

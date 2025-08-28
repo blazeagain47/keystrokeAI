@@ -7,6 +7,7 @@ import RangeTabs from "./RangeTabs";
 import BlazeHistoryChart from "./BlazeHistoryChart";
 import { toDailySeries } from "@/lib/historyLocal";
 import { useTotalsStore } from "@/stores/useTotalsStore";
+import { useOnVisible } from "@/lib/useOnVisible";
 
 export default function BlazeHistoryPanel() {
   const ready = useStatsStore(s => s.ready);
@@ -31,8 +32,9 @@ export default function BlazeHistoryPanel() {
     return toDailySeries(history ?? [], daysBack).map(p => ({ t: p.t, wpm: p.wpm, acc: p.acc }));
   }, [history, range]);
 
+  const { ref, visible } = useOnVisible<HTMLDivElement>({ rootMargin: '250px' });
   return (
-    <section className="space-y-4 mt-6">
+    <section className="space-y-4 mt-6 cv-auto cv-480">
       <div className="flex items-center justify-between">
         <h3 className="text-white/90 font-semibold">Blaze history</h3>
         <RangeTabs />
@@ -45,7 +47,13 @@ export default function BlazeHistoryPanel() {
       </div>
 
       {series.length >= 1 ? (
-        <BlazeHistoryChart points={series} />
+        <div ref={ref} className="cv-auto cv-480">
+          {visible ? (
+            <BlazeHistoryChart points={series} />
+          ) : (
+            <div className="h-[300px] animate-pulse bg-white/5 rounded-xl border border-white/10" />
+          )}
+        </div>
       ) : (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-white/70">
           Not enough data yet — complete a few sessions to see your trend.

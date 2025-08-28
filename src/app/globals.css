@@ -93,6 +93,15 @@
   text-rendering: geometricPrecision;
 }
 
+/* Offscreen rendering optimizations */
+.cv-auto { content-visibility: auto; contain-intrinsic-size: 600px; }
+.cv-300 { contain-intrinsic-size: 300px; }
+.cv-480 { contain-intrinsic-size: 480px; }
+/* Safari fallback (no content-visibility): harmless on others */
+@supports not (content-visibility: auto) {
+  .cv-auto { contain: content; }
+}
+
 /* Smart Test pulsing badge */
 @keyframes ksPulse {
   0% { transform: scale(1); opacity: .9; }
@@ -863,6 +872,41 @@ html[data-zen="1"] .bk-fire-halo { animation: none !important; }
   top: calc(var(--bk-header-h) + var(--bk-filter-h));
 }
 
+/* caret visibility */
+.bk-caret-on { background-color: #fbbf24; color: #111827; transform: scale(1.05); }
+.bk-caret-off { background-color: transparent; color: #6b7280; transform: scale(1); }
+
+/* Extra typed characters */
+.bk-char.bk-extra { color: rgba(255, 176, 54, .95); text-decoration: underline dotted; }
+
+/* === BlazeKey Fire FX =============================================== */
+@keyframes bk-embers-rise {
+  0%   { transform: translateY(0) scale(.92); opacity: .85; }
+  60%  { opacity: .55; }
+  100% { transform: translateY(-14px) scale(1.06); opacity: 0; }
+}
+.bk-ember {
+  position: absolute; width: 4px; height: 4px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #ffd36e, #ff7a1a 60%, transparent 62%);
+  filter: blur(.25px); will-change: transform, opacity;
+  animation: bk-embers-rise 650ms ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce){ .bk-ember{ display:none } }
+
+/* Caret & active word timing polish */
+:root{
+  --bk-caret-move: 110ms;
+  --bk-caret-blink: 700ms;
+}
+.bk-caret-on    { transition: transform var(--bk-caret-move) ease, background-color .12s ease; }
+.bk-caret-off   { transition: transform var(--bk-caret-move) ease, background-color .12s ease; }
+.bk-word        { position: relative; transition: background-color .16s ease, box-shadow .16s ease; }
+.bk-word[data-active="1"]{
+  background: rgba(255, 200, 45, .08);
+  box-shadow: 0 0 0 1px rgba(255, 200, 45, .18) inset;
+  border-radius: .5rem;
+}
+
 /* When viewing results (filters hidden) place stats beneath header only */
 [data-view="results"] .bk-stats-bar,
 [data-view="results"] .bk-stats-wrap,
@@ -1148,3 +1192,9 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
 
 /* During generation, suppress any legacy inline spinners if they slip through */
 html[data-bk-generating="true"] .bk-inline-spinner { display: none !important; }
+
+/* Offscreen rendering optimizations */
+.cv-auto { content-visibility: auto; contain-intrinsic-size: 600px; }
+.cv-300 { contain-intrinsic-size: 300px; }
+.cv-480 { contain-intrinsic-size: 480px; }
+@supports not (content-visibility: auto) { .cv-auto { contain: content; } }

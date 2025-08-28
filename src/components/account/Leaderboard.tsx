@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useOnVisible } from "@/lib/useOnVisible";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Crown, Medal, Award, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,6 +14,7 @@ function looksLikeUid(s: string) {
 
 export default function Leaderboard() {
   const { user } = useAuth();
+  const { ref, visible } = useOnVisible<HTMLDivElement>("250px");
   const [rows, setRows] = React.useState<Row[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -49,14 +51,14 @@ export default function Leaderboard() {
   }, []);
 
   return (
-    <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div ref={ref} className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 cv-auto cv-480">
       <div className="flex items-center gap-2 text-white font-medium">
         <Trophy className="h-5 w-5 text-yellow-400" />
         Leaderboard
         <span className="text-white/50 text-sm ml-2">Top players by XP</span>
       </div>
 
-      {!rows ? (
+      {!rows || !visible ? (
         <div className="mt-3 space-y-2 animate-pulse">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-10 rounded-xl bg-white/5" />

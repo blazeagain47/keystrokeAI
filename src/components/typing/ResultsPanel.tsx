@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { useMemo } from "react";
+import { useMemo, useDeferredValue } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
@@ -18,7 +18,10 @@ import {
 } from "recharts";
 import AIFeedback from "@/components/feedback/AIFeedback";
 import BlazeFeedbackCard from "@/components/feedback/BlazeFeedbackCard";
-import AIFeedbackCardRevamp from "@/components/feedback/AIFeedbackCardRevamp";
+const AIFeedbackCardRevamp = dynamic(() => import("@/components/feedback/AIFeedbackCardRevamp"), {
+  ssr: false,
+  loading: () => <div className="p-5 rounded-xl border border-white/10 bg-white/5 animate-pulse h-[180px]" />
+});
 import FireSummaryCard from "@/components/test/FireSummaryCard";
 import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
 import NextTestButton from "@/components/ui/NextTestButton";
@@ -27,6 +30,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTotalsStore } from "@/stores/useTotalsStore";
 import ResultsStatsBar from "./ResultsStatsBar";
 import { sanitizeWpmForChart } from "@/lib/typingMetrics";
+import dynamic from "next/dynamic";
+const ResultsChart = dynamic(() => import("./ResultsChart"), {
+  ssr: false,
+  loading: () => <div className="h-[260px] md:h-[300px] w-full animate-pulse bg-white/5 rounded-lg" />
+});
+import { mark } from "@/lib/perf";
 import { tl } from "@/lib/timeline";
 import { devLog } from "@/lib/devLog";
 
@@ -62,6 +71,7 @@ const fmt = {
 };
 
 export default function ResultsPanel(props: ResultsPanelProps) {
+  React.useEffect(() => { mark('results:mount'); }, []);
   const {
     accuracy,
     analysis,
@@ -82,9 +92,11 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   const hydrateTotals = useTotalsStore(s => s.hydrate);
   React.useEffect(() => { void hydrateTotals(); }, [hydrateTotals]);
 
-  const wpmTrend: number[] = Array.isArray(wpmSeries)
+  const wpmTrendRaw: number[] = Array.isArray(wpmSeries)
     ? wpmSeries.map((p: any) => (typeof p === "number" ? p : Number(p?.wpm) || 0))
     : [];
+  const deferredChart = useDeferredValue(wpmTrendRaw);
+  const wpmTrend = deferredChart;
 
   // Build a pleasant chart series from the raw wpmTrend.
   // Dynamic params: short runs drop proportionally less.
@@ -172,7 +184,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
 
   // Map sanitized series to chart data points
   const chartData = React.useMemo(
-    () => chartWpm.map((v, i) => ({ second: i + 1, wpm: Math.round(v) })),
+    () => Object.freeze(chartWpm.map((v, i) => ({ second: i + 1, wpm: Math.round(v) }))),
     [chartWpm]
   );
 
@@ -274,7 +286,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: "easeOut" }}
-          className="min-h-[340px]"
+          className="min-h-[340px] cv-auto cv-480"
         >
           {/* RESULTS STATS BAR (sits above the chart) */}
           <div className="mb-4 md:mb-5">
@@ -296,89 +308,13 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             </CardHeader>
             <CardContent className="pt-2">
               <div className="h-[260px] md:h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <defs>
-                      <linearGradient id="fireStroke" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor="#FF3D00" />
-                        <stop offset="50%" stopColor="#FF6A00" />
-                        <stop offset="100%" stopColor="#FFD36E" />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.18} />
-                    <XAxis
-                      dataKey="second"
-                      tickFormatter={fmt.x}
-                      stroke="currentColor"
-                      opacity={0.7}
-                    >
-                      <text x="50%" y="100%" dy={28} textAnchor="middle" className="fill-white/60 text-xs">Time (s)</text>
-                    </XAxis>
-                    <YAxis
-                      tickFormatter={fmt.y}
-                      domain={[0, (dataMax: number) => Math.max(80, Math.round(dataMax * 1.1))]}
-                      stroke="currentColor"
-                      opacity={0.7}
-                      label={{ value: 'WPM', angle: -90, position: 'insideLeft', fill: 'currentColor', opacity: 0.7 }}
-                    >
-                      <text x={0} y={0} dx={12} dy={12} transform="rotate(-90)" textAnchor="middle" className="fill-white/60 text-xs">WPM</text>
-                    </YAxis>
-                    <Tooltip
-                      content={<FireTooltipContent />}
-                      cursor={{ stroke: "rgba(255,255,255,0.35)", strokeWidth: 1 }}
-                      wrapperStyle={{ outline: "none" }}
-                    />
-                    {/* average line */}
-                    {typeof chartAvgWpm === "number" && (
-                      <ReferenceLine y={chartAvgWpm} strokeDasharray="3 3" strokeOpacity={0.35}
-                        label={{ value: `Avg ${Math.round(chartAvgWpm)}`, position: "right", fill: "currentColor", opacity: 0.6 }}
-                      />
-                    )}
-                    {/* finish time hash */}
-                    {typeof finishSec === "number" && (
-                      <ReferenceLine x={finishSec} strokeOpacity={0.3} strokeDasharray="1 3"
-                        label={{ value: `${Math.round(finishSec)}s`, position: "top", fill: "currentColor", opacity: 0.6 }}
-                      />
-                    )}
-                    {/* Fire-themed line + soft glow overlay */}
-                    {chartData.length >= 3 ? (
-                      <Line
-                        type="monotone"
-                        dataKey="wpm"
-                        dot={false}
-                        activeDot={{ r: 4, className: "chart-point-glow" }}
-                        stroke="url(#fireStroke)"
-                        strokeWidth={2.5}
-                        isAnimationActive={!prefersReducedMotion}
-                        animationDuration={prefersReducedMotion ? 0 : 3000}
-                        style={{ filter: "drop-shadow(0 0 6px rgba(255,80,0,0.4))" }}
-                        onAnimationEnd={reveal}
-                      />
-                    ) : (
-                      // Optional: tiny placeholder for ultra-short runs
-                      <Line
-                        type="monotone"
-                        dataKey="wpm"
-                        dot={false}
-                        stroke="url(#fireStroke)"
-                        strokeOpacity={0.4}
-                        strokeWidth={2.5}
-                        isAnimationActive={!prefersReducedMotion}
-                        animationDuration={prefersReducedMotion ? 0 : 3000}
-                        onAnimationEnd={reveal}
-                      />
-                    )}
-                                         <Line
-                       type="monotone"
-                       dataKey="wpm"
-                       dot={false}
-                       stroke="url(#fireStroke)"
-                       strokeOpacity={0.25}
-                       strokeWidth={7}
-                       isAnimationActive={false}
-                     />
-                  </LineChart>
-                </ResponsiveContainer>
+                <ResultsChart
+                  chartData={chartData}
+                  avg={chartAvgWpm}
+                  finishSec={finishSec}
+                  reducedMotion={prefersReducedMotion}
+                  onFirstPaint={() => mark('chart:rendered')}
+                />
               </div>
             </CardContent>
           </Card>
@@ -394,7 +330,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: "easeOut", delay: 0.05 }}
-          className="flex flex-col gap-6"
+          className="flex flex-col gap-6 cv-auto cv-300"
         >
           {/* Revamped AI feedback card */}
           <AIFeedbackCardRevamp

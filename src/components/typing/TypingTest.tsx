@@ -95,6 +95,7 @@ const TypingTest: React.FC = () => {
   // Serialize prompt loads and drop stale results
   const loadTokenRef = useRef(0);
   const activeControllerRef = useRef<AbortController | null>(null);
+  const prefetchedRef = useRef<{ token: number; text: string } | null>(null);
 
   // Keep the exact config actually used to generate the test
   const lastUsedConfigRef = useRef<{
@@ -256,7 +257,7 @@ const TypingTest: React.FC = () => {
     recent_accuracy?: number;
   };
 
-  const loadPromptOnce = useCallback(async (opts?: { useFallback?: boolean; overrides?: Partial<GeneratePayload> }) => {
+  const loadPromptOnce = useCallback(async (opts?: { useFallback?: boolean; overrides?: Partial<GeneratePayload> } & { __prefetch?: boolean }) => {
     const myToken = ++loadTokenRef.current;
     if (bootLockRef.current) return;
     bootLockRef.current = true;
@@ -352,11 +353,18 @@ const TypingTest: React.FC = () => {
       finalPrompt = toLowerLettersOnly(finalPrompt, 'en-US');
       finalPrompt = normalizePromptWords(finalPrompt);
       if (myToken !== loadTokenRef.current) { try { devLog('prompt:drop-stale', { token: myToken }); } catch {}; return; }
-      setIsTestComplete(false);
-      setTime(0);
-      setView('typing');
-      setCurrentPrompt(finalPrompt);
-      setPromptLoad('ready');
+      if ((opts as any)?.__prefetch) {
+        prefetchedRef.current = { token: myToken, text: finalPrompt };
+        setPromptLoad('ready');
+      } else {
+        React.startTransition(() => {
+          setIsTestComplete(false);
+          setTime(0);
+          setView('typing');
+          setCurrentPrompt(finalPrompt);
+          setPromptLoad('ready');
+        });
+      }
       try { tl('prompt->apply', { promptId: 'n/a' }); } catch {}
       try { devLog('prompt:apply'); } catch {}
     } catch (err: unknown) {
@@ -379,10 +387,12 @@ const TypingTest: React.FC = () => {
     // Clear prompt immediately to prevent typing on stale content
     setCurrentPrompt("");
 
-    setIsTestComplete(false);
-    setTime(0);
-    setView('typing');
-    setWpmSeries([]);
+    React.startTransition(() => {
+      setIsTestComplete(false);
+      setTime(0);
+      setView('typing');
+      setWpmSeries([]);
+    });
     const hist = readHist();
     const avg = movingAvg(hist);
     setAvgWpm(avg.wpm);
@@ -394,6 +404,15 @@ const TypingTest: React.FC = () => {
       include_numbers: flagOverrides?.include_numbers,
     };
     try { tl('restartTest()', { reason: 'handleRestart', prevRunId: 'n/a' }); } catch {}
+    const pf = prefetchedRef.current;
+    if (pf?.text) {
+      prefetchedRef.current = null;
+      React.startTransition(() => {
+        setCurrentPrompt(pf.text);
+        setPromptLoad('ready');
+      });
+      return;
+    }
     await loadPromptOnce({ overrides });
   }, [loadPromptOnce]);
 
@@ -514,12 +533,24 @@ const TypingTest: React.FC = () => {
     };
   }, [enqueueNewTest]);
 
+  // Prefetch next prompt while viewing results
+  useEffect(() => {
+    if (view !== 'results') return;
+    const overrides: Partial<GeneratePayload> = {
+      count: wordCount,
+      include_punctuation: showPunctuation,
+      include_numbers: showNumbers,
+    };
+    // @ts-ignore
+    loadPromptOnce({ overrides, __prefetch: true }).catch(() => {});
+  }, [view, wordCount, showPunctuation, showNumbers, loadPromptOnce]);
+
   const handleTestComplete = async (finalWpm: number, finalAccuracy: number, finalTime: number, finalTypedText?: string) => {
     setIsTestComplete(true);
     setWpm(finalWpm);
     setAccuracy(finalAccuracy);
     setTime(finalTime);
-    setView('results');
+    React.startTransition(() => setView('results'));
     // update local history for adaptive difficulty
     try {
       const items = readHist();
@@ -598,6 +629,30 @@ const TypingTest: React.FC = () => {
   };
 
   // (old header/filter/stats measuring effect removed; consolidated above)
+  const memoNewPrompt = React.useCallback(async () => { await safeRestart(); }, [safeRestart]);
+  const memoAppendPrompt = React.useCallback(async () => {
+    const extraCount = 120;
+    const resp = await fetch('/api/generate-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'words',
+        count: extraCount,
+        include_punctuation: showPunctuation,
+        include_numbers: showNumbers,
+        language: 'english',
+        difficulty: usedDifficultyRef.current || 'auto',
+      }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      console.error('[generator] append HTTP error', resp.status, errText);
+      throw new Error('Generator append failed');
+    }
+    const data = (await resp.json().catch(() => null)) as FetchResponse | null;
+    if (!data || !data.text) throw new Error('Empty generator response');
+    return data.text;
+  }, [showPunctuation, showNumbers]);
 
   return (
     <div ref={rootRef} className="min-h-dvh relative" data-view={view} data-run={isRunning ? 'true' : 'false'} data-bk-generating={promptLoad === 'loading' && !currentPrompt ? 'true' : 'false'}>
@@ -879,7 +934,15 @@ const TypingTest: React.FC = () => {
           <>
             {/* Loader + error UI driven by promptLoad */}
             {/* centralized loader; inline spinner removed */}
-            {promptLoad === 'loading' && !currentPrompt && null}
+            {promptLoad === 'loading' && !currentPrompt && (
+              <div className="px-6 py-8">
+                <div className="animate-pulse space-y-3">
+                  {Array.from({ length: 7 }).map((_, i) => (
+                    <div key={i} className="h-5 rounded-md bg-white/10" />
+                  ))}
+                </div>
+              </div>
+            )}
             {promptLoad === 'error' && !currentPrompt && null}
 
             <div
@@ -893,30 +956,8 @@ const TypingTest: React.FC = () => {
               onTestComplete={handleTestComplete}
               prompt={currentPrompt}
               isLoading={promptLoad === 'loading'}
-              onRequestNewPrompt={async () => { await safeRestart(); }}
-              onRequestAppendPrompt={async () => {
-                const extraCount = 120;
-                const resp = await fetch('/api/generate-proxy', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    mode: 'words',
-                    count: extraCount,
-                    include_punctuation: showPunctuation,
-                    include_numbers: showNumbers,
-                    language: 'english',
-                    difficulty: usedDifficultyRef.current || 'auto',
-                  }),
-                });
-                if (!resp.ok) {
-                  const errText = await resp.text().catch(() => '');
-                  console.error('[generator] append HTTP error', resp.status, errText);
-                  throw new Error('Generator append failed');
-                }
-                const data = (await resp.json().catch(() => null)) as FetchResponse | null;
-                if (!data || !data.text) throw new Error('Empty generator response');
-                return data.text;
-              }}
+              onRequestNewPrompt={memoNewPrompt}
+              onRequestAppendPrompt={memoAppendPrompt}
             />
             </div>
           </>

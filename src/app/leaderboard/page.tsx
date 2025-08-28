@@ -51,7 +51,7 @@ export default function LeaderboardPage() {
 
       <Podium rows={filtered.slice(0,3) as Row[]} meId={me?.id ? String(me.id) : null} />
 
-      <Card className="rounded-2xl border border-white/10 bg-white/5">
+      <Card className="rounded-2xl border border-white/10 bg-white/5 cv-auto cv-480">
         <CardContent className="p-0">
           {!rows ? (
             <div className="p-6 animate-pulse space-y-2">

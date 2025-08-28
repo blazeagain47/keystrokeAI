@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { fetchMyTotals } from "@/lib/runsApi";
+import { mark, measure } from "@/lib/perf";
 
 type Totals = {
   ready: boolean;
@@ -25,6 +26,7 @@ export const useTotalsStore = create<Totals>((set, get) => ({
     if (get().loading) return;
     if (get().ready && !force) return;
     set({ loading: true });
+    mark('stores:hydrate:totals:start');
     try {
       const res = await fetchMyTotals();
       const t = (res as any)?.totals ?? null;
@@ -40,6 +42,8 @@ export const useTotalsStore = create<Totals>((set, get) => ({
       set({ ready: true });
     } finally {
       set({ loading: false });
+      mark('stores:hydrate:totals:end');
+      measure('stores:hydrate:totals:start','stores:hydrate:totals:end');
     }
   },
 }));

@@ -9,7 +9,11 @@ import { addLocalRun, BlazeRun } from "@/lib/historyLocal";
 import { RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { segmentGraphemes, normalizeInputChar } from "@/utils/segments";
-import { sameChar, stripInvisibles } from "@/lib/typing/compare";
+import { evalWord, type WordEval } from "@/lib/typing/state";
+import { tallyWords, wpmFromTally, accuracyFromTally } from "@/lib/typing/metrics";
+import { createRafQueue } from "@/lib/rafQueue";
+import { useStopOnError, useStrictSpace } from "@/store/settings";
+import EmbersLayer, { EmbersHandle } from "@/components/fx/EmbersLayer";
 import { useSearchParams } from "next/navigation";
 import { tl } from "@/lib/timeline";
 import { devLog } from "@/lib/devLog";
@@ -18,110 +22,111 @@ import { devLog } from "@/lib/devLog";
 // Legacy StatsPanel removed in favor of modern ResultsPanel
 
 /* ─────────────────────────────────────────────────────────── */
-/* helpers                                                   */
-function calculateWPM(correctChars: number, timeInSeconds: number) {
-  if (timeInSeconds === 0) return 0;
-  return Math.round((correctChars / 5) / (timeInSeconds / 60));
-}
 
-function calculateAccuracy(correctChars: number, totalChars: number) {
-  if (totalChars === 0) return 100;
-  return Math.round((correctChars / totalChars) * 100);
-}
-
-/* ─────────────────────────────────────────────────────────── */
-/* component                                                 */
-interface TypingBoxProps {
-  mode: 'words' | 'time';
+export interface TypingBoxProps {
+  mode: 'time' | 'words';
   durationSec?: number;
   onStatsUpdate: (wpm: number, accuracy: number, time: number) => void;
-  onTestComplete: (wpm: number, accuracy: number, duration: number, typedText: string) => void;
-  prompt?: string;
-  onRequestNewPrompt?: () => void | Promise<void>;
-  onRequestAppendPrompt?: () => Promise<string> | string;
+  onTestComplete: (wpm: number, accuracy: number, time: number, typedInput: string) => void;
+  prompt: string;
+  onRequestNewPrompt?: () => void;
+  onRequestAppendPrompt?: () => void;
   isLoading?: boolean;
 }
 
 const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt, isLoading: externalLoading = false }) => {
   // Fallback; will be replaced by measured DOM line-height
-  const LINE_H = 38; // px fixed line-height for precise viewport math
-  // Bigger viewport and center focus
-  const VISIBLE_LINES = 5;
-  const CENTER_OFFSET = Math.floor(VISIBLE_LINES / 2);
-  const { user } = useAuth();
-  // Note: addXp was removed from stats store; we now persist the run and rehydrate
-  const [awardedThisRun, setAwardedThisRun] = useState(false);
+  const LINE_H = 38;
 
-  /* state */
-  const [words, setWords]           = useState<string[]>([]);
+  const searchParams = useSearchParams();
+  const debug = searchParams.get('debug') === '1';
+  const debugType = searchParams.get('debugType') === '1';
+  const debugPaused = searchParams.get('debugPaused') === '1';
+
+  const { user } = useAuth();
+
+  const [words, setWords] = useState<string[]>([]);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [currentCharIndex, setCurrentCharIndex] = useState(0);
-  const [isLoading, setIsLoading]   = useState(true);
+  const [inputWords, setInputWords] = useState<string[]>([]); // per-word inputs
+  const [cursorCol, setCursorCol] = useState(0);              // column within current word
   const [hasStarted, setHasStarted] = useState(false);
-  const [startTime, setStartTime]   = useState<number | null>(null);
+  const [startTime, setStartTime] = useState<number | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [correctChars, setCorrectChars] = useState(0);
   const [totalChars, setTotalChars] = useState(0);
-  // removed error-set; status is derived on the fly from typed stream
   const [cursorVisible, setCursorVisible] = useState(true);
-  // const [finalStats, setFinalStats] = useState<{ wpm: number; accuracy: number; time: number } | null>(null);
-  const [typedInput, setTypedInput] = useState<string>("");
-  // Optional: minimal debug overlay; enable via ?debug=1
-  const [debug, setDebug] = useState(false);
-  const search = useSearchParams();
-  const debugType = search?.get("debug") === "type";
-  type DebugEntry = { ts: number; event: string; key?: string; si: number; wi: number; ci: number; target?: string; typed?: string; note?: string };
-  const [debugLog, setDebugLog] = useState<DebugEntry[]>([]);
-  const [debugPaused, setDebugPaused] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [debugLog, setDebugLog] = useState<any[]>([]);
+  const [awardedThisRun, setAwardedThisRun] = useState(false);
+  const [time, setTime] = useState(0);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const isTabHeldRef = useRef<boolean>(false);
-  const lastTabDownAtRef = useRef<number | null>(null);
-  const endAtRef = useRef<number | null>(null);
-  const lastAppendAtRef = useRef<number>(0);
-  // two-line viewport mechanics
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const wordRefs = useRef<Array<HTMLSpanElement | null>>([]);
-  const lineHeightRef = useRef<number>(0);
-  const firstLineTopRef = useRef<number>(0);
+  // Viewport state
   const [visibleStartLine, setVisibleStartLine] = useState(0);
+
+  // Refs for DOM measurement and viewport calculations
+  const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const baseTopRef = useRef(0);
+  const lineHeightRef = useRef(LINE_H);
   const wordLineRef = useRef<number[]>([]);
-  const lastLineRef = useRef<number>(0);
-  const baseTopRef = useRef<number>(0);
   const lineEndsRef = useRef<number[]>([]);
+  const lastLineRef = useRef(0);
+  // Dev-only: track last per-char status to log flips from incorrect -> other
+  const lastStatusRef = useRef<Record<string, 'correct' | 'incorrect' | 'cursor' | 'untyped'>>({});
+
+  // Tab/restart handling
+  const isTabHeldRef = useRef(false);
+  const lastTabDownAtRef = useRef(0);
+  const endAtRef = useRef<number>(0);
+
+  const CENTER_OFFSET = 1; // Show 1 line above and 1 below the active line
+  const TOTAL_LINES = 3;   // 3-line viewport
+
+  // Settings flags
+  const stopOnError = useStopOnError();
+  const strictSpace = useStrictSpace();
+
+  // FX layer
+  const emberRef = React.useRef<EmbersHandle>(null);
+
+  function calculateWPM(correct: number, timeInSeconds: number): number {
+    if (timeInSeconds <= 0) return 0;
+    return Math.round((correct / 5) / (timeInSeconds / 60));
+  }
+
+  function calculateAccuracy(correct: number, total: number): number {
+    if (total === 0) return 100;
+    return Math.round((correct / total) * 100);
+  }
 
   const clampTop = useCallback((top: number) => {
-    const totalLines = lineEndsRef.current.length || 0;
-    const maxTop = Math.max(0, totalLines - VISIBLE_LINES);
-    return Math.max(0, Math.min(top, maxTop));
-  }, []);
-
-  useEffect(() => {
-    try {
-      const q = new URL(window.location.href).searchParams;
-      if (q.get('debug') === '1') setDebug(true);
-    } catch {}
+    const maxLines = Math.max(1, wordLineRef.current.length > 0 ? Math.max(...wordLineRef.current) + 1 : 1);
+    const maxStart = Math.max(0, maxLines - TOTAL_LINES);
+    return Math.max(0, Math.min(maxStart, top));
   }, []);
 
   const targetStream = useMemo(() => words.join(' '), [words]);
+
+  // Computed word evaluations (persistent per-char states)
+  const evals = useMemo<WordEval[]>(() => {
+    return words.map((w, i) => evalWord(w, inputWords[i] ?? ""));
+  }, [words, inputWords]);
 
   /* ───────── Load prompt from prop ───────── */
   const resetFromPrompt = useCallback((text: string) => {
     setIsLoading(true);
     const nextWords = text.split(" ").filter(Boolean);
     setWords(nextWords);
+    setInputWords(Array(nextWords.length).fill(""));
     setCurrentWordIndex(0);
-    setCurrentCharIndex(0);
+    setCursorCol(0);
     setHasStarted(false);
     setStartTime(null);
     setIsComplete(false);
     setCorrectChars(0);
     setTotalChars(0);
-    // errors set removed; status derived from typed stream
-    setTypedInput("");
     setIsLoading(false);
-    // reset two-line viewport position
     setVisibleStartLine(0);
     if (contentRef.current) contentRef.current.style.transform = `translateY(0px)`;
     lastLineRef.current = 0;
@@ -153,99 +158,59 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   // Measure real line-height and size viewport precisely (no padding).
   useEffect(() => {
-    const id = requestAnimationFrame(() => {
+    if (!words.length || !wordRefs.current.length) return;
+    const timer = setTimeout(() => {
+      const firstEl = wordRefs.current.find(Boolean);
+      if (firstEl) {
+        const cs = getComputedStyle(firstEl);
+        lineHeightRef.current = parseFloat(cs.lineHeight) || LINE_H;
+      }
       computeWordLines();
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [words, computeWordLines]);
 
-      // Find first tokens of line 0 and 1
-      let firstIdx0 = -1, firstIdx1 = -1;
-      const wl = wordLineRef.current;
-      for (let i = 0; i < wl.length; i++) {
-        if (wl[i] === 0 && firstIdx0 === -1) firstIdx0 = i;
-        if (wl[i] === 1 && firstIdx1 === -1) firstIdx1 = i;
-        if (firstIdx0 !== -1 && firstIdx1 !== -1) break;
-      }
+  // getCharacterStatus removed; rendering uses `evals` with persistent states
 
-      let measuredLH = LINE_H;
-      const el0 = firstIdx0 !== -1 ? wordRefs.current[firstIdx0] : null;
-      const el1 = firstIdx1 !== -1 ? wordRefs.current[firstIdx1] : null;
-      if (el0 && el1) {
-        measuredLH = Math.round(el1.offsetTop - el0.offsetTop) || LINE_H;
-      } else {
-        const any = el0 || wordRefs.current[0];
-        if (any) {
-          const lh = parseFloat(getComputedStyle(any).lineHeight);
-          if (!Number.isNaN(lh)) measuredLH = Math.round(lh);
-        }
-      }
+  /* Stats computations + live updates */
+  const wpmSeries = useRef<{ time: number; wpm: number }[]>([]);
 
-      lineHeightRef.current = measuredLH;
-      firstLineTopRef.current = el0 ? el0.offsetTop : 0;
-      setVisibleStartLine(0);
+  const pushStats = useCallback(() => {
+    if (!hasStarted || !startTime || isComplete) return;
+    const now = Date.now();
+    const elapsed = (now - startTime) / 1000;
+    const tally = tallyWords(evals);
+    const wpm = Math.round(wpmFromTally(tally, elapsed));
+    const acc = Math.round(accuracyFromTally(tally) * 100);
+    setCorrectChars(tally.correct);
+    setTotalChars(tally.correct + tally.incorrect + tally.extra);
+    wpmSeries.current.push({ time: elapsed, wpm });
+    onStatsUpdate(wpm, acc, elapsed);
+  }, [hasStarted, startTime, isComplete, evals, onStatsUpdate]);
 
-      if (viewportRef.current) {
-        viewportRef.current.style.paddingTop = '0px';
-        viewportRef.current.style.paddingBottom = '0px';
-        viewportRef.current.style.height = `${VISIBLE_LINES * measuredLH}px`;
-      }
-      if (contentRef.current) {
-        contentRef.current.style.transform = `translateY(0px)`;
-        contentRef.current.style.willChange = 'transform';
-      }
-    });
-    return () => cancelAnimationFrame(id);
-  }, [prompt, computeWordLines]);
-
-  /* cursor blink */
+  /* Timer effect for time mode */
   useEffect(() => {
-    if (!isComplete) {
-      const interval = setInterval(() => setCursorVisible((prev) => !prev), 530);
-      return () => clearInterval(interval);
-    }
-  }, [isComplete]);
-
-  /* live stats update */
-  useEffect(() => {
-    if (hasStarted && startTime && !isComplete) {
+    if (mode === 'time' && hasStarted && startTime && !isComplete) {
       const interval = setInterval(() => {
         const now = Date.now();
-        const currentTime = (now - startTime) / 1000;
-        const wpm       = calculateWPM(correctChars, currentTime);
-        const accuracy  = calculateAccuracy(correctChars, totalChars);
-        onStatsUpdate(wpm, accuracy, currentTime);
-        if (mode === 'time' && endAtRef.current && now >= endAtRef.current) {
-          const finalWpm = calculateWPM(correctChars, currentTime);
-          const finalAcc = calculateAccuracy(correctChars, totalChars);
+        const elapsed = (now - startTime) / 1000;
+        setTime(elapsed);
+        pushStats();
+        if (elapsed >= durationSec) {
+          const tally = tallyWords(evals);
+          const finalWpm = Math.round(wpmFromTally(tally, elapsed));
+          const finalAcc = Math.round(accuracyFromTally(tally) * 100);
           setIsComplete(true);
-          onTestComplete(finalWpm, finalAcc, currentTime, typedInput);
-          if (user) {
-            try {
-              const uid = String(user.id);
-              import("@/lib/historyLocal").then(({ addLocalRun }) => {
-                addLocalRun(uid, {
-                  id: crypto.randomUUID(),
-                  ts: Date.now(),
-                  wpm: finalWpm,
-                  acc: finalAcc,
-                  durationSec: currentTime,
-                  mode: "time",
-                  words: undefined,
-                  difficulty: undefined,
-                  xpEarned: 0,
-                });
-                window.dispatchEvent(new CustomEvent("blaze:run", { detail: { uid } }));
-              }).catch(() => {});
-            } catch {}
-          }
+          onTestComplete(finalWpm, finalAcc, elapsed, (inputWords || []).join(' '));
         }
-      }, 250);
+      }, 100);
       return () => clearInterval(interval);
     }
-  }, [hasStarted, startTime, isComplete, correctChars, totalChars, onStatsUpdate, mode, onTestComplete, typedInput]);
+  }, [hasStarted, startTime, isComplete, evals, mode, onTestComplete, inputWords, durationSec, pushStats]);
 
   /* auto-advance viewport so current line is centered within the viewport */
   useEffect(() => {
     const line = wordLineRef.current[currentWordIndex] ?? 0;
-    // Center the active line within the viewport
     const desiredTop = clampTop(line - CENTER_OFFSET);
     if (desiredTop !== visibleStartLine) {
       setVisibleStartLine(desiredTop);
@@ -258,16 +223,143 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     lastLineRef.current = line;
   }, [currentWordIndex, visibleStartLine, clampTop]);
 
+  // Util to spawn embers at caret position
+  function spawnAtCaret(n = 2) {
+    const el = document.querySelector('[data-caret="on"]') as HTMLElement;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const px = rect.left + rect.width * 0.6 + window.scrollX;
+    const py = rect.top + rect.height * 0.2 + window.scrollY;
+    emberRef.current?.spawn(px, py, n);
+  }
+
+  /* rAF-batched input handling */
+  const applyBatch = useCallback((keys: string[]) => {
+    if (!keys.length) return;
+    // local copies for single-commit
+    let nextWords = inputWords.slice();
+    let wi = currentWordIndex;
+    let col = cursorCol;
+
+    const commitInput = (idx: number, next: string) => { nextWords[idx] = next; };
+
+    for (const k of keys) {
+      if (k === 'Backspace') {
+        const curr = nextWords[wi] ?? "";
+        if (col > 0 && curr.length > 0) {
+          commitInput(wi, curr.slice(0, -1));
+          col = Math.max(0, col - 1);
+        } else if (wi > 0) {
+          wi = wi - 1;
+          const prevIn = nextWords[wi] ?? "";
+          col = prevIn.length;
+        }
+        continue;
+      }
+
+      // ── Space key: Monkeytype semantics ──────────────────────────────
+      if (k === ' ') {
+        // current word input and expected target
+        const expected = words[wi] ?? "";
+        const curr = nextWords[wi] ?? "";
+
+        // 1) If pressed at the very start (no first letter yet) → DO NOTHING
+        //    (Don't advance, don't mark anything.)
+        if (curr.length === 0) {
+          continue; // ignore this space completely
+        }
+
+        // 2) If we typed ≥1 char but didn't finish the word → mark remainder incorrect
+        //    We do this by padding the input up to expected.length with a sentinel
+        //    char that never equals the expected, so evalWord marks them "incorrect".
+        if (curr.length < expected.length) {
+          const PAD = "\u0001"; // any char that won't match expected letters
+          const padded = curr.padEnd(expected.length, PAD);
+          commitInput(wi, padded);
+        }
+
+        // 3) Honor stopOnError: if enabled and this word contains mistakes or extras,
+        //    block advancing. (Monkeytype's stop-on-error behavior.)
+        const we = evalWord(expected, nextWords[wi] ?? "");
+        const hasBlocking =
+          stopOnError && (we.states.includes("incorrect") || we.states.includes("extra"));
+        if (hasBlocking) {
+          // do not advance; user must fix the word first
+          continue;
+        }
+
+        // 4) Advance to next word (or finish if last)
+        if (wi < words.length - 1) {
+          wi = wi + 1;
+          col = (nextWords[wi] ?? "").length; // place caret at start-of-next (or after any existing input)
+          spawnAtCaret(3);
+        } else {
+          // Push index past the last word; completion handled after loop
+          wi = words.length;
+        }
+        continue;
+      }
+
+      if (k.length === 1) {
+        const ch = normalizeInputChar(k);
+        const curr = nextWords[wi] ?? "";
+        const colBefore = col;
+        commitInput(wi, curr + ch);
+        col = col + 1;
+        // check if this char is correct and spawn embers
+        const we = evalWord(words[wi] ?? "", curr + ch);
+        const st = we.states[colBefore];
+        if (st === "correct") {
+          spawnAtCaret(2);
+        }
+        continue;
+      }
+    }
+
+    // Single commit of state
+    setInputWords(nextWords);
+    setCurrentWordIndex(wi);
+    setCursorCol(col);
+
+    // compute metrics once per frame
+    if (hasStarted && startTime && !isComplete) {
+      const now = Date.now();
+      const elapsed = (now - startTime) / 1000;
+      const wevals: WordEval[] = words.map((w, i) => evalWord(w, nextWords[i] ?? ""));
+      const tally = tallyWords(wevals);
+      const wpm = Math.round(wpmFromTally(tally, elapsed));
+      const acc = Math.round(accuracyFromTally(tally) * 100);
+      setCorrectChars(tally.correct);
+      setTotalChars(tally.correct + tally.incorrect + tally.extra);
+      wpmSeries.current.push({ time: elapsed, wpm });
+      onStatsUpdate(wpm, acc, elapsed);
+    }
+
+    // words-mode completion when advancing from last word
+    if (mode === 'words' && !isComplete) {
+      if (wi >= words.length) {
+        const end = Date.now();
+        const elapsed = startTime ? (end - startTime) / 1000 : 0;
+        const wevals: WordEval[] = words.map((w, i) => evalWord(w, nextWords[i] ?? ""));
+        const tally = tallyWords(wevals);
+        const finalWpm = Math.round(wpmFromTally(tally, elapsed));
+        const finalAcc = Math.round(accuracyFromTally(tally) * 100);
+        setIsComplete(true);
+        onTestComplete(finalWpm, finalAcc, elapsed, nextWords.join(' '));
+      }
+    }
+  }, [inputWords, currentWordIndex, cursorCol, hasStarted, startTime, isComplete, words, mode, onStatsUpdate, onTestComplete, stopOnError]);
+
+  const enqueueKey = useMemo(() => createRafQueue<string>(applyBatch), [applyBatch]);
+
   /* ───────── Keyboard handler ───────── */
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // Ignore key events originating from click-only chips
       const target = e.target as HTMLElement | null;
       if (target?.closest?.("[data-click-only]")) {
         return;
       }
 
-      // Prevent input while loading (external or internal) or when test complete
       if (externalLoading || isLoading || isComplete) return;
 
       /* start timer */
@@ -302,255 +394,49 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         }
       }
 
-      const pushStats = (correctDelta = 0, totalDelta = 0) => {
-        if (hasStarted && startTime && !isComplete) {
-          const now = Date.now();
-          const currentTime = (now - startTime) / 1000;
-          const wpmNow = calculateWPM(correctChars + correctDelta, currentTime);
-          const accNow = calculateAccuracy(correctChars + correctDelta, totalChars + totalDelta);
-          onStatsUpdate(wpmNow, accNow, currentTime);
-        }
-      };
-
       /* backspace */
       if (e.key === 'Backspace') {
         e.preventDefault();
-        // Update typed input
-        setTypedInput((prev) => (prev.length > 0 ? prev.slice(0, -1) : prev));
-        if (currentCharIndex > 0) {
-          setCurrentCharIndex((prev) => prev - 1);
-          setTotalChars((prev) => Math.max(0, prev - 1));
-          pushStats(0, -1);
-          if (debug && !debugPaused) {
-            const si = words.slice(0, currentWordIndex).join(' ').length + (currentWordIndex > 0 ? 1 : 0) + Math.max(0, currentCharIndex - 1);
-            setDebugLog((prev) => [...prev.slice(-199), { ts: Date.now(), event: 'backspace', si, wi: currentWordIndex, ci: Math.max(0, currentCharIndex - 1), target: targetStream[si] || '' }]);
-          }
-    } else if (currentWordIndex > 0 && currentCharIndex === 0) {
-          setCurrentWordIndex((prev) => prev - 1);
-          const prevWord = words[currentWordIndex - 1] || "";
-          setCurrentCharIndex(segmentGraphemes(prevWord).length || 0);
-          pushStats();
-        }
+        enqueueKey('Backspace');
         return;
       }
 
       /* space */
       if (e.key === ' ') {
         e.preventDefault();
-        // Words mode: if already at/past end of last word, finalize instead of advancing
-        if (mode === 'words') {
-          const lastIdx = Math.max(0, words.length - 1);
-          const lastLen = (words[lastIdx] || '').length;
-          if (currentWordIndex >= lastIdx && currentCharIndex >= lastLen) {
-            setIsComplete(true);
-            const now = Date.now();
-            const currentTime = startTime ? (now - startTime) / 1000 : 0;
-            const finalWpm = calculateWPM(correctChars, currentTime);
-            const finalAcc = calculateAccuracy(correctChars, totalChars);
-            onTestComplete(finalWpm, finalAcc, currentTime, typedInput);
-            return;
-          }
-        }
-
-        // Handle remaining characters in the current word as explicit mistakes
-        const topEndIdx = lineEndsRef.current[visibleStartLine] ?? -1;
-        if (currentWordIndex === topEndIdx) {
-          // Snap shift to keep motion crisp; effect above will keep it centered
-          const nextLine = wordLineRef.current[currentWordIndex + 1] ?? (visibleStartLine + CENTER_OFFSET);
-          const nextTop = clampTop(nextLine - CENTER_OFFSET);
-          setVisibleStartLine(nextTop);
-          if (contentRef.current) {
-            const lh = lineHeightRef.current || LINE_H;
-            const px = Math.round(nextTop * lh);
-            contentRef.current.style.transform = `translateY(-${px}px)`;
-          }
-        }
-
-        if (mode === 'time') {
-          // Accept space; move to next word boundary and keep indices aligned
-          setTypedInput((prev) => prev + ' ');
-          setTotalChars((prev) => prev + 1);
-          pushStats(0, 1);
-          if (currentWordIndex < words.length - 1) {
-            setCurrentWordIndex((prev) => prev + 1);
-            setCurrentCharIndex(0);
-          }
-          if (debug && !debugPaused) {
-            const si = words.slice(0, currentWordIndex).join(' ').length + (currentWordIndex > 0 ? 1 : 0) + currentCharIndex;
-            setDebugLog((prev) => [...prev.slice(-199), { ts: Date.now(), event: 'space', si, wi: currentWordIndex, ci: currentCharIndex, target: targetStream[si] || '' }]);
-          }
-          return;
-        }
-
-        if (currentWordIndex < words.length - 1) {
-          const currentWord     = words[currentWordIndex];
-          const g = segmentGraphemes(currentWord);
-          const remainingChars  = g.length - currentCharIndex;
-          if (remainingChars > 0) {
-            // Insert placeholders to keep indices aligned; status derived later
-            // no error set; we simply fill placeholders so status remains 'untyped' until backfilled
-            // Insert placeholders for skipped characters BEFORE the space
-            const placeholders = '\u0000'.repeat(remainingChars);
-            setTypedInput((prev) => prev + placeholders);
-            setTotalChars((prev) => prev + remainingChars);
-            pushStats(0, remainingChars);
-          }
-          // Now append the actual space and count it toward totals for alignment with stream indices
-          setTypedInput((prev) => prev + ' ');
-          setTotalChars((prev) => prev + 1);
-          pushStats(0, 1);
-
-          setCurrentWordIndex((prev) => prev + 1);
-          setCurrentCharIndex(0);
-          if (debug && !debugPaused) {
-            const si = words.slice(0, currentWordIndex).join(' ').length + (currentWordIndex > 0 ? 1 : 0) + g.length;
-            setDebugLog((prev) => [...prev.slice(-199), { ts: Date.now(), event: 'space', si, wi: currentWordIndex + 1, ci: 0, target: targetStream[si] || '' }]);
-          }
-        } else {
-          // Last word: treat trailing space as normal char for alignment
-          setTypedInput((prev) => prev + ' ');
-          setTotalChars((prev) => prev + 1);
-          pushStats(0, 1);
-        }
+        enqueueKey(' ');
         return;
-      }
-
-      /* Auto-extend prompt in time mode when near the end */
-      if (mode === 'time') {
-        const remainingWords = words.length - currentWordIndex;
-        const now = Date.now();
-        if (remainingWords < 30 && onRequestAppendPrompt && now - lastAppendAtRef.current > 5000) {
-          lastAppendAtRef.current = now;
-          Promise.resolve(onRequestAppendPrompt()).then((extra) => {
-            if (!extra) return;
-            const more = extra.split(/\s+/).filter(Boolean);
-            setWords((prev) => [...prev, ...more]);
-            // recompute line map on next frame after DOM updates
-            requestAnimationFrame(() => {
-              computeWordLines();
-            });
-          }).catch(() => {});
-        }
       }
 
       /* regular char */
       if (e.key.length === 1) {
         e.preventDefault();
-        const currentWord = words[currentWordIndex];
-        const g = segmentGraphemes(currentWord);
-        if (currentCharIndex < g.length) {
-          const targetChar = g[currentCharIndex];
-          const typedCharNorm = normalizeInputChar(e.key);
-          const isCorrect  = sameChar(targetChar, typedCharNorm);
-          // Record typed character
-          setTypedInput((prev) => prev + typedCharNorm);
-
-          if (isCorrect) setCorrectChars((prev) => prev + 1);
-          // log
-          if ((debug && !debugPaused) || debugType) {
-            const si = words.slice(0, currentWordIndex).join(' ').length + (currentWordIndex > 0 ? 1 : 0) + currentCharIndex;
-            setDebugLog((prev) => [...prev.slice(-199), { ts: Date.now(), event: 'char', key: e.key, si, wi: currentWordIndex, ci: currentCharIndex, target: targetChar, typed: typedCharNorm, note: isCorrect ? 'ok' : 'bad' }]);
-            // eslint-disable-next-line no-console
-            if (debugType) console.log('[type-debug]', {
-              expected: targetChar,
-              typed: e.key,
-              expectedHex: [...targetChar].map(c => c.codePointAt(0)?.toString(16)),
-              typedHex: [...e.key].map(c => c.codePointAt(0)?.toString(16)),
-              normExpected: stripInvisibles(targetChar),
-              normTyped: stripInvisibles(e.key),
-            });
-          }
-
-          setTotalChars((prev) => prev + 1);
-          setCurrentCharIndex((prev) => prev + 1);
-          pushStats(isCorrect ? 1 : 0, 1);
-
-          /* word complete? */
-          if (currentCharIndex + 1 === g.length) {
-            if (mode === 'words') {
-              /* last word? */
-              if (currentWordIndex === words.length - 1) {
-                const endTime     = Date.now();
-                const duration    = (endTime - startTime!) / 1000;
-                const finalWpm    = calculateWPM(correctChars + (isCorrect ? 1 : 0), duration);
-                const finalAcc    = calculateAccuracy(correctChars + (isCorrect ? 1 : 0), totalChars + 1);
-                setIsComplete(true);
-                onTestComplete(finalWpm, finalAcc, duration, typedInput + typedCharNorm);
-                const challengeText = ((): string | undefined => {
-                  try {
-                    const w = window as unknown as { __bkChallengeText?: string };
-                    return w.__bkChallengeText || document.getElementById("bk-next-challenge")?.getAttribute("data-challenge-text") || undefined;
-                  } catch { return undefined; }
-                })();
-                const award = computeXpAward(finalAcc, challengeText);
-                const run: BlazeRun = {
-                  id: crypto.randomUUID(),
-                  ts: Date.now(),
-                  wpm: finalWpm,
-                  acc: finalAcc,
-                  durationSec: duration,
-                  mode: "words",
-                  words: words.length,
-                  difficulty: undefined,
-                  xpDelta: award.total,
-                  xpReason: award.reason,
-                };
-                if (!awardedThisRun) {
-                  const uid = user ? String(user.id) : "guest";
-                  try {
-                    addLocalRun(uid, run);
-                  } catch {}
-                  try { useStatsStore.getState().append(run); } catch {}
-                  setAwardedThisRun(true);
-                }
-                if (user) saveTypingResult(String(user.id), finalWpm, finalAcc, duration, 'words', words.length).catch(()=>{});
-                try { window.dispatchEvent(new CustomEvent('blaze:xp', { detail: award })); } catch {}
-                if (user) {
-                  try {
-                    const uid = String(user.id);
-                    import("@/lib/historyLocal").then(({ addLocalRun }) => {
-                      addLocalRun(uid, {
-                        id: crypto.randomUUID(),
-                        ts: Date.now(),
-                        wpm: finalWpm,
-                        acc: finalAcc,
-                        durationSec: duration,
-                        mode: "words",
-                        words: words.length,
-                        difficulty: undefined,
-                        xpEarned: award.total,
-                        xpDelta: award.total,
-                        xpReason: award.reason,
-                      });
-                      window.dispatchEvent(new CustomEvent("blaze:run", { detail: { uid } }));
-                    }).catch(() => {});
-                  } catch {}
-                }
-              }
-            }
-          }
-        }
+        enqueueKey(e.key);
+        return;
       }
     },
     [
-      user,
-      isLoading,
       externalLoading,
+      isLoading,
       isComplete,
       hasStarted,
       startTime,
-      currentWordIndex,
-      currentCharIndex,
-      words,
-      totalChars,
-      correctChars,
-      onTestComplete,
-      prompt,
-      resetFromPrompt,
-      typedInput,
-      onRequestNewPrompt,
       mode,
       durationSec,
+      words,
+      currentWordIndex,
+      onStatsUpdate,
+      onTestComplete,
+      debug,
+      debugPaused,
+      visibleStartLine,
+      clampTop,
+      targetStream,
+      pushStats,
+      resetFromPrompt,
+      onRequestNewPrompt,
+      prompt,
+      enqueueKey
     ]
   );
 
@@ -562,7 +448,6 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   /* attach listener */
   useEffect(() => {
-    // Signal typing mode to other UI (e.g., to block global hotkeys)
     try { document.body.classList.add("bk-typing-active"); } catch {}
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -573,158 +458,114 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     };
   }, [handleKeyDown, handleKeyUp]);
 
-  /* status helper – index-accurate using global targetStream and typedInput */
-  const getCharacterStatus = (wordIndex: number, charIndex: number) => {
-    // Caret
-    if (wordIndex === currentWordIndex && charIndex === currentCharIndex) return 'cursor';
+  /* cursor blink */
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCursorVisible((prev) => !prev);
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
-    // Global stream index for this character
-    const wordStart = words.slice(0, wordIndex).join(' ').length + (wordIndex > 0 ? 1 : 0);
-    const streamIndex = wordStart + charIndex;
-    const typedChar = typedInput[streamIndex];
-    const targetChar = targetStream[streamIndex] ?? '';
-    if (typedChar != null) {
-      return typedChar === targetChar ? 'correct' : 'incorrect';
-    }
-    // If nothing has been typed at this position yet, do not flag as incorrect preemptively
-    return 'untyped';
-  };
-
-  const handleRestart = () => {
-    if (onRequestNewPrompt) {
-      void onRequestNewPrompt();
-    } else if (prompt) {
-      resetFromPrompt(prompt);
-    }
-  };
-
-  /* ──────────────────────────────────────────────────────────── */
-  /* render                                                     */
-  if (isLoading) { return null; }
+  if (externalLoading || isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-300"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[70vh] px-4" ref={containerRef}>
-      <div className="w-full max-w-6xl mx-auto space-y-12">
-        {/* status info */}
-        {!hasStarted && !isComplete && (
-          <div className="text-center space-y-3 hide-on-test">
-            <div className="inline-flex items-center gap-3 px-6 py-3 bg-gray-800/40 backdrop-blur-sm border border-gray-700/30 rounded-2xl">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              <p className="text-gray-300 text-sm font-medium">Click to focus, then start typing</p>
-            </div>
-          </div>
-        )}
-
-        {/* typing display */}
+    <div ref={containerRef} className="mx-auto max-w-4xl">
+      <div
+        className="overflow-hidden"
+        style={{ height: `${TOTAL_LINES * (lineHeightRef.current || LINE_H)}px` }}
+      >
         <div
-          className="relative group cursor-text bk-typing-surface"
-          onClick={() => containerRef.current?.focus()}
-          tabIndex={0}
+          ref={contentRef}
+          className="relative transition-transform duration-200 ease-out"
+          style={{
+            lineHeight: `${lineHeightRef.current || LINE_H}px`,
+            fontSize: "1.1rem",
+            fontFamily:
+              'JetBrains Mono, Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
+          }}
         >
-          <div className="relative text-2xl md:text-3xl lg:text-4xl leading-relaxed font-mono px-8 py-10">
-            {/* Fixed-height two-line viewport */}
-            <div ref={viewportRef} className="relative overflow-hidden typing-viewport">
-              {/* optional fades removed for floating-on-canvas look */}
-              <div ref={contentRef} className="transition-transform duration-200 ease-out translate-z-0 typing-content">
-                <div className="max-w-6xl whitespace-normal break-words tracking-normal leading-[1.35]">
-                  {words.map((word, wordIndex) => (
-                    <React.Fragment key={wordIndex}>
-                      <span
-                        ref={(el) => {
-                          wordRefs.current[wordIndex] = el;
-                        }}
-                        className={clsx(
-                          'inline align-baseline relative transition-all duration-200',
-                          wordIndex === currentWordIndex &&
-                            'bg-yellow-400/10 border border-yellow-400/20 rounded-lg shadow-lg shadow-yellow-400/5'
-                        )}
-                      >
-                        {word.split('').map((char, charIndex) => {
-                          const status = getCharacterStatus(wordIndex, charIndex);
-                          return (
-                            <span
-                              key={`${wordIndex}-${charIndex}`}
-                              className={clsx(
-                                'relative transition-all duration-100 ease-out',
-                                status === 'correct' && 'text-gray-200',
-                                status === 'incorrect' && 'text-red-400 bg-red-900/40 rounded-md shadow-sm',
-                                status === 'cursor' &&
-                                  'bg-yellow-400 text-gray-900 rounded-md shadow-md shadow-yellow-400/30',
-                                status === 'untyped' && 'text-gray-600'
-                              )}
-                              style={
-                                status === 'cursor'
-                                  ? {
-                                      backgroundColor: cursorVisible ? '#fbbf24' : 'transparent',
-                                      color: cursorVisible ? '#111827' : '#6b7280',
-                                      transform: cursorVisible ? 'scale(1.05)' : 'scale(1)',
-                                    }
-                                  : {}
-                              }
-                            >
-                              {char}
-                            </span>
-                          );
-                        })}
-                      </span>
-                      {wordIndex < words.length - 1 ? ' ' : null}
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <div className="p-4 leading-relaxed text-lg">
+            {evals.map((we, wi) => {
+              const active = wi === currentWordIndex;
+              const expected = we.expected;
+              const input = inputWords[wi] ?? "";
+              const L = Math.max(expected.length, input.length);
+
+              return (
+                <React.Fragment key={wi}>
+                  <span
+                    ref={(el) => { wordRefs.current[wi] = el; }}
+                    className="inline-block bk-word"
+                    data-active={active ? "1" : undefined}
+                  >
+                    {Array.from({ length: L }).map((_, ci) => {
+                      // Decide what to render and what state to paint
+                      let showChar: string;
+                      let st: "untyped" | "correct" | "incorrect" | "extra" | "cursor";
+
+                      if (ci < expected.length) {
+                        // Always render the EXPECTED character for the main word body
+                        showChar = expected[ci] ?? "";
+                        if (ci < input.length) {
+                          st = input[ci] === expected[ci] ? "correct" : "incorrect";
+                        } else {
+                          st = "untyped";
+                        }
+                      } else {
+                        // Beyond expected length → extras: render the TYPED character
+                        showChar = input[ci] ?? "";
+                        st = "extra";
+                      }
+
+                      // Cursor overlay on active word (works both in-body and in extras)
+                      if (active && ci === cursorCol) st = "cursor";
+
+                      return (
+                        <span
+                          key={`${wi}-${ci}`}
+                          data-caret={st === "cursor" ? (cursorVisible ? "on" : "off") : undefined}
+                          className={clsx(
+                            "relative transition-all duration-100 ease-out bk-char",
+                            st === "correct" && "text-gray-200",
+                            st === "incorrect" && "text-red-400 bg-red-900/40 rounded-md shadow-sm",
+                            st === "extra" && "text-orange-300/90 underline decoration-dotted",
+                            st === "untyped" && "text-gray-600",
+                            st === "cursor" && (cursorVisible ? "bk-caret-on" : "bk-caret-off")
+                          )}
+                        >
+                          {showChar}
+                        </span>
+                      );
+                    })}
+                  </span>
+                  {wi < evals.length - 1 ? " " : null}
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
+      </div>
 
-        {debug && (
-          <div className="fixed bottom-6 right-6 z-50 max-w-[48vw] max-h-[50vh] text-xs bg-gray-900/90 border border-gray-700/70 rounded-lg p-2 shadow-xl">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="font-semibold text-gray-200">Debug log</span>
-              <button className="px-2 py-1 text-gray-200 bg-gray-700/60 rounded hover:bg-gray-700" onClick={() => setDebugPaused((p) => !p)}>
-                {debugPaused ? 'Resume' : 'Pause'}
-              </button>
-              <button className="px-2 py-1 text-gray-200 bg-gray-700/60 rounded hover:bg-gray-700" onClick={() => setDebugLog([])}>
-                Clear
-              </button>
-              <button
-                className="px-2 py-1 text-gray-200 bg-gray-700/60 rounded hover:bg-gray-700"
-                onClick={() => {
-                  const text = debugLog
-                    .map((e) => `${new Date(e.ts).toLocaleTimeString()} · ${e.event} · si=${e.si} wi=${e.wi} ci=${e.ci}${e.key ? ` key=${e.key}` : ''}${e.note ? ` · ${e.note}` : ''}`)
-                    .join('\n');
-                  navigator.clipboard.writeText(text).catch(() => {});
-                }}
-              >
-                Copy
-              </button>
-            </div>
-            <div className="font-mono text-gray-300 whitespace-pre overflow-auto max-h-[40vh] pr-2">
-              {debugLog.map((e, i) => (
-                <div key={i} className="text-gray-300">
-                  {new Date(e.ts).toLocaleTimeString()} · {e.event} · si={e.si} wi={e.wi} ci={e.ci} {e.key ? `key=${e.key}` : ''} {e.note ? `· ${e.note}` : ''}
+      {debug && (
+        <div className="mt-4 text-xs text-gray-500">
+          Debug: {currentWordIndex}:{cursorCol} | chars: {correctChars}/{totalChars} | line: {wordLineRef.current[currentWordIndex] ?? 0} | visible: {visibleStartLine}-{visibleStartLine + TOTAL_LINES - 1}
+          {debugLog.length > 0 && (
+            <div className="mt-2 max-h-40 overflow-y-auto bg-gray-900 p-2 rounded text-xs">
+              {debugLog.slice(-10).map((entry, i) => (
+                <div key={i} className="text-gray-400">
+                  [{entry.ts}] {entry.event} @ {entry.wi}:{entry.ci} target="{entry.target}" typed="{entry.typed}" {entry.note}
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* restart button */}
-        {(!hasStarted || isComplete) && (
-          <div className="flex justify-center">
-            <button
-              onClick={handleRestart}
-              className="group relative flex items-center justify-center w-16 h-16 bg-gradient-to-br from-gray-800 to-gray-900 hover:from-yellow-500 hover:to-yellow-600 border border-gray-600/30 hover:border-yellow-400/50 rounded-2xl transition-all duration-300 hover:scale-110 hover:shadow-xl hover:shadow-yellow-400/20 focus:outline-none focus:ring-4 focus:ring-yellow-400/30"
-            >
-              <RotateCcw className="w-6 h-6 text-gray-400 group-hover:text-white transition-all duration-300 group-hover:rotate-180" />
-              <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-gray-800 text-gray-200 text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                New Test
-              </div>
-            </button>
-          </div>
-        )}
-
-        {/* Results rendering moved to parent ResultsPanel */}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -1,5 +1,6 @@
 // src/app/layout.tsx
 import type { Metadata } from 'next'
+import React from 'react'
 import AuthGate from '@/components/auth/AuthGate'
 import { Inter } from 'next/font/google'
 import './globals.css'
@@ -9,8 +10,9 @@ import GlobalFireBackdrop from '@/components/brand/GlobalFireBackdrop'
 import AppBoot from '@/components/AppBoot'
 import SettingsModal from '@/components/settings/SettingsModal'
 import HotkeysGlobal from '@/components/system/HotkeysGlobal'
+import PerfBootMarker from '@/components/PerfBootMarker'
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'], display: 'swap', preload: true })
 
 export const metadata: Metadata = {
   title: 'blazeKey',
@@ -33,9 +35,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className="dark">
+      <head>
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      </head>
       <body className={`${inter.className} page-bg bk-flame-bg min-h-dvh antialiased overflow-x-clip`}>
         {/* Client bootstrap for auth + appearance */}
         <AppBoot />
+        <PerfBootMarker />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -54,3 +60,4 @@ export default function RootLayout({
     </html>
   )
 }
+
