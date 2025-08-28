@@ -59,7 +59,6 @@ type FetchResponse = {
 };
 
 const TypingTest: React.FC = () => {
-  useLockScroll(true);
   
   type PromptLoad = 'idle'|'loading'|'ready'|'error';
   const [promptLoad, setPromptLoad] = useState<PromptLoad>('idle');

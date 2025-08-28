@@ -92,8 +92,12 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   // Gates centering/transform until after we have real measurements
   const [measured, setMeasured] = React.useState(false);
 
-  // lock page scroll while TypingBox is shown
-  useLockScroll(true);
+  // Lock page scroll any time the typing screen is visible.
+  // Pre-test (not started) -> locked
+  // Active run -> locked
+  // Post-test/results (isComplete) -> unlocked
+  const scrollLocked = !isComplete;
+  useLockScroll(scrollLocked);
 
   // --- Re-run stabilizer state ---
   const [runSeq, setRunSeq] = React.useState(0);
@@ -570,17 +574,18 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
       {/* Fixed 3-line window; +2px buffer avoids bottom clipping on fractional line-heights */}
       <div
+        data-bk-viewport
         className="overflow-hidden rounded-xl select-none"
         style={{
           height: `${TOTAL_LINES * (lineHeightRef.current || LINE_H) + 2}px`,
-          overscrollBehavior: "none",
-          touchAction: "none",
+          overscrollBehavior: scrollLocked ? "none" : "auto",
         }}
-        onWheelCapture={(e) => e.preventDefault()}
-        onTouchMoveCapture={(e) => e.preventDefault()}
+        onWheelCapture={scrollLocked ? (e) => e.preventDefault() : undefined}
+        onTouchMoveCapture={scrollLocked ? (e) => e.preventDefault() : undefined}
       >
         <div
           ref={contentRef}
+          data-bk-content
           className="relative transition-transform duration-200 ease-out"
           style={{
             lineHeight: `${lineHeightRef.current || LINE_H}px`,
@@ -588,8 +593,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
             fontFamily:
               'JetBrains Mono, Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
             paddingBottom: SAFE_BOTTOM_PX,
-            willChange: "transform",
-            overscrollBehaviorY: "contain",
+            willChange: scrollLocked ? "transform" : "auto",
           }}
         >
           <div className="px-4 leading-relaxed text-lg">
