@@ -17,6 +17,7 @@ import EmbersLayer, { EmbersHandle } from "@/components/fx/EmbersLayer";
 import { useSearchParams } from "next/navigation";
 import { tl } from "@/lib/timeline";
 import { devLog } from "@/lib/devLog";
+import useLockScroll from "@/hooks/useLockScroll";
 
 /* NEW – bring in the modernised Shadcn results panel */
 // Legacy StatsPanel removed in favor of modern ResultsPanel
@@ -74,6 +75,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const lastLineRef = useRef(0);
   // Dev-only: track last per-char status to log flips from incorrect -> other
   const lastStatusRef = useRef<Record<string, 'correct' | 'incorrect' | 'cursor' | 'untyped'>>({});
+  const isCompletedRef = useRef(false);
 
   // Tab/restart handling
   const isTabHeldRef = useRef(false);
@@ -82,6 +84,31 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   const CENTER_OFFSET = 1; // Show 1 line above and 1 below the active line
   const TOTAL_LINES = 3;   // 3-line viewport
+
+  // Safe spacing so filters/header never overlap the typing viewport
+  const SAFE_TOP_PX = 140;   // top spacer (tune if your header/filters grow)
+  const SAFE_BOTTOM_PX = 48; // bottom breathing room to avoid clipping
+
+  // Gates centering/transform until after we have real measurements
+  const [measured, setMeasured] = React.useState(false);
+
+  // lock page scroll while TypingBox is shown
+  useLockScroll(true);
+
+  // --- Re-run stabilizer state ---
+  const [runSeq, setRunSeq] = React.useState(0);
+
+  // --- Hard reset of viewport/metrics before a new test is applied ---
+  const resetViewport = React.useCallback(() => {
+    // stop using previous measurements
+    setMeasured(false);
+    setVisibleStartLine(0);
+
+    // clear measurement bookkeeping
+    lastLineRef.current = 0;
+    wordLineRef.current = [];
+    if (contentRef.current) contentRef.current.style.transform = "translateY(0px)";
+  }, []);
 
   // Settings flags
   const stopOnError = useStopOnError();
@@ -115,6 +142,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   /* ───────── Load prompt from prop ───────── */
   const resetFromPrompt = useCallback((text: string) => {
+    resetViewport();
+    setRunSeq((x) => x + 1);
     setIsLoading(true);
     const nextWords = text.split(" ").filter(Boolean);
     setWords(nextWords);
@@ -124,6 +153,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     setHasStarted(false);
     setStartTime(null);
     setIsComplete(false);
+    isCompletedRef.current = false;
     setCorrectChars(0);
     setTotalChars(0);
     setIsLoading(false);
@@ -156,19 +186,38 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     lineEndsRef.current = ends;
   }, [LINE_H]);
 
-  // Measure real line-height and size viewport precisely (no padding).
+  // Measure real line-height & word lines AFTER fonts load, then lock it.
+  // This prevents the "jump" when typing starts.
   useEffect(() => {
-    if (!words.length || !wordRefs.current.length) return;
-    const timer = setTimeout(() => {
+    if (!words.length) return;
+    let cancelled = false;
+
+    const ready = (document as any).fonts?.ready ?? Promise.resolve();
+    ready.then(() => {
+      if (cancelled) return;
+
+      // Try to read computed line-height from the first rendered word
       const firstEl = wordRefs.current.find(Boolean);
       if (firstEl) {
         const cs = getComputedStyle(firstEl);
-        lineHeightRef.current = parseFloat(cs.lineHeight) || LINE_H;
+        const lh = parseFloat(cs.lineHeight);
+        if (!Number.isNaN(lh) && lh > 0) {
+          lineHeightRef.current = Math.max(24, Math.round(lh));
+        }
       }
+
       computeWordLines();
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [words, computeWordLines]);
+      setMeasured(true);
+    });
+
+    return () => { cancelled = true; };
+  }, [words, runSeq, computeWordLines]);
+
+  // when the words array (or a run token if you have one) changes,
+  // clear the 'measured' gate so we re-measure and re-center correctly.
+  useEffect(() => {
+    setMeasured(false);
+  }, [words]);
 
   // getCharacterStatus removed; rendering uses `evals` with persistent states
 
@@ -210,6 +259,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   /* auto-advance viewport so current line is centered within the viewport */
   useEffect(() => {
+    if (!measured) return; // wait until we’ve measured/laid out once
+
     const line = wordLineRef.current[currentWordIndex] ?? 0;
     const desiredTop = clampTop(line - CENTER_OFFSET);
     if (desiredTop !== visibleStartLine) {
@@ -221,7 +272,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       }
     }
     lastLineRef.current = line;
-  }, [currentWordIndex, visibleStartLine, clampTop]);
+  }, [measured, currentWordIndex, visibleStartLine, clampTop, runSeq]);
 
   // Util to spawn embers at caret position
   function spawnAtCaret(n = 2) {
@@ -233,13 +284,28 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     emberRef.current?.spawn(px, py, n);
   }
 
+  const finalizeWordsRun = useCallback(() => {
+    if (isCompletedRef.current) return;
+    isCompletedRef.current = true;
+    const wevals: WordEval[] = words.map((w, i) => evalWord(w, inputWords[i] ?? ""));
+    const tally = tallyWords(wevals);
+    const elapsedSec = startTime ? (Date.now() - startTime) / 1000 : 0;
+    const finalWpm = Math.round(wpmFromTally(tally, elapsedSec));
+    const finalAcc = Math.round(accuracyFromTally(tally) * 100);
+    setIsComplete(true);
+    onTestComplete(finalWpm, finalAcc, elapsedSec, (inputWords || []).join(' '));
+  }, [words, inputWords, startTime, onTestComplete]);
+
   /* rAF-batched input handling */
   const applyBatch = useCallback((keys: string[]) => {
     if (!keys.length) return;
+    if (isCompletedRef.current) return;
     // local copies for single-commit
     let nextWords = inputWords.slice();
     let wi = currentWordIndex;
     let col = cursorCol;
+    let finishedByTyping = false;
+    let finishedBySpace = false;
 
     const commitInput = (idx: number, next: string) => { nextWords[idx] = next; };
 
@@ -289,14 +355,15 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         }
 
         // 4) Advance to next word (or finish if last)
-        if (wi < words.length - 1) {
-          wi = wi + 1;
-          col = (nextWords[wi] ?? "").length; // place caret at start-of-next (or after any existing input)
-          spawnAtCaret(3);
-        } else {
-          // Push index past the last word; completion handled after loop
+        // Before advancing wi past last index, set finishedBySpace if we’re at last word
+        if (wi >= words.length - 1) {
+          finishedBySpace = true;
           wi = words.length;
+          continue;
         }
+        wi = wi + 1;
+        col = (nextWords[wi] ?? "").length; // place caret at start-of-next (or after any existing input)
+        spawnAtCaret(3);
         continue;
       }
 
@@ -306,6 +373,15 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         const colBefore = col;
         commitInput(wi, curr + ch);
         col = col + 1;
+        // If we’re on the last word and we've now typed at least expected length → finish
+        const isLastWord = wi >= words.length - 1;
+        if (isLastWord) {
+          const expectedLast = words[words.length - 1] ?? "";
+          const inputLast = nextWords[words.length - 1] ?? "";
+          if (inputLast.length >= expectedLast.length) {
+            finishedByTyping = true;
+          }
+        }
         // check if this char is correct and spawn embers
         const we = evalWord(words[wi] ?? "", curr + ch);
         const st = we.states[colBefore];
@@ -320,6 +396,12 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     setInputWords(nextWords);
     setCurrentWordIndex(wi);
     setCursorCol(col);
+
+    // Words-mode: finalize immediately if we just finished by typing or space on last word
+    if (mode === 'words' && (finishedByTyping || finishedBySpace)) {
+      finalizeWordsRun();
+      return; // ensure we don't push further state this frame
+    }
 
     // compute metrics once per frame
     if (hasStarted && startTime && !isComplete) {
@@ -348,7 +430,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         onTestComplete(finalWpm, finalAcc, elapsed, nextWords.join(' '));
       }
     }
-  }, [inputWords, currentWordIndex, cursorCol, hasStarted, startTime, isComplete, words, mode, onStatsUpdate, onTestComplete, stopOnError]);
+  }, [inputWords, currentWordIndex, cursorCol, hasStarted, startTime, isComplete, words, mode, onStatsUpdate, onTestComplete, stopOnError, finalizeWordsRun]);
 
   const enqueueKey = useMemo(() => createRafQueue<string>(applyBatch), [applyBatch]);
 
@@ -475,10 +557,27 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   }
 
   return (
-    <div ref={containerRef} className="mx-auto max-w-4xl">
+    <div
+      ref={containerRef}
+      className="mx-auto max-w-5xl px-4 sm:px-6"
+      style={{
+        minHeight: "100svh",
+        contain: "layout style paint",
+      }}
+    >
+      {/* Top spacer so filters/header never overlap the typing viewport */}
+      <div aria-hidden className="pointer-events-none" style={{ height: SAFE_TOP_PX }} />
+
+      {/* Fixed 3-line window; +2px buffer avoids bottom clipping on fractional line-heights */}
       <div
-        className="overflow-hidden"
-        style={{ height: `${TOTAL_LINES * (lineHeightRef.current || LINE_H)}px` }}
+        className="overflow-hidden rounded-xl select-none"
+        style={{
+          height: `${TOTAL_LINES * (lineHeightRef.current || LINE_H) + 2}px`,
+          overscrollBehavior: "none",
+          touchAction: "none",
+        }}
+        onWheelCapture={(e) => e.preventDefault()}
+        onTouchMoveCapture={(e) => e.preventDefault()}
       >
         <div
           ref={contentRef}
@@ -488,9 +587,12 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
             fontSize: "1.1rem",
             fontFamily:
               'JetBrains Mono, Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
+            paddingBottom: SAFE_BOTTOM_PX,
+            willChange: "transform",
+            overscrollBehaviorY: "contain",
           }}
         >
-          <div className="p-4 leading-relaxed text-lg">
+          <div className="px-4 leading-relaxed text-lg">
             {evals.map((we, wi) => {
               const active = wi === currentWordIndex;
               const expected = we.expected;

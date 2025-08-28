@@ -1198,3 +1198,12 @@ html[data-bk-generating="true"] .bk-inline-spinner { display: none !important; }
 .cv-300 { contain-intrinsic-size: 300px; }
 .cv-480 { contain-intrinsic-size: 480px; }
 @supports not (content-visibility: auto) { .cv-auto { contain: content; } }
+
+/* Global page scroll lock for typing screen */
+html.bk-lock,
+body.bk-lock {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+  height: 100%;
+  touch-action: none;
+}

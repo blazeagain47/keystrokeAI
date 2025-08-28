@@ -80,7 +80,7 @@ export default function ReadyToast({
           transition={{ duration: 0.16 }}
           className="z-[70] pointer-events-auto right-4 md:right-6 xl:right-8 safe-right"
         >
-          <div className="relative max-w-sm w-[clamp(16rem,28vw,22rem)] break-words rounded-xl px-5 py-4 bg-neutral-900/90 ring-1 ring-white/10 shadow-xl">
+          <div className="relative max-w-sm w-[clamp(14rem,24vw,18rem)] break-words rounded-lg px-4 py-3 bg-neutral-900/90 ring-1 ring-white/10 shadow-xl">
             <div
               aria-hidden
               className="pointer-events-none absolute -inset-6 rounded-2xl"
@@ -93,15 +93,15 @@ export default function ReadyToast({
             />
             <div className="relative">
               <div className="flex items-start gap-3">
-                <div className="mt-1 h-6 w-6 shrink-0 rounded-lg bg-amber-500/15 ring-1 ring-amber-400/30 flex items-center justify-center">
+                <div className="mt-1 h-5 w-5 shrink-0 rounded-md bg-amber-500/15 ring-1 ring-amber-400/30 flex items-center justify-center">
                   <span className="text-amber-400">⚡</span>
                 </div>
                 <div className="flex-1">
-                  <div className="font-medium text-amber-100">{text}</div>
-                  <div className="mt-1 text-sm leading-6 text-amber-100/80">{subtext}</div>
+                  <div className="text-sm font-medium text-amber-100">{text}</div>
+                  <div className="mt-1 text-xs leading-5 text-amber-100/80">{subtext}</div>
                 </div>
-                <button aria-label="Dismiss" onClick={() => setShow(false)} className="rounded-md p-1.5 text-amber-200/70 hover:text-amber-100 hover:bg-white/5">
-                  <X className="h-4 w-4" />
+                <button aria-label="Dismiss" onClick={() => setShow(false)} className="rounded-md p-1 text-amber-200/70 hover:text-amber-100 hover:bg-white/5">
+                  <X className="h-3 w-3" />
                 </button>
               </div>
             </div>

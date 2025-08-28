@@ -30,6 +30,7 @@ import { BK_EVENTS } from "@/lib/events";
 import { useLastTestStore, readLastTestSafe } from "@/stores/useLastTestStore";
 import { tl } from '@/lib/timeline';
 import { devLog } from '@/lib/devLog';
+import useLockScroll from "@/hooks/useLockScroll";
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -58,6 +59,8 @@ type FetchResponse = {
 };
 
 const TypingTest: React.FC = () => {
+  useLockScroll(true);
+  
   type PromptLoad = 'idle'|'loading'|'ready'|'error';
   const [promptLoad, setPromptLoad] = useState<PromptLoad>('idle');
   const [promptError, setPromptError] = useState<string | null>(null);
