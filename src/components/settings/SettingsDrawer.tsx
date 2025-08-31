@@ -2,21 +2,49 @@
 
 import React, { useState } from "react";
 import { useSettingsStore, CmdMode, CmdDock, TestMode } from "@/store/settings";
+import { useTheme } from "next-themes";
 import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function SettingsPanel() {
   const s = useSettingsStore();
+  const { setTheme } = useTheme();
   const [importText, setImportText] = useState("");
   return (
-        <div className="p-0">
+        <div className="p-0 space-y-4">
+          {/* Appearance */}
+          <section className="rounded-xl border border-white/10 bg-black/25 hover:bg-black/30 transition-colors p-4">
+            <h3 className="mb-3 text-sm font-semibold tracking-wide text-white/90">Appearance</h3>
+            <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-2">
+              {(["system","light","dark"] as const).map(v => (
+                <label
+                  key={v}
+                  className={[
+                    "flex cursor-pointer items-center justify-center rounded-lg border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-0",
+                    (s.appearance.theme ?? "system") === v ? "border-white/30 bg-white/10" : "border-white/10 hover:border-white/20"
+                  ].join(" ")}
+                >
+                  <input
+                    type="radio"
+                    name="theme"
+                    value={v}
+                    checked={(s.appearance.theme ?? "system") === v}
+                    onChange={() => { s.setTheme(v); setTheme(v); }}
+                    className="sr-only"
+                  />
+                  {v[0].toUpperCase() + v.slice(1)}
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-white/60">“System” follows your OS setting; changes apply instantly.</p>
+          </section>
           {/* Commands */}
-          <Card className="mb-4 bg-white/5 border border-white/10">
+          <Card className="bg-black/25 hover:bg-black/30 border border-white/10 transition-colors">
             <CardContent className="p-4 space-y-3">
-              <div className="text-white/80 font-medium">Commands</div>
+              <div className="text-white/90 text-sm font-semibold tracking-wide">Commands</div>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <div className="text-white/60 mb-1">Default mode</div>
+                  <div className="text-white/70 mb-1">Default mode</div>
                   {(["hidden","peek","full"] as CmdMode[]).map(m => (
                     <label key={m} className="flex items-center gap-2 mb-1">
                       <input
@@ -34,7 +62,7 @@ export default function SettingsPanel() {
                   ))}
                 </div>
                 <div>
-                  <div className="text-white/60 mb-1">Dock corner</div>
+                  <div className="text-white/70 mb-1">Dock corner</div>
                   {(["br","bl","tr","tl"] as CmdDock[]).map(d => (
                     <label key={d} className="flex items-center gap-2 mb-1">
                       <input
@@ -61,24 +89,16 @@ export default function SettingsPanel() {
                     className="w-full bg-white/5 border border-white/10 rounded px-2 py-1" />
                 </div>
               </div>
-              <div className="rounded-xl border border-white/10 p-3">
-                <div className="text-white/60 text-xs mb-2">Live preview</div>
-                <div className="relative h-28">
-                  <div className="absolute right-3 bottom-3">
-                    <CommandHintsFloating context="results" defaultMode={s.commands.defaultMode} />
-                  </div>
-                </div>
-              </div>
             </CardContent>
           </Card>
 
           {/* Test defaults */}
-          <Card className="mb-4 bg-white/5 border border-white/10">
+          <Card className="bg-black/25 hover:bg-black/30 border border-white/10 transition-colors">
             <CardContent className="p-4 space-y-3 text-sm">
-              <div className="text-white/80 font-medium">Test defaults</div>
+              <div className="text-white/90 text-sm font-semibold tracking-wide">Test defaults</div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <div className="text-white/60 mb-1">Default mode</div>
+                  <div className="text-white/70 mb-1">Default mode</div>
                   {(["words","time","quote","custom"] as TestMode[]).map(m => (
                     <label key={m} className="flex items-center gap-2 mb-1">
                       <input type="radio" name="testMode" checked={s.test.defaultMode===m} onChange={()=>s.update('test',{ defaultMode: m })} />
@@ -87,7 +107,7 @@ export default function SettingsPanel() {
                   ))}
                 </div>
                 <div>
-                  <div className="text-white/60 mb-1">Default length</div>
+                  <div className="text-white/70 mb-1">Default length</div>
                   {[10,15,20,30,50].map(n => (
                     <label key={n} className="inline-flex items-center gap-2 mr-2 mb-1">
                       <input type="radio" name="testLen" checked={s.test.defaultLength===n} onChange={()=>s.update('test',{ defaultLength: n })} />
@@ -107,9 +127,9 @@ export default function SettingsPanel() {
           </Card>
 
           {/* Privacy (stub) */}
-          <Card className="mb-4 bg-white/5 border border-white/10">
+          <Card className="bg-black/25 hover:bg-black/30 border border-white/10 transition-colors">
             <CardContent className="p-4 space-y-2 text-sm">
-              <div className="text-white/80 font-medium">Privacy</div>
+              <div className="text-white/90 text-sm font-semibold tracking-wide">Privacy</div>
               <label className="flex items-center gap-2"><input type="checkbox" checked={s.privacy.publicProfile} onChange={(e)=>s.update('privacy',{ publicProfile: e.target.checked })} />Public profile (coming soon)</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={s.privacy.shareRunsByDefault} onChange={(e)=>s.update('privacy',{ shareRunsByDefault: e.target.checked })} />Share runs by default (coming soon)</label>
             </CardContent>
@@ -117,9 +137,9 @@ export default function SettingsPanel() {
 
           {/* Footer */}
           <div className="flex items-center justify-between">
-            <button className="px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10" onClick={()=>s.reset()}>Reset to defaults</button>
+            <button className="px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30" onClick={()=>s.reset()}>Reset to defaults</button>
             <div className="flex items-center gap-2">
-              <button className="px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10" onClick={()=>{
+              <button className="px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30" onClick={()=>{
                 try {
                   const data = s.export();
                   const blob = new Blob([data], { type: "application/json" });
@@ -127,7 +147,7 @@ export default function SettingsPanel() {
                   const a = document.createElement('a'); a.href = url; a.download = 'blaze_settings.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),0);
                 } catch {}
               }}>Export JSON</button>
-              <button className="px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10" onClick={()=>{
+              <button className="px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30" onClick={()=>{
                 const x = prompt("Paste settings JSON"); if (x) try { s.import(x); } catch {}
               }}>Import JSON</button>
             </div>

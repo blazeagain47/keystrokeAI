@@ -1,11 +1,16 @@
-.\.venv\Scripts\Activate.ps1
+# START SCRIPTS (PC vs Laptop)
 
+PC START: -->        .\.venv\Scripts\Activate.ps1
+LAPTOP START: -->    .\venv\Scripts\Activate.ps1
 python -m uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
+npm run dev
 
-.env.local:
+MAKE SURE TO SAVE -->
 
+# .env.local:
 NEXT_PUBLIC_DEV_PROBE=1
 NEXT_PUBLIC_DEV_STATS_DEBUG=1
+NEXT_PUBLIC_DEV_VIEWPORT_DEBUG=1
 
 # Firebase Admin (server)
 FIREBASE_PROJECT_ID=keystroke-ai-879a4

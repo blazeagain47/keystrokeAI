@@ -3,19 +3,23 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useIdle } from "@/hooks/useIdle";
 import { useSettingsStore } from "@/store/settings";
+import { useUIStore } from "@/stores/useUIStore";
 
 type CommandHintsFloatingProps = {
   context?: "typing" | "results" | "account";
   defaultMode?: "hidden" | "peek" | "full";
   className?: string;
+  /** When true (default), hide the dock if any overlay is open */
+  suppressWhenOverlay?: boolean;
 };
 
 const MODE_KEY = "bk:cmdHints.mode";
 const DOCK_KEY = "bk:cmdHints.dock";
 const COACH_KEY = "bk:cmdHints.coachShownV1";
 
-export default function CommandHintsFloating({ context = "typing", defaultMode, className }: CommandHintsFloatingProps) {
+export default function CommandHintsFloating({ context = "typing", defaultMode, className, suppressWhenOverlay = true }: CommandHintsFloatingProps) {
   const settings = useSettingsStore();
+  const overlayOpen = useUIStore(s => s.overlayOpen);
   const [mode, setMode] = useState<"hidden" | "peek" | "full">(() => {
     const w = typeof window !== "undefined" ? window : undefined;
     const small = w ? w.innerWidth < 1024 : false;
@@ -92,8 +96,7 @@ export default function CommandHintsFloating({ context = "typing", defaultMode, 
 
   const dockClass = useMemo(() => ({ br: "right-6 bottom-6", bl: "left-6 bottom-6", tr: "right-6 top-24", tl: "left-6 top-24" }[dock]), [dock]);
 
-  if (mode === "hidden") return null;
-
+  // Hooks must not be conditional — guard after hooks.
   const isPeek = mode === "peek";
 
   // one-time coachmark
@@ -103,6 +106,9 @@ export default function CommandHintsFloating({ context = "typing", defaultMode, 
   }, [context]);
 
   const dismissCoach = useCallback(() => { try { localStorage.setItem(COACH_KEY, "1"); } catch {} }, []);
+
+  const suppressed = (suppressWhenOverlay && overlayOpen) || mode === "hidden";
+  if (suppressed) return null;
 
   return (
     <motion.aside

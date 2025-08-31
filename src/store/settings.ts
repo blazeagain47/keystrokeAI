@@ -7,6 +7,7 @@ export type CmdMode = "hidden" | "peek" | "full";
 export type CmdDock = "br" | "bl" | "tr" | "tl";
 export type TestMode = "words" | "time" | "quote" | "custom";
 export type AppearanceSettings = {
+  theme?: "system"|"light"|"dark";
   accent: { preset: "blaze"|"ember"|"magma"|"plasma"|"aurora"|"custom"; h: number; s: number; l: number };
   background: { flames: "off"|"subtle"|"dynamic"; sparks: boolean; vignette: boolean };
   glass: { blurPx: number; alpha: number };
@@ -39,6 +40,7 @@ export interface SettingsState {
     fxIntensity: "low" | "med" | "high"; // "med"
   };
   appearance: AppearanceSettings;
+  setTheme: (value: "system"|"light"|"dark") => void;
   privacy: {
     publicProfile: boolean;        // false (placeholder)
     shareRunsByDefault: boolean;   // false (placeholder)
@@ -71,6 +73,7 @@ const DEFAULTS: SettingsState = {
     fxIntensity: "med",
   },
   appearance: {
+    theme: "system",
     accent: { preset: "blaze", h: 24, s: 95, l: 55 },
     background: { flames: "subtle", sparks: true, vignette: true },
     glass: { blurPx: 12, alpha: 0.14 },
@@ -88,6 +91,7 @@ const DEFAULTS: SettingsState = {
   },
   update: () => {},
   updateAppearance: () => {},
+  setTheme: () => {},
   setAccentPreset: () => {},
   reset: () => {},
   export: () => "{}",
@@ -102,6 +106,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set, get) => ({
   ...DEFAULTS,
   update: (k, v) => set(s => ({ ...s, [k]: { ...s[k], ...v } } as SettingsState)),
   updateAppearance: (patch) => set(s => ({ ...s, appearance: { ...s.appearance, ...patch } } as SettingsState)),
+  setTheme: (value) => set(s => ({ ...s, appearance: { ...s.appearance, theme: value } } as SettingsState)),
   setAccentPreset: (preset) => set(s => {
     const presets: Record<string,{h:number;s:number;l:number}> = {
       blaze:{h:24,s:95,l:55}, ember:{h:32,s:90,l:56}, magma:{h:8,s:92,l:55}, plasma:{h:264,s:90,l:62}, aurora:{h:168,s:80,l:52}

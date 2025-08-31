@@ -22,6 +22,12 @@ export function useAppearance() {
     const { accent, background, glass, cards, density, type, caret, motion, contrast, charts } = a;
     const base = accent.preset !== "custom" ? PRESETS[accent.preset] : {h:accent.h,s:accent.s,l:accent.l};
 
+    // Mirror current theme (managed by next-themes) into a data-attr for optional styling.
+    try {
+      const isDark = document.documentElement.classList.contains('dark');
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    } catch {}
+
     // Accent
     setVar("--bk-accent-h", String(base.h));
     setVar("--bk-accent-s", `${base.s}%`);
@@ -63,6 +69,10 @@ export function useAppearance() {
     // Charts
     try { document.documentElement.dataset.chartGlow = charts.glow; } catch {}
   }, [a]);
+}
+
+export function applyTheme(theme: 'system'|'light'|'dark') {
+  // Deprecated: next-themes owns theme class toggling. Use useTheme().setTheme instead.
 }
 
 
