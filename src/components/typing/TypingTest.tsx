@@ -996,7 +996,7 @@ const TypingTest: React.FC = () => {
               avgAcc={avgAcc}
               flags={smartFlags ?? undefined}
               usedConfig={lastUsedConfigRef.current}
-              syncState={syncState}
+
               onNextTest={async () => { try { tl('results New test click'); } catch {} ; await safeRestart(); }}
             />
           </div>

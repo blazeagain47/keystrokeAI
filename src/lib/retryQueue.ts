@@ -47,6 +47,10 @@ export async function enqueue(item: Omit<QueueItem, "id" | "attempts" | "nextAt"
   const id = (globalThis.crypto?.randomUUID?.() ?? String(Date.now() + Math.random()));
   items.push({ ...item, id, attempts: 0, nextAt: Date.now() });
   await save(items);
+  
+  // Notify listeners of queue count change
+  notifyQueueChange(items.length);
+  
   return id;
 }
 
@@ -54,6 +58,25 @@ export async function enqueue(item: Omit<QueueItem, "id" | "attempts" | "nextAt"
  * Flush the queue with exponential backoff (1s, 2s, 4s ... max 30s).
  * The processor should return true on success, false on retryable failure.
  */
+// Simple event emitter for queue changes
+const queueChangeListeners = new Set<(count: number) => void>();
+
+function notifyQueueChange(count: number) {
+  for (const listener of queueChangeListeners) {
+    try { listener(count); } catch {}
+  }
+}
+
+export function onQueueChange(cb: (count: number) => void): () => void {
+  queueChangeListeners.add(cb);
+  return () => queueChangeListeners.delete(cb);
+}
+
+export async function pendingCount(): Promise<number> {
+  const items = await load();
+  return items.length;
+}
+
 export async function flush(processor: (item: QueueItem) => Promise<boolean>) {
   const now = Date.now();
   const items = await load();
@@ -70,6 +93,10 @@ export async function flush(processor: (item: QueueItem) => Promise<boolean>) {
   }
 
   await save(next);
+  
+  // Notify listeners of queue count change
+  notifyQueueChange(next.length);
+  
   return { remaining: next.length };
 }
 

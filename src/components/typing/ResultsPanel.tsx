@@ -40,6 +40,7 @@ import { tl } from "@/lib/timeline";
 import { devLog } from "@/lib/devLog";
 import { useQueueCount } from "@/hooks/useQueueCount";
 import { officialWpm, accuracy as accFn, ema, dropFirstN, normalizePerSecond, stdev } from "@/lib/statsMath";
+import useSyncing from "@/hooks/useSyncing";
 
 export interface ResultsPanelProps {
   wpm: number;
@@ -65,7 +66,7 @@ export interface ResultsPanelProps {
     include_numbers?: boolean;
     language?: string | null;
   };
-  syncState?: "synced" | "queued" | "syncing" | "error";
+
 }
 
 const fmt = {
@@ -194,6 +195,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     return msg.includes("Could not fetch AI feedback.") ? msg : null;
   })();
   const qn = useQueueCount();
+  const syncing = useSyncing();
 
   // Map sanitized series to chart data points
   const chartData = React.useMemo(
@@ -338,14 +340,9 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             <CardHeader className="pb-2">
               <div className="bk-chart-title mb-2">
                 <CardTitle className="text-base md:text-lg font-semibold bk-wordmark">Typing Speed Trend</CardTitle>
-                {props.syncState && props.syncState !== "synced" && (
+                {syncing && (
                   <span className="ml-2 rounded-full px-2 py-0.5 text-[11px] bg-amber-500/10 text-amber-300">
-                    {props.syncState === "queued" ? "Queued (offline)" : props.syncState === "syncing" ? "Syncing…" : "Sync error"}
-                  </span>
-                )}
-                {qn > 0 && (
-                  <span className="ml-2 text-[10px] px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/30">
-                    syncing…
+                    Syncing…
                   </span>
                 )}
               </div>
