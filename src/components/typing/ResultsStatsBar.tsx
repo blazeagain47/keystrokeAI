@@ -9,6 +9,7 @@ type Props = {
   accuracy: number;     // 0-100
   durationSec: number;  // total test time in seconds
   consistency?: number; // optional % if you compute it
+  coachWpm?: number;    // optional EMA-smoothed WPM metric
   keystrokes?: { correct: number; error: number }; // optional
   difficultyLabel?: string; // "Easy" | "Medium" | etc., optional
   errorEvents?: Array<{ key: string; isError?: boolean; prevKey?: string | null } | null> | null;
@@ -20,6 +21,7 @@ export default function ResultsStatsBar({
   accuracy,
   durationSec,
   consistency,
+  coachWpm,
   keystrokes,
   difficultyLabel,
   errorEvents,
@@ -35,6 +37,16 @@ export default function ResultsStatsBar({
     { icon: <Target className="size-4" />, label: "Accuracy", value: `${Math.round(accuracy)}%` },
     { icon: <Clock3 className="size-4" />, label: "Time", value: `${Math.round(durationSec)}s` },
   ];
+
+  // Add Coach WPM with clear labeling
+  if (coachWpm != null && coachWpm !== wpm) {
+    items.push({ 
+      icon: <Flame className="size-4" />, 
+      label: "Coach WPM (EMA)", 
+      value: Math.round(coachWpm).toString(),
+      sub: "EMA smoothed speed. Official WPM remains unchanged."
+    });
+  }
 
   if (consistency != null) {
     items.push({ icon: <Activity className="size-4" />, label: "Consistency", value: `${Math.round(consistency)}%` });

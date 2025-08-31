@@ -1,8 +1,11 @@
-.\venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 
 python -m uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
 
 .env.local:
+
+NEXT_PUBLIC_DEV_PROBE=1
+NEXT_PUBLIC_DEV_STATS_DEBUG=1
 
 # Firebase Admin (server)
 FIREBASE_PROJECT_ID=keystroke-ai-879a4

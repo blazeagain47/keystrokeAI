@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useAppearance } from "@/hooks/useAppearance";
 import { useStatsStore } from "@/stores/useStatsStore";
+import { bootSync } from "@/lib/sync";
 
 export default function AppBoot() {
   const ran = useRef(false);
@@ -14,6 +15,7 @@ export default function AppBoot() {
       const { ready, hydrateFromMe } = useAuthStore.getState();
       if (!ready) hydrateFromMe().catch(() => {});
     } catch {}
+    try { bootSync(); } catch {}
   }, []);
 
   // Hydrate stats store when user identity changes (guest vs authed)

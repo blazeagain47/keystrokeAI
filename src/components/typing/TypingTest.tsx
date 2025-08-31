@@ -24,6 +24,7 @@ import { toLowerLettersOnly, ensureExactWordCount } from '@/lib/prompt/normalize
 import { normalizePromptWords } from '@/lib/text';
 import ReadyToast from '@/components/typing/ReadyToast';
 import LogoLoader from '@/components/common/LogoLoader';
+import LatencyHUD from "@/components/dev/LatencyHUD";
 import PreTestOverlay from '@/components/typing/PreTestOverlay';
 import ClickOnly from '@/components/common/ClickOnly';
 import { BK_EVENTS } from "@/lib/events";
@@ -31,6 +32,7 @@ import { useLastTestStore, readLastTestSafe } from "@/stores/useLastTestStore";
 import { tl } from '@/lib/timeline';
 import { devLog } from '@/lib/devLog';
 import useLockScroll from "@/hooks/useLockScroll";
+import { postOrEnqueue } from "@/lib/http";
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -547,6 +549,7 @@ const TypingTest: React.FC = () => {
     loadPromptOnce({ overrides, __prefetch: true }).catch(() => {});
   }, [view, wordCount, showPunctuation, showNumbers, loadPromptOnce]);
 
+  const [syncState, setSyncState] = useState<"synced"|"queued"|"syncing"|"error">("synced");
   const handleTestComplete = async (finalWpm: number, finalAccuracy: number, finalTime: number, finalTypedText?: string) => {
     setIsTestComplete(true);
     setWpm(finalWpm);
@@ -578,13 +581,27 @@ const TypingTest: React.FC = () => {
     } catch {}
     if (!finalTypedText) return;
     try {
-      const result = await fetchJSON<{ input: string; corrections: string[]; difficulty: string; feedback: string }>(
+      setSyncState("syncing");
+      const { queued, data } = await postOrEnqueue<{ input: string; corrections: string[]; difficulty: string; feedback: string }>(
         "/analyze",
-        { method: "POST", body: JSON.stringify({ user_text: finalTypedText }) }
+        { user_text: finalTypedText }
       );
-      setAnalysisResult(result);
+      if (queued) {
+        setSyncState("queued");
+      } else {
+        setSyncState("synced");
+      }
+      if (data) setAnalysisResult(data);
+      if (!data && queued) {
+        setAnalysisResult({
+          input: finalTypedText,
+          corrections: [],
+          difficulty: "Unknown",
+          feedback: "Queued for analysis. Will sync when online.",
+        });
+      }
     } catch (err) {
-      console.warn("Non-fatal: run analyze failed (offline or backend down)", err);
+      setSyncState("error");
       setAnalysisResult({
         input: finalTypedText,
         corrections: [],
@@ -979,6 +996,7 @@ const TypingTest: React.FC = () => {
               avgAcc={avgAcc}
               flags={smartFlags ?? undefined}
               usedConfig={lastUsedConfigRef.current}
+              syncState={syncState}
               onNextTest={async () => { try { tl('results New test click'); } catch {} ; await safeRestart(); }}
             />
           </div>
@@ -1020,6 +1038,7 @@ const TypingTest: React.FC = () => {
       )}
 
       {/* Old bottom-corner hint removed in favor of ReadyToTypeHint under controls */}
+      <LatencyHUD />
     </div>
   );
 };

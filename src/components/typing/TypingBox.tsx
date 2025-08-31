@@ -18,6 +18,10 @@ import { useSearchParams } from "next/navigation";
 import { tl } from "@/lib/timeline";
 import { devLog } from "@/lib/devLog";
 import useLockScroll from "@/hooks/useLockScroll";
+import { useInputLatencyProbe } from "@/hooks/useInputLatencyProbe";
+import { officialWpm, accuracy as accFn } from "@/lib/statsMath";
+import { computeWordLineLayout, calculateViewportTop, applyViewportTransform, VISIBLE_LINES, type LineLayout } from "@/lib/textLayout";
+import { useReducedMotion } from "framer-motion";
 
 /* NEW – bring in the modernised Shadcn results panel */
 // Legacy StatsPanel removed in favor of modern ResultsPanel
@@ -63,6 +67,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   // Viewport state
   const [visibleStartLine, setVisibleStartLine] = useState(0);
+  const [lineLayout, setLineLayout] = useState<LineLayout>({ wordIndexToLine: [], totalLines: 0, lineHeight: 38 });
+  
+  // Append buffer state
+  const appendBusyRef = useRef(false);
+  const prefersReducedMotion = useReducedMotion();
 
   // Refs for DOM measurement and viewport calculations
   const containerRef = useRef<HTMLDivElement>(null);
@@ -82,8 +91,14 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const lastTabDownAtRef = useRef(0);
   const endAtRef = useRef<number>(0);
 
-  const CENTER_OFFSET = 1; // Show 1 line above and 1 below the active line
-  const TOTAL_LINES = 3;   // 3-line viewport
+  // keep center-of-window invariant no matter the mode
+  const TOTAL_LINES = 3;
+  const CENTER_OFFSET = 1; // active line stays centered: 0 (top), 1 (middle), 2 (bottom)
+
+  // for time mode: keep a trailing buffer so we never run out of words
+  const APPEND_THRESHOLD_WORDS = 40;  // when within 40 words of the end, append more
+  const APPEND_CHUNK_DEFAULT = 120;   // how many words to append per fetch
+  const appendingRef = useRef(false);
 
   // Safe spacing so filters/header never overlap the typing viewport
   const SAFE_TOP_PX = 140;   // top spacer (tune if your header/filters grow)
@@ -98,6 +113,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   // Post-test/results (isComplete) -> unlocked
   const scrollLocked = !isComplete;
   useLockScroll(scrollLocked);
+  const devProbe = process.env.NEXT_PUBLIC_DEV_PROBE === "1";
+  useInputLatencyProbe(devProbe, [currentWordIndex, cursorCol]);
 
   // --- Re-run stabilizer state ---
   const [runSeq, setRunSeq] = React.useState(0);
@@ -111,7 +128,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     // clear measurement bookkeeping
     lastLineRef.current = 0;
     wordLineRef.current = [];
-    if (contentRef.current) contentRef.current.style.transform = "translateY(0px)";
+    appendingRef.current = false;
+    if (contentRef.current) {
+      contentRef.current.style.transform = "translateY(0px)";
+    }
   }, []);
 
   // Settings flags
@@ -131,11 +151,35 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     return Math.round((correct / total) * 100);
   }
 
+  const appendMoreWordsIfNeeded = useCallback(async (wi: number) => {
+    if (mode !== 'time') return;
+    const remaining = (words.length - 1) - wi;
+    if (remaining > APPEND_THRESHOLD_WORDS) return;
+    if (appendingRef.current) return;
+    // only append if a callback is provided
+    if (!onRequestAppendPrompt) return;
+
+    try {
+      appendingRef.current = true;
+      const extra = await onRequestAppendPrompt();
+      if (!extra || !extra.trim()) return;
+      const add = extra.split(/\s+/).filter(Boolean);
+      if (!add.length) return;
+
+      // append words and expand input slots
+      setWords(prev => prev.concat(add));
+      setInputWords(prev => prev.concat(Array(add.length).fill("")));
+      // line map gets recomputed by existing effects when `words` changes
+    } finally {
+      appendingRef.current = false;
+    }
+  }, [mode, words.length, onRequestAppendPrompt]);
+
   const clampTop = useCallback((top: number) => {
-    const maxLines = Math.max(1, wordLineRef.current.length > 0 ? Math.max(...wordLineRef.current) + 1 : 1);
+    const maxLines = Math.max(1, lineLayout.totalLines);
     const maxStart = Math.max(0, maxLines - TOTAL_LINES);
     return Math.max(0, Math.min(maxStart, top));
-  }, []);
+  }, [lineLayout.totalLines]);
 
   const targetStream = useMemo(() => words.join(' '), [words]);
 
@@ -165,6 +209,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     if (contentRef.current) contentRef.current.style.transform = `translateY(0px)`;
     lastLineRef.current = 0;
     wordLineRef.current = [];
+    appendingRef.current = false;
   }, []);
 
   /* init & prop change */
@@ -174,21 +219,32 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     }
   }, [prompt, resetFromPrompt]);
 
-  /* util to compute per-word line mapping */
+  /* util to compute per-word line mapping using unified layout */
   const computeWordLines = useCallback(() => {
-    const baseTop = wordRefs.current.find(Boolean)?.offsetTop ?? 0;
-    baseTopRef.current = baseTop;
-    const lh = lineHeightRef.current || LINE_H;
-    const lines: number[] = [];
-    wordRefs.current.forEach((el, idx) => {
-      if (!el) { lines[idx] = 0; return; }
-      lines[idx] = Math.max(0, Math.round((el.offsetTop - baseTop) / lh));
-    });
-    wordLineRef.current = lines;
+    const measureWord = (wordIndex: number) => {
+      const el = wordRefs.current[wordIndex];
+      if (!el) return null;
+      
+      const rect = el.getBoundingClientRect();
+      const containerRect = contentRef.current?.getBoundingClientRect();
+      if (!containerRect) return null;
+      
+      return {
+        left: rect.left - containerRect.left,
+        top: el.offsetTop,
+        lineHeight: lineHeightRef.current || LINE_H
+      };
+    };
+
+    const newLayout = computeWordLineLayout(words, measureWord);
+    setLineLayout(newLayout);
+    
+    // Keep legacy refs for compatibility
+    wordLineRef.current = newLayout.wordIndexToLine;
     const ends: number[] = [];
-    lines.forEach((ln, idx) => { ends[ln] = idx; });
+    newLayout.wordIndexToLine.forEach((ln, idx) => { ends[ln] = idx; });
     lineEndsRef.current = ends;
-  }, [LINE_H]);
+  }, [words, LINE_H]);
 
   // Measure real line-height & word lines AFTER fonts load, then lock it.
   // This prevents the "jump" when typing starts.
@@ -233,8 +289,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     const now = Date.now();
     const elapsed = (now - startTime) / 1000;
     const tally = tallyWords(evals);
-    const wpm = Math.round(wpmFromTally(tally, elapsed));
-    const acc = Math.round(accuracyFromTally(tally) * 100);
+    const wpm = Math.round(officialWpm(tally.correct, elapsed * 1000));
+    const acc = Math.round(accFn(tally.correct, tally.incorrect, 0, tally.extra));
     setCorrectChars(tally.correct);
     setTotalChars(tally.correct + tally.incorrect + tally.extra);
     wpmSeries.current.push({ time: elapsed, wpm });
@@ -251,8 +307,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         pushStats();
         if (elapsed >= durationSec) {
           const tally = tallyWords(evals);
-          const finalWpm = Math.round(wpmFromTally(tally, elapsed));
-          const finalAcc = Math.round(accuracyFromTally(tally) * 100);
+          const finalWpm = Math.round(officialWpm(tally.correct, elapsed * 1000));
+          const finalAcc = Math.round(accFn(tally.correct, tally.incorrect, 0, tally.extra));
           setIsComplete(true);
           onTestComplete(finalWpm, finalAcc, elapsed, (inputWords || []).join(' '));
         }
@@ -261,22 +317,44 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     }
   }, [hasStarted, startTime, isComplete, evals, mode, onTestComplete, inputWords, durationSec, pushStats]);
 
-  /* auto-advance viewport so current line is centered within the viewport */
   useEffect(() => {
-    if (!measured) return; // wait until we’ve measured/laid out once
-
+    if (!measured) return;
     const line = wordLineRef.current[currentWordIndex] ?? 0;
     const desiredTop = clampTop(line - CENTER_OFFSET);
+
     if (desiredTop !== visibleStartLine) {
       setVisibleStartLine(desiredTop);
-      if (contentRef.current) {
+      const el = contentRef.current;
+      if (el) {
         const lh = lineHeightRef.current || LINE_H;
         const px = Math.round(desiredTop * lh);
-        contentRef.current.style.transform = `translateY(-${px}px)`;
+        requestAnimationFrame(() => { el.style.transform = `translateY(-${px}px)`; });
       }
     }
     lastLineRef.current = line;
-  }, [measured, currentWordIndex, visibleStartLine, clampTop, runSeq]);
+  }, [measured, currentWordIndex, visibleStartLine, clampTop, runSeq, mode]);
+
+
+
+  /* Debounced resize handler to keep layout fresh */
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    
+    const handleResize = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        if (measured && words.length > 0) {
+          computeWordLines();
+        }
+      }, 100);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(timeoutId);
+    };
+  }, [measured, words.length, computeWordLines]);
 
   // Util to spawn embers at caret position
   function spawnAtCaret(n = 2) {
@@ -294,8 +372,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     const wevals: WordEval[] = words.map((w, i) => evalWord(w, inputWords[i] ?? ""));
     const tally = tallyWords(wevals);
     const elapsedSec = startTime ? (Date.now() - startTime) / 1000 : 0;
-    const finalWpm = Math.round(wpmFromTally(tally, elapsedSec));
-    const finalAcc = Math.round(accuracyFromTally(tally) * 100);
+    const finalWpm = Math.round(officialWpm(tally.correct, elapsedSec * 1000));
+    const finalAcc = Math.round(accFn(tally.correct, tally.incorrect, 0, tally.extra));
     setIsComplete(true);
     onTestComplete(finalWpm, finalAcc, elapsedSec, (inputWords || []).join(' '));
   }, [words, inputWords, startTime, onTestComplete]);
@@ -358,14 +436,19 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           continue;
         }
 
-        // 4) Advance to next word (or finish if last)
-        // Before advancing wi past last index, set finishedBySpace if we’re at last word
+        // 4) Advance to next word
         if (wi >= words.length - 1) {
-          finishedBySpace = true;
-          wi = words.length;
-          continue;
+          if (mode === 'words') {
+            // words mode can finish by space on last word
+            finishedBySpace = true;
+            wi = words.length;
+            continue;
+          } else {
+            // time mode: ensure buffer exists, then advance
+            void appendMoreWordsIfNeeded(wi);
+          }
         }
-        wi = wi + 1;
+        wi = Math.min(wi + 1, words.length - 1);
         col = (nextWords[wi] ?? "").length; // place caret at start-of-next (or after any existing input)
         spawnAtCaret(3);
         continue;
@@ -401,6 +484,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     setCurrentWordIndex(wi);
     setCursorCol(col);
 
+    if (mode === 'time') {
+      // keep a healthy suffix of words available
+      void appendMoreWordsIfNeeded(wi);
+    }
+
     // Words-mode: finalize immediately if we just finished by typing or space on last word
     if (mode === 'words' && (finishedByTyping || finishedBySpace)) {
       finalizeWordsRun();
@@ -413,8 +501,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       const elapsed = (now - startTime) / 1000;
       const wevals: WordEval[] = words.map((w, i) => evalWord(w, nextWords[i] ?? ""));
       const tally = tallyWords(wevals);
-      const wpm = Math.round(wpmFromTally(tally, elapsed));
-      const acc = Math.round(accuracyFromTally(tally) * 100);
+      const wpm = Math.round(officialWpm(tally.correct, elapsed * 1000));
+      const acc = Math.round(accFn(tally.correct, tally.incorrect, 0, tally.extra));
       setCorrectChars(tally.correct);
       setTotalChars(tally.correct + tally.incorrect + tally.extra);
       wpmSeries.current.push({ time: elapsed, wpm });
@@ -428,8 +516,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         const elapsed = startTime ? (end - startTime) / 1000 : 0;
         const wevals: WordEval[] = words.map((w, i) => evalWord(w, nextWords[i] ?? ""));
         const tally = tallyWords(wevals);
-        const finalWpm = Math.round(wpmFromTally(tally, elapsed));
-        const finalAcc = Math.round(accuracyFromTally(tally) * 100);
+        const finalWpm = Math.round(officialWpm(tally.correct, elapsed * 1000));
+        const finalAcc = Math.round(accFn(tally.correct, tally.incorrect, 0, tally.extra));
         setIsComplete(true);
         onTestComplete(finalWpm, finalAcc, elapsed, nextWords.join(' '));
       }
@@ -544,13 +632,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     };
   }, [handleKeyDown, handleKeyUp]);
 
-  /* cursor blink */
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCursorVisible((prev) => !prev);
-    }, 500);
-    return () => clearInterval(interval);
-  }, []);
+  // Use CSS-only blink to avoid extra renders
+  useEffect(() => { setCursorVisible(true); }, []);
 
   if (externalLoading || isLoading) {
     return (

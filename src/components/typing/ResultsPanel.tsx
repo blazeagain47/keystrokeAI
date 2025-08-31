@@ -38,6 +38,8 @@ const ResultsChart = dynamic(() => import("./ResultsChart"), {
 import { mark } from "@/lib/perf";
 import { tl } from "@/lib/timeline";
 import { devLog } from "@/lib/devLog";
+import { useQueueCount } from "@/hooks/useQueueCount";
+import { officialWpm, accuracy as accFn, ema, dropFirstN, normalizePerSecond, stdev } from "@/lib/statsMath";
 
 export interface ResultsPanelProps {
   wpm: number;
@@ -63,6 +65,7 @@ export interface ResultsPanelProps {
     include_numbers?: boolean;
     language?: string | null;
   };
+  syncState?: "synced" | "queued" | "syncing" | "error";
 }
 
 const fmt = {
@@ -98,15 +101,24 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   const deferredChart = useDeferredValue(wpmTrendRaw);
   const wpmTrend = deferredChart;
 
-  // Build a pleasant chart series from the raw wpmTrend.
-  // Dynamic params: short runs drop proportionally less.
-  const chartWpm: number[] = React.useMemo(() => {
-    const n = Math.max(0, wpmTrend.length);
-    if (n === 0) return [];
-    const drop = Math.min(3, Math.floor(n * 0.15));       // up to 15% of run, max 3s
-    const win  = Math.min(5, Math.max(3, Math.floor(n * 0.10))); // 3–5s MA
-    return sanitizeWpmForChart(wpmTrend, { drop, win, clipP: 0.98, floor: 0 });
-  }, [wpmTrend]);
+  // Normalize raw series and apply EMA smoothing with first-second drop for chart
+  const { chartWpm, coachWpm, consistency } = React.useMemo(() => {
+    const rawSeries = normalizePerSecond(
+      wpmTrend.map((wpm, i) => ({ t: i, wpm }))
+    ).map(s => s.wpm);
+
+    // Drop first 1s to remove cold-start spike (chart only; KPIs unchanged)
+    const chartSeries = dropFirstN(rawSeries, 1);
+    const chartSeriesEma = ema(chartSeries, 0.3);
+
+    // Coach WPM is the final EMA value, or fallback to official if no data
+    const coachWpm = chartSeriesEma.length ? chartSeriesEma[chartSeriesEma.length - 1] : props.wpm;
+    
+    // Consistency % based on per-second variability
+    const consistency = chartSeriesEma.length ? Math.max(0, 100 - stdev(chartSeriesEma)) : 0;
+
+    return { chartWpm: chartSeriesEma, coachWpm, consistency };
+  }, [wpmTrend, props.wpm]);
   const [pulseGlow, setPulseGlow] = React.useState(false);
   const prefersReducedMotion = useReducedMotion();
   const [showNext, setShowNext] = React.useState(false);
@@ -181,12 +193,32 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     const msg = analysis?.feedback || "";
     return msg.includes("Could not fetch AI feedback.") ? msg : null;
   })();
+  const qn = useQueueCount();
 
   // Map sanitized series to chart data points
   const chartData = React.useMemo(
     () => Object.freeze(chartWpm.map((v, i) => ({ second: i + 1, wpm: Math.round(v) }))),
     [chartWpm]
   );
+
+  // (Dev) Debug toggle for series comparison
+  React.useEffect(() => {
+    if (process.env.NEXT_PUBLIC_DEV_STATS_DEBUG === "1") {
+      const rawSeries = normalizePerSecond(
+        wpmTrend.map((wpm, i) => ({ t: i, wpm }))
+      ).map(s => s.wpm);
+      
+      // eslint-disable-next-line no-console
+      console.table({
+        wpm_official: props.wpm,
+        coach_last: Math.round(coachWpm),
+        raw_len: rawSeries.length,
+        chart_len: chartWpm.length,
+        first5_raw: rawSeries.slice(0, 5),
+        first5_chart: chartWpm.slice(0, 5).map(n => Math.round(n)),
+      });
+    }
+  }, [wpmTrend, props.wpm, coachWpm, chartWpm]);
 
   // Debug logging for chart annotations (rename to avoid shadowing prop avgWpm)
   const chartAvgWpm = chartData.length ? chartData.reduce((s, p) => s + p.wpm, 0) / chartData.length : undefined;
@@ -294,6 +326,8 @@ export default function ResultsPanel(props: ResultsPanelProps) {
               wpm={Number(props.wpm ?? 0)}
               accuracy={Number(props.accuracy ?? 0)}
               durationSec={Number(props.time ?? 0)}
+              consistency={Math.round(consistency)}
+              coachWpm={Math.round(coachWpm)}
               difficultyLabel={props.usedDifficulty ? props.usedDifficulty : undefined}
               errorEvents={errorEvents}
               errorFallback={errorFallback}
@@ -304,6 +338,16 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             <CardHeader className="pb-2">
               <div className="bk-chart-title mb-2">
                 <CardTitle className="text-base md:text-lg font-semibold bk-wordmark">Typing Speed Trend</CardTitle>
+                {props.syncState && props.syncState !== "synced" && (
+                  <span className="ml-2 rounded-full px-2 py-0.5 text-[11px] bg-amber-500/10 text-amber-300">
+                    {props.syncState === "queued" ? "Queued (offline)" : props.syncState === "syncing" ? "Syncing…" : "Sync error"}
+                  </span>
+                )}
+                {qn > 0 && (
+                  <span className="ml-2 text-[10px] px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/30">
+                    syncing…
+                  </span>
+                )}
               </div>
             </CardHeader>
             <CardContent className="pt-2">

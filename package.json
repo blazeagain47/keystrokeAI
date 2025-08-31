@@ -43,6 +43,7 @@
     "firebase": "^10.5.0",
     "firebase-admin": "^12.7.0",
     "framer-motion": "^10.16.4",
+    "idb-keyval": "^6.2.2",
     "lucide-react": "^0.290.0",
     "nanoid": "^4.0.2",
     "next": "15.0.0",
