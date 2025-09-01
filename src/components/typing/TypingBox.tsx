@@ -41,6 +41,9 @@ export interface TypingBoxProps {
   isLoading?: boolean;
 }
 
+// Timestamped key event for rAF-batched processing
+type KeyEvent = { k: string; __ts?: number };
+
 const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt, isLoading: externalLoading = false }) => {
   // Fallback; will be replaced by measured DOM line-height
   const LINE_H = 38;
@@ -155,6 +158,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   // Caret overlay anchors
   const promptWrapRef = useRef<HTMLDivElement | null>(null);
   const caretRef = useRef<HTMLDivElement | null>(null);
+  const caretMoveTimer = useRef<number | null>(null);
 
   function calculateWPM(correct: number, timeInSeconds: number): number {
     if (timeInSeconds <= 0) return 0;
@@ -391,26 +395,39 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     const caret = caretRef.current;
     if (!wrap || !caret) return;
 
-    const active = wrap.querySelector<HTMLElement>('[data-caret="on"]');
-    if (!active) {
+    const anchor = wrap.querySelector<HTMLElement>('[data-caret="on"]');
+    if (!anchor) {
       try { caret.classList.add('bk-caret-hidden'); } catch {}
       return;
     }
 
-    const r = active.getBoundingClientRect();
+    const r = anchor.getBoundingClientRect();
     const w = wrap.getBoundingClientRect();
     // read the visual scale applied to this subtree (inherited CSS var)
     const sVar = getComputedStyle(wrap).getPropertyValue('--bk-prompt-scale').trim();
     const s = sVar ? parseFloat(sVar) : 1;
     const scale = s || 1;
-    // convert to the wrapper's unscaled local space
-    const x = (r.left - w.left) / scale;
-    const y = (r.top  - w.top)  / scale;
-    const h = r.height / scale;
+    // device-pixel snapping for crispness
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+    const snap = (px: number) => Math.round(px * dpr) / dpr;
+    // convert to the wrapper's unscaled local space and snap
+    const x = snap((r.left - w.left) / scale);
+    const y = snap((r.top  - w.top)  / scale);
+    const h = snap(r.height / scale);
 
     caret.style.height = `${h}px`;
-    caret.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
+    caret.style.transform = `translate3d(${x}px, ${y}px, 0)`;
     try { caret.classList.remove('bk-caret-hidden'); } catch {}
+    // mark as moving briefly to pause blink animation
+    try {
+      caret.classList.add('bk-caret-moving');
+      if ((caretMoveTimer.current as any)) {
+        window.clearTimeout(caretMoveTimer.current as any);
+      }
+      caretMoveTimer.current = window.setTimeout(() => {
+        caret.classList.remove('bk-caret-moving');
+      }, 110) as any;
+    } catch {}
   }, []);
 
   // Reposition caret on resize and on mount
@@ -440,9 +457,25 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   }, [words, inputWords, startTime, onTestComplete]);
 
   /* rAF-batched input handling */
-  const applyBatch = useCallback((keys: string[]) => {
-    if (!keys.length) return;
+  const applyBatch = useCallback((items: KeyEvent[]) => {
+    if (!items.length) return;
     if (isCompletedRef.current) return;
+    // Normalize within the frame: apply letters before control keys (space/backspace)
+    const keys = items.map(i => i.k);
+    const normalized: string[] = [];
+    let lettersBuf: string[] = [];
+    const flushLetters = () => { if (lettersBuf.length) { normalized.push(...lettersBuf); lettersBuf = []; } };
+    for (const k of keys) {
+      if (k.length === 1 && k !== ' ') { // regular character (non-space)
+        lettersBuf.push(k);
+        continue;
+      }
+      // control key: flush letters first, then control
+      flushLetters();
+      normalized.push(k);
+    }
+    flushLetters();
+
     // local copies for single-commit
     let nextWords = inputWords.slice();
     let wi = currentWordIndex;
@@ -452,7 +485,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
     const commitInput = (idx: number, next: string) => { nextWords[idx] = next; };
 
-    for (const k of keys) {
+    for (const k of normalized) {
       if (k === 'Backspace') {
         const curr = nextWords[wi] ?? "";
         if (col > 0 && curr.length > 0) {
@@ -603,7 +636,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     }
   }, [inputWords, currentWordIndex, cursorCol, hasStarted, startTime, isComplete, words, mode, onStatsUpdate, onTestComplete, stopOnError, finalizeWordsRun]);
 
-  const enqueueKey = useMemo(() => createRafQueue<string>(applyBatch), [applyBatch]);
+  const enqueueKey = useMemo(() => {
+    const q = createRafQueue<KeyEvent>(
+      (items) => applyBatch(items),
+      { sort: (a, b) => ((a.__ts ?? 0) - (b.__ts ?? 0)) }
+    );
+    return (k: string) => q({ k, __ts: (typeof performance !== 'undefined' ? performance.now() : Date.now()) });
+  }, [applyBatch]);
 
   /* ───────── Keyboard handler ───────── */
   const handleKeyDown = useCallback(
@@ -820,17 +859,18 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
                         st = "extra";
                       }
 
-                      // Cursor overlay on active word (works both in-body and in extras)
-                      if (active && ci === caretCol) st = "cursor";
+                      // Cursor overlay on active word: only attach to in-body character
+                      if (active && ci === caretCol && caretCol < expected.length) st = "cursor";
 
                       return (
                         <span
                           key={`${wi}-${ci}`}
                           data-caret={st === "cursor" ? (cursorVisible ? "on" : "off") : undefined}
+                          data-status={st}
                           className={clsx(
                             "relative transition-all duration-100 ease-out bk-char",
                             st === "correct" && "text-gray-200",
-                            st === "incorrect" && "text-red-400 bg-red-900/40 rounded-md shadow-sm",
+                            st === "incorrect" && "text-red-400",
                             st === "extra" && "text-orange-300/90 underline decoration-dotted",
                             st === "untyped" && "text-gray-600",
                             // Cursor letter should appear untyped (not bright)
@@ -842,6 +882,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
                       );
                     })}
                   </span>
+                  {/* End-of-word caret anchor: when caret is at/after last expected char */}
+                  {active && caretCol >= expected.length && (
+                    <span key={`${wi}-end-caret`} aria-hidden="true" className="bk-caret-slot" data-caret="on" />
+                  )}
                   {wi < evals.length - 1 ? " " : null}
                 </React.Fragment>
               );

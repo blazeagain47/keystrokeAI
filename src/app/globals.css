@@ -1228,6 +1228,51 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
   text-shadow: none !important;
 }
 
+/* Incorrect letters: red text only (no background/pill) */
+.bk-char[data-status="incorrect"] {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* --- Caret polish ------------------------------------------------------ */
+:root{
+  --bk-caret-color: var(--bk-caret-color, #fbbf24);
+  --bk-caret-blink: var(--bk-caret-blink, 700ms);
+  --bk-caret-dur: 75ms;
+  --bk-caret-w: 2px;
+}
+
+/* Overlay bar caret (glides) */
+.bk-caret-bar{
+  position: absolute;
+  top: 0; left: 0;
+  width: var(--bk-caret-w);
+  height: 1em;
+  background: var(--bk-caret-color);
+  border-radius: 1px;
+  pointer-events: none;
+  transform: translate3d(0,0,0);
+  transform-origin: left top;
+  will-change: transform;
+  transition: transform var(--bk-caret-dur) cubic-bezier(.2,.7,.2,1), opacity 120ms;
+  animation: caretBlink var(--bk-caret-blink) steps(1,end) infinite;
+}
+.bk-caret-hidden { opacity: 0; }
+
+/* During motion, pause blink to avoid strobe */
+.bk-caret-moving { animation: none; opacity: .95; }
+
+/* Zero-width end-of-word anchor (overlay follows it) */
+.bk-caret-slot{
+  display: inline-block;
+  width: 0;
+  height: 1em;
+  vertical-align: baseline;
+  position: relative;
+  contain: paint;
+}
+
 /* --- Overlay bar caret (gliding) ---------------------------------------- */
 .bk-prompt-rel { position: relative; }             /* anchor for absolute overlay */
 .bk-caret-bar {
