@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { WordSetKey } from "@/lib/wordbanks";
 
 export type CmdMode = "hidden" | "peek" | "full";
 export type CmdDock = "br" | "bl" | "tr" | "tl";
@@ -30,14 +31,25 @@ export interface SettingsState {
   test: {
     defaultMode: TestMode;         // "words"
     defaultLength: 15;             // 10|15|20|30|50
+    wordSet: WordSetKey;           // "core5000"
     include_numbers: boolean;      // false
     include_punctuation: boolean;  // false
     stopOnError: boolean;          // false: allow advance with mistakes
     strictSpace: boolean;          // false: Monkeytype-like spacing
   };
+  ai: {
+    coachEnabled: boolean;
+    includeDigraphs: boolean;
+    intensity: "low"|"med"|"high";
+  };
   fx: {
     fxEnabled: boolean;            // true
     fxIntensity: "low" | "med" | "high"; // "med"
+  };
+  focus: {
+    enabled: boolean;
+    exitOnMouseMove: boolean;
+    blurWarning: boolean;
   };
   appearance: AppearanceSettings;
   setTheme: (value: "system"|"light"|"dark") => void;
@@ -63,14 +75,25 @@ const DEFAULTS: SettingsState = {
   test: {
     defaultMode: "words",
     defaultLength: 15,
+    wordSet: "core5000",
     include_numbers: false,
     include_punctuation: false,
     stopOnError: false,
     strictSpace: false,
   },
+  ai: {
+    coachEnabled: true,
+    includeDigraphs: true,
+    intensity: "med",
+  },
   fx: {
     fxEnabled: true,
     fxIntensity: "med",
+  },
+  focus: {
+    enabled: true,
+    exitOnMouseMove: false,
+    blurWarning: true,
   },
   appearance: {
     theme: "system",
@@ -139,6 +162,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set, get) => ({
         const next = { ...get().test };
         if (isTestMode(t.defaultMode)) next.defaultMode = t.defaultMode;
         if ([10,15,20,30,50].includes(Number(t.defaultLength))) next.defaultLength = Number(t.defaultLength);
+        if (["core200", "core1000", "core5000"].includes(t.wordSet)) next.wordSet = t.wordSet;
         if (typeof t.include_numbers === "boolean") next.include_numbers = t.include_numbers;
         if (typeof t.include_punctuation === "boolean") next.include_punctuation = t.include_punctuation;
         if (typeof t.stopOnError === "boolean") next.stopOnError = t.stopOnError;
@@ -151,6 +175,14 @@ export const useSettingsStore = create<SettingsState>()(persist((set, get) => ({
         if (typeof p.publicProfile === "boolean") next.publicProfile = p.publicProfile;
         if (typeof p.shareRunsByDefault === "boolean") next.shareRunsByDefault = p.shareRunsByDefault;
         set(s => ({ ...s, privacy: next }));
+      }
+      if ((obj as any).focus) {
+        const f = (obj as any).focus as Partial<SettingsState["focus"]>;
+        const next = { ...get().focus };
+        if (typeof f.enabled === "boolean") next.enabled = f.enabled;
+        if (typeof f.exitOnMouseMove === "boolean") next.exitOnMouseMove = f.exitOnMouseMove;
+        if (typeof f.blurWarning === "boolean") next.blurWarning = f.blurWarning;
+        set(s => ({ ...s, focus: next }));
       }
       if ((obj as any).appearance) {
         const a = (obj as any).appearance as Partial<AppearanceSettings>;

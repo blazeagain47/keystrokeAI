@@ -12,7 +12,8 @@ import { segmentGraphemes, normalizeInputChar } from "@/utils/segments";
 import { evalWord, type WordEval } from "@/lib/typing/state";
 import { tallyWords, wpmFromTally, accuracyFromTally } from "@/lib/typing/metrics";
 import { createRafQueue } from "@/lib/rafQueue";
-import { useStopOnError, useStrictSpace } from "@/store/settings";
+import { useStopOnError, useStrictSpace, useSettingsStore } from "@/store/settings";
+import { useUIStore } from "@/stores/useUIStore";
 import EmbersLayer, { EmbersHandle } from "@/components/fx/EmbersLayer";
 import { useSearchParams } from "next/navigation";
 import { tl } from "@/lib/timeline";
@@ -22,6 +23,7 @@ import { useInputLatencyProbe } from "@/hooks/useInputLatencyProbe";
 import { officialWpm, accuracy as accFn } from "@/lib/statsMath";
 import { computeWordLineLayout, calculateViewportTop, applyViewportTransform, VISIBLE_LINES, type LineLayout } from "@/lib/textLayout";
 import { useReducedMotion } from "framer-motion";
+import { weakspot } from "@/ai/weakspot";
 
 /* NEW – bring in the modernised Shadcn results panel */
 // Legacy StatsPanel removed in favor of modern ResultsPanel
@@ -90,6 +92,9 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const isTabHeldRef = useRef(false);
   const lastTabDownAtRef = useRef(0);
   const endAtRef = useRef<number>(0);
+  const lastDownAtRef = useRef<number | null>(null);
+  const lastCharRef = useRef<string | null>(null);
+  const nowTs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
   // keep center-of-window invariant no matter the mode
   const TOTAL_LINES = 3;
@@ -137,6 +142,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   // Settings flags
   const stopOnError = useStopOnError();
   const strictSpace = useStrictSpace();
+  const overlayOpen = useUIStore(s => s.overlayOpen);
+  const setFocus = useUIStore(s => s.setFocus);
+  const focusEnabled = useSettingsStore(s => s.focus.enabled);
+  const exitOnMouseMove = useSettingsStore(s => s.focus.exitOnMouseMove);
+  const isFocus = useUIStore(s => s.isFocus);
 
   // FX layer
   const emberRef = React.useRef<EmbersHandle>(null);
@@ -210,6 +220,9 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     lastLineRef.current = 0;
     wordLineRef.current = [];
     appendingRef.current = false;
+    try { weakspot.resetRun(); } catch {}
+    lastDownAtRef.current = null;
+    lastCharRef.current = null;
   }, []);
 
   /* init & prop change */
@@ -311,6 +324,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           const finalAcc = Math.round(accFn(tally.correct, tally.incorrect, 0, tally.extra));
           setIsComplete(true);
           onTestComplete(finalWpm, finalAcc, elapsed, (inputWords || []).join(' '));
+          try { weakspot.commitRun(); } catch {}
         }
       }, 100);
       return () => clearInterval(interval);
@@ -376,6 +390,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     const finalAcc = Math.round(accFn(tally.correct, tally.incorrect, 0, tally.extra));
     setIsComplete(true);
     onTestComplete(finalWpm, finalAcc, elapsedSec, (inputWords || []).join(' '));
+    try { weakspot.commitRun(); } catch {}
   }, [words, inputWords, startTime, onTestComplete]);
 
   /* rAF-batched input handling */
@@ -402,6 +417,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           const prevIn = nextWords[wi] ?? "";
           col = prevIn.length;
         }
+        // advance anchor for flight timing (optional)
+        lastDownAtRef.current = nowTs();
         continue;
       }
 
@@ -451,6 +468,9 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         wi = Math.min(wi + 1, words.length - 1);
         col = (nextWords[wi] ?? "").length; // place caret at start-of-next (or after any existing input)
         spawnAtCaret(3);
+        // advance anchor for flight timing (optional)
+        lastDownAtRef.current = nowTs();
+        lastCharRef.current = ' ';
         continue;
       }
 
@@ -472,6 +492,19 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         // check if this char is correct and spawn embers
         const we = evalWord(words[wi] ?? "", curr + ch);
         const st = we.states[colBefore];
+        // AI Coach: per-keystroke observation (no behavior change)
+        try {
+          const ts = nowTs();
+          weakspot.noteKeystroke({
+            char: ch,
+            correct: st === "correct",
+            tsDown: ts,
+            tsPrevDown: lastDownAtRef.current ?? undefined,
+            prevChar: lastCharRef.current ?? undefined,
+          });
+          lastDownAtRef.current = ts;
+          lastCharRef.current = ch;
+        } catch {}
         if (st === "correct") {
           spawnAtCaret(2);
         }
@@ -529,6 +562,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   /* ───────── Keyboard handler ───────── */
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      // Allow ESC to exit focus (do not prevent default; let modals handle too)
+      if (e.key === 'Escape') {
+        if (!overlayOpen) { try { setFocus(false); } catch {} }
+        return;
+      }
       const target = e.target as HTMLElement | null;
       if (target?.closest?.("[data-click-only]")) {
         return;
@@ -542,6 +580,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         try { devLog('first keydown', e.key); } catch {}
         setHasStarted(true);
         setStartTime(Date.now());
+        // Enter focus mode if enabled and no overlay is open
+        if (focusEnabled && !overlayOpen) { try { setFocus(true); } catch {} }
         if (mode === 'time') {
           endAtRef.current = Date.now() + durationSec * 1000;
         }
@@ -629,8 +669,19 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       try { document.body.classList.remove("bk-typing-active"); } catch {}
+      try { setFocus(false); } catch {}
     };
   }, [handleKeyDown, handleKeyUp]);
+
+  // Optional: exit focus on first mouse move during an active run
+  useEffect(() => {
+    if (!focusEnabled || !exitOnMouseMove) return;
+    if (!hasStarted || isComplete) return;
+    if (!isFocus) return;
+    const onMove = () => { try { setFocus(false); } catch {} ; window.removeEventListener('mousemove', onMove as any); };
+    try { window.addEventListener('mousemove', onMove as any, { once: true, passive: true } as AddEventListenerOptions); } catch { window.addEventListener('mousemove', onMove as any); }
+    return () => { try { window.removeEventListener('mousemove', onMove as any); } catch {} };
+  }, [focusEnabled, exitOnMouseMove, hasStarted, isComplete, isFocus, setFocus]);
 
   // Use CSS-only blink to avoid extra renders
   useEffect(() => { setCursorVisible(true); }, []);
