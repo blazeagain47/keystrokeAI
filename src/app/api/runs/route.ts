@@ -22,7 +22,18 @@ export async function POST(req: NextRequest) {
       console.log("[/api/runs] uid", uid, "env", adminDiag());
     }
 
-    const body = (await req.json().catch((e) => { throw new Error("invalid_json: " + String(e?.message || e)); })) as RunPayload;
+    let body: RunPayload | null = null;
+    try {
+      body = await req.json();
+    } catch (e) {
+      const errorMessage = String((e as any)?.message || e);
+      console.warn("[/api/runs] invalid or empty JSON body", errorMessage);
+      // Dev-friendly: avoid crashing overlay on aborted/empty bodies
+      if (process.env.NODE_ENV !== "production") {
+        return NextResponse.json({ ok: true, skipped: true });
+      }
+      return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+    }
     const { mode, durationSec, wordsCount, wpm, accuracy, guestId } = body || {};
 
     if (!Number.isFinite(wpm) || !Number.isFinite(accuracy) || !Number.isFinite(durationSec)) {

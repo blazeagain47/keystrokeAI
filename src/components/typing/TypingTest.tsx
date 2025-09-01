@@ -19,7 +19,13 @@ import {
 import clsx from 'clsx';
 import { fetchJSON } from '@/lib/http';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
-import { generateLocalPrompt } from '@/lib/localPrompt';
+import { generateLocalPrompt, WORDS } from '@/lib/localPrompt';
+import { getWordset } from "@/lib/wordbanks";
+import { sampleNormalWords } from "@/lib/prompt/normalSampler";
+import { mulberry32, randomSeed } from "@/lib/prng";
+import { StringLRU } from "@/lib/lru";
+import { buildAdaptiveBatch } from "@/lib/generator/adaptive";
+import { sanitizePrompt } from "@/lib/prompt/sanitize";
 import { toLowerLettersOnly, ensureExactWordCount } from '@/lib/prompt/normalize';
 import { normalizePromptWords } from '@/lib/text';
 import ReadyToast from '@/components/typing/ReadyToast';
@@ -33,6 +39,11 @@ import { tl } from '@/lib/timeline';
 import { devLog } from '@/lib/devLog';
 import useLockScroll from "@/hooks/useLockScroll";
 import { postOrEnqueue } from "@/lib/http";
+import OutOfFocusNotice from "@/components/typing/OutOfFocusNotice";
+import { useUIStore } from "@/stores/useUIStore";
+import { useSettingsStore } from "@/store/settings";
+import { weakspot } from "@/ai/weakspot";
+import { useAICoach } from "@/store/aiCoach";
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -141,6 +152,13 @@ const TypingTest: React.FC = () => {
     const on = view === 'results';
     try { document.body.classList.toggle('bk-results-active', on); } catch {}
     return () => { try { document.body.classList.remove('bk-results-active'); } catch {} };
+  }, [view]);
+
+  // Ensure focus mode is cleared when entering results
+  useEffect(() => {
+    if (view === 'results') {
+      try { useUIStore.getState().setFocus(false); } catch {}
+    }
   }, [view]);
 
   // Refs used for measurement and layout offsets
@@ -322,7 +340,36 @@ const TypingTest: React.FC = () => {
         const useTime = mode === 'time';
         const effectiveCount = useTime ? undefined : (opts?.overrides?.count ?? wordCount ?? 15);
         const wc = useTime ? 200 : Number(effectiveCount ?? 15);
-        promptText = generateLocalPrompt({ wordCount: wc });
+        
+        if (!useTime) {
+          // Use fresh normal sampler for words mode
+          const settings = useSettingsStore.getState();
+          const bank = getWordset(settings.test.wordSet ?? "core5000");
+          
+          // restore LRU
+          let lruSeed: string[] = [];
+          try { lruSeed = JSON.parse(localStorage.getItem("bk-recent-words") || "[]"); } catch {}
+          const lru = new StringLRU(1000, Array.isArray(lruSeed) ? lruSeed : []);
+          const prng = mulberry32(randomSeed());
+
+          const picks = sampleNormalWords({
+            bank,
+            prng,
+            lru,
+            count: wc,
+            dist: { easy: 70, medium: 25, hard: 5 },
+          });
+
+          try { localStorage.setItem("bk-recent-words", JSON.stringify(lru.snapshot())); } catch {}
+          promptText = picks.join(" ");
+          
+          if (process.env.NODE_ENV !== "production") {
+            console.debug("[prompt] normal", { set: settings.test.wordSet, count: wc });
+          }
+        } else {
+          // Use existing local prompt for time mode
+          promptText = generateLocalPrompt({ wordCount: wc });
+        }
       }
 
       let finalPrompt = String(promptText);
@@ -357,6 +404,12 @@ const TypingTest: React.FC = () => {
       finalPrompt = toLowerLettersOnly(finalPrompt, 'en-US');
       finalPrompt = normalizePromptWords(finalPrompt);
       if (myToken !== loadTokenRef.current) { try { devLog('prompt:drop-stale', { token: myToken }); } catch {}; return; }
+      {
+        const allowPunctuation = useSettingsStore.getState().test.include_punctuation === true;
+        const allowNumbers = useSettingsStore.getState().test.include_numbers === true;
+        finalPrompt = sanitizePrompt(finalPrompt, { allowPunctuation, allowNumbers });
+      }
+
       if ((opts as any)?.__prefetch) {
         prefetchedRef.current = { token: myToken, text: finalPrompt };
         setPromptLoad('ready');
@@ -462,10 +515,26 @@ const TypingTest: React.FC = () => {
     });
   }, [safeRestart]);
 
+  // Initial boot – run once after mount, after bootConfigured and settings hydration
+  const [hydrated, setHydrated] = React.useState<boolean>(() => {
+    try { return (useSettingsStore as any)?.persist?.hasHydrated?.() ?? true; } catch { return true; }
+  });
+  React.useEffect(() => {
+    const p = (useSettingsStore as any)?.persist;
+    if (p?.onFinishHydration) {
+      const unsub = p.onFinishHydration(() => setHydrated(true));
+      if (p.hasHydrated?.()) setHydrated(true);
+      return () => { try { unsub?.(); } catch {} };
+    } else {
+      setHydrated(true);
+    }
+  }, []);
+
   // Initial boot – run once after mount, after bootConfigured
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!bootConfigured) return;
+    if (!hydrated) return;
     // Skip boot if deep link requests a new test; let enqueue path handle it
     if (window.location.hash === '#new') {
       return;
@@ -477,7 +546,7 @@ const TypingTest: React.FC = () => {
       try { bootAbortRef.current?.abort(); } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bootConfigured]);
+  }, [bootConfigured, hydrated]);
 
   const handleStatsUpdate = (newWpm: number, newAccuracy: number, newTime: number) => {
     setWpm(newWpm);
@@ -548,6 +617,94 @@ const TypingTest: React.FC = () => {
     // @ts-ignore
     loadPromptOnce({ overrides, __prefetch: true }).catch(() => {});
   }, [view, wordCount, showPunctuation, showNumbers, loadPromptOnce]);
+
+  // AI Coach: practice launcher builds a 30-word custom drill
+  const startCustomRun = useCallback((opts: { words: string[]; mode: 'words'|'time'; durationSec?: number }) => {
+    if (opts.mode === 'words') {
+      try { setTestMode('words'); } catch {}
+      try { setMode('words'); } catch {}
+      try { setWordCount(opts.words.length); } catch {}
+    } else {
+      try { setTestMode('time'); } catch {}
+      try { setMode('time'); } catch {}
+      if (typeof opts.durationSec === 'number') {
+        try { setDurationSec(opts.durationSec); } catch {}
+      }
+    }
+    const prompt = opts.words.join(' ');
+    React.startTransition(() => {
+      setIsTestComplete(false);
+      setTime(0);
+      setView('typing');
+      setCurrentPrompt(prompt);
+      setPromptLoad('ready');
+    });
+  }, []);
+
+  const include_numbers = useSettingsStore(s => s.test.include_numbers);
+  const include_punctuation = useSettingsStore(s => s.test.include_punctuation);
+
+  const ensureExact = useCallback((ws: string[], n: number) => {
+    if (ws.length === n) return ws;
+    if (ws.length > n) return ws.slice(0, n);
+    const filler: string[] = [];
+    let i = 0;
+    while (ws.length + filler.length < n && i < ws.length) filler.push(ws[i++]);
+    return ws.concat(filler).slice(0, n);
+  }, []);
+
+  const runAIDrill = useCallback((count: number) => {
+    const settings = useSettingsStore.getState();
+    const intensity = settings.ai?.intensity ?? "med";
+    const eps = intensity === "low" ? 0.05 : intensity === "high" ? 0.2 : 0.1;
+
+    const base = getWordset(settings.test.wordSet ?? "core5000");
+    const picks = weakspot.buildPracticeWordset(base, count, { 
+      epsilon: eps, 
+      maxPerFeature: 0.3, 
+      minUniqueStems: 0.8 
+    });
+    
+    const ensured = ensureExact(picks, count);
+    const allowPunctuation = settings.test.include_punctuation === true;
+    const allowNumbers = settings.test.include_numbers === true;
+    const clean = sanitizePrompt(ensured.join(' '), { allowPunctuation, allowNumbers });
+    
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[coach] drill", { epsilon: eps, wordSet: settings.test.wordSet });
+    }
+    
+    startCustomRun({ words: clean.split(' '), mode: 'words' });
+  }, [include_numbers, include_punctuation, ensureExact, startCustomRun]);
+
+  const runAIDrillTimed = useCallback((duration = 30) => {
+    const settings = useSettingsStore.getState();
+    const intensity = settings.ai?.intensity ?? "med";
+    const eps = intensity === "low" ? 0.05 : intensity === "high" ? 0.2 : 0.1;
+
+    // Use selected word set as base
+    const base = getWordset(settings.test.wordSet ?? "core5000");
+    // Not strictly necessary to rank for time mode, but do it anyway for a stronger opening:
+    const picks = weakspot.buildPracticeWordset(base, 250, { 
+      epsilon: eps, 
+      maxPerFeature: 0.3, 
+      minUniqueStems: 0.8 
+    });
+    
+    const allowPunctuation = settings.test.include_punctuation === true;
+    const allowNumbers = settings.test.include_numbers === true;
+    const clean = sanitizePrompt(picks.join(' '), { allowPunctuation, allowNumbers });
+
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[coach] drill timed", { epsilon: eps, wordSet: settings.test.wordSet });
+    }
+
+    startCustomRun({ words: clean.split(' '), mode: 'time', durationSec: duration });
+  }, [include_numbers, include_punctuation, startCustomRun]);
+
+  const handlePracticeWeakSpots = useCallback(() => {
+    runAIDrill(30);
+  }, [runAIDrill]);
 
   const [syncState, setSyncState] = useState<"synced"|"queued"|"syncing"|"error">("synced");
   const handleTestComplete = async (finalWpm: number, finalAccuracy: number, finalTime: number, finalTypedText?: string) => {
@@ -639,42 +796,73 @@ const TypingTest: React.FC = () => {
         // proceed without token; server will treat as guest
       }
 
-      await fetch('/api/runs', {
+      // Validate payload before sending
+      if (!Number.isFinite(payload.wpm) || !Number.isFinite(payload.accuracy) || !Number.isFinite(payload.durationSec)) {
+        console.warn('[TypingTest] Invalid payload data, skipping API call:', payload);
+        return;
+      }
+
+      // Use AbortController with timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+      const response = await fetch('/api/runs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ ...payload, guestId })
+        body: JSON.stringify({ ...payload, guestId }),
+        signal: controller.signal
       });
-    } catch {}
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.warn('[TypingTest] Failed to save run:', response.status, response.statusText);
+      }
+    } catch (error) {
+      // Only log if it's not an abort error
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.warn('[TypingTest] Error saving run:', error.message);
+      }
+    }
   };
 
   // (old header/filter/stats measuring effect removed; consolidated above)
   const memoNewPrompt = React.useCallback(async () => { await safeRestart(); }, [safeRestart]);
   const memoAppendPrompt = React.useCallback(async () => {
-    const extraCount = 120;
-    const resp = await fetch('/api/generate-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode: 'words',
-        count: extraCount,
-        include_punctuation: showPunctuation,
-        include_numbers: showNumbers,
-        language: 'english',
-        difficulty: usedDifficultyRef.current || 'auto',
-      }),
-    });
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => '');
-      console.error('[generator] append HTTP error', resp.status, errText);
-      throw new Error('Generator append failed');
-    }
-    const data = (await resp.json().catch(() => null)) as FetchResponse | null;
-    if (!data || !data.text) throw new Error('Empty generator response');
-    return data.text;
-  }, [showPunctuation, showNumbers]);
+    const seed = randomSeed();
+    const prng = mulberry32(seed);
+    let lruList: string[] = [];
+    try { lruList = JSON.parse(localStorage.getItem('bk-recent-words') || '[]'); } catch {}
+    const lru = new StringLRU(400, Array.isArray(lruList) ? lruList : []);
+    // Use the selected word set as base for append
+    const base = getWordset(useSettingsStore.getState().test.wordSet ?? "core5000");
+    const add = buildAdaptiveBatch({ count: 120, poolSize: 600, prng, baseBank: base, avoid: lru });
+    try { localStorage.setItem('bk-recent-words', JSON.stringify(lru.snapshot())); } catch {}
+    const allowPunctuation = useSettingsStore.getState().test.include_punctuation === true;
+    const allowNumbers = useSettingsStore.getState().test.include_numbers === true;
+    return sanitizePrompt(add.join(' '), { allowPunctuation, allowNumbers });
+  }, []);
+
+  // Consider a run active as soon as focus is on in typing view
+  const isFocus = useUIStore((s) => s.isFocus);
+  const blurWarning = useSettingsStore((s) => s.focus.blurWarning);
+  const activeRun = view === 'typing' && !isTestComplete && isFocus;
+
+  // Sync AI settings into AI Coach store
+  const coachEnabled = useSettingsStore(s => (s as any).ai?.coachEnabled ?? true);
+  const includeDigraphs = useSettingsStore(s => (s as any).ai?.includeDigraphs ?? true);
+  const aiIntensity = useSettingsStore(s => (s as any).ai?.intensity ?? 'med');
+  useEffect(() => {
+    try { useAICoach.setState({ enabled: coachEnabled, includeDigraphs, intensity: aiIntensity }); } catch {}
+  }, [coachEnabled, includeDigraphs, aiIntensity]);
 
   return (
     <div ref={rootRef} className="min-h-dvh relative" data-view={view} data-run={isRunning ? 'true' : 'false'} data-bk-generating={promptLoad === 'loading' && !currentPrompt ? 'true' : 'false'}>
+      {/* Visual-only out-of-focus notice */}
+      {(() => { try { console.debug('[bk] activeRun=', activeRun); } catch {} ; return null; })()}
+      {blurWarning && (
+        <OutOfFocusNotice activeRun={activeRun} />
+      )}
       {/* Top Navigation/Filter Bar */}
       {/* Pin the filter bar to the top of the viewport (fixed), higher than before */}
       <PreTestOverlay show={view !== 'results' && !(view === 'typing' && !isTestComplete && time > 0)} position="fixed" z="z-40">
@@ -998,6 +1186,8 @@ const TypingTest: React.FC = () => {
               usedConfig={lastUsedConfigRef.current}
 
               onNextTest={async () => { try { tl('results New test click'); } catch {} ; await safeRestart(); }}
+              onPracticeWeakSpots={handlePracticeWeakSpots}
+              onPracticeWeakSpotsTimed={() => runAIDrillTimed(30)}
             />
           </div>
         )}

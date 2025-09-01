@@ -66,6 +66,10 @@ const config: Config = {
           "0%": { boxShadow: "0 0 5px #ffa726, 0 0 10px #ffa726, 0 0 15px #ffa726" },
           "100%": { boxShadow: "0 0 10px #ffa726, 0 0 20px #ffa726, 0 0 30px #ffa726" },
         },
+        'bk-glow': {
+          '0%': { filter: 'drop-shadow(0 0 0 rgba(255,170,0,.0))' },
+          '100%': { filter: 'drop-shadow(0 0 12px rgba(255,170,0,.35))' }
+        },
       },
       animation: {
         "fade-in": "fade-in .4s ease-out both",
@@ -73,6 +77,7 @@ const config: Config = {
         "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         float: "float 6s ease-in-out infinite",
         glow: "glow 2s ease-in-out infinite alternate",
+        'bk-glow-slow': 'bk-glow 2.8s ease-in-out infinite alternate',
       },
     },
   },

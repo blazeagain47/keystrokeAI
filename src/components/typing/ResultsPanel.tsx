@@ -31,6 +31,8 @@ import { useTotalsStore } from "@/stores/useTotalsStore";
 import ResultsStatsBar from "./ResultsStatsBar";
 import { sanitizeWpmForChart } from "@/lib/typingMetrics";
 import dynamic from "next/dynamic";
+import AICoachCard from "@/components/ai/AICoachCard";
+import { useAICoach } from "@/store/aiCoach";
 const ResultsChart = dynamic(() => import("./ResultsChart"), {
   ssr: false,
   loading: () => <div className="h-[260px] md:h-[300px] w-full animate-pulse bg-white/5 rounded-lg" />
@@ -54,6 +56,8 @@ export interface ResultsPanelProps {
   } | null;
   wpmSeries?: Array<{ second: number; wpm: number }>;
   onNextTest?: () => void | Promise<void>;
+  onPracticeWeakSpots?: () => void;
+  onPracticeWeakSpotsTimed?: () => void; // NEW
   usedDifficulty?: "easy" | "medium" | "hard";
   avgWpm?: number;
   avgAcc?: number;
@@ -81,6 +85,8 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     analysis,
     wpmSeries = [],
     onNextTest,
+    onPracticeWeakSpots,
+    onPracticeWeakSpotsTimed,
     usedDifficulty,
     avgWpm,
     avgAcc,
@@ -373,6 +379,22 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           transition={{ duration: 0.4, ease: "easeOut", delay: 0.05 }}
           className="flex flex-col gap-6 cv-auto cv-300"
         >
+          {/* AI Coach (weak spots) */}
+          {(() => {
+            const coachStatus = useAICoach((s) => s.status);
+            const coachDeltas = useAICoach((s) => s.lastDeltas);
+            return (
+              (onPracticeWeakSpots || onPracticeWeakSpotsTimed) && (
+                <AICoachCard
+                  onPractice={onPracticeWeakSpots ?? (() => {})}
+                  onPracticeTimed={onPracticeWeakSpotsTimed}
+                  state={coachStatus}
+                  deltas={coachDeltas}
+                />
+              )
+            );
+          })()}
+
           {/* Revamped AI feedback card */}
           <AIFeedbackCardRevamp
             wpmTrend={wpmTrend}

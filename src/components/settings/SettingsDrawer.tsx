@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useSettingsStore, CmdMode, CmdDock, TestMode } from "@/store/settings";
+import { WordSetKey } from "@/lib/wordbanks";
 import { useTheme } from "next-themes";
 import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
 import { Card, CardContent } from "@/components/ui/card";
@@ -115,6 +116,34 @@ export default function SettingsPanel() {
                     </label>
                   ))}
                 </div>
+                <div className="col-span-2">
+                  <div className="text-white/70 mb-2">Word set</div>
+                  <div role="radiogroup" aria-label="Word set" className="grid grid-cols-3 gap-2">
+                    {([
+                      { key: "core200", label: "Core-200" },
+                      { key: "core1000", label: "Core-1000" },
+                      { key: "core5000", label: "Core-5000" }
+                    ] as { key: WordSetKey; label: string }[]).map(({ key, label }) => (
+                      <label
+                        key={key}
+                        className={[
+                          "flex cursor-pointer items-center justify-center rounded-lg border px-3 py-2 text-xs focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-0",
+                          s.test.wordSet === key ? "border-white/30 bg-white/10" : "border-white/10 hover:border-white/20"
+                        ].join(" ")}
+                      >
+                        <input
+                          type="radio"
+                          name="wordSet"
+                          value={key}
+                          checked={s.test.wordSet === key}
+                          onChange={() => s.update('test', { wordSet: key })}
+                          className="sr-only"
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <div>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={s.test.include_numbers} onChange={(e)=>s.update('test',{ include_numbers: e.target.checked })} />Include numbers</label>
                 </div>
@@ -132,6 +161,33 @@ export default function SettingsPanel() {
               <div className="text-white/90 text-sm font-semibold tracking-wide">Privacy</div>
               <label className="flex items-center gap-2"><input type="checkbox" checked={s.privacy.publicProfile} onChange={(e)=>s.update('privacy',{ publicProfile: e.target.checked })} />Public profile (coming soon)</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={s.privacy.shareRunsByDefault} onChange={(e)=>s.update('privacy',{ shareRunsByDefault: e.target.checked })} />Share runs by default (coming soon)</label>
+            </CardContent>
+          </Card>
+
+          {/* AI Coach */}
+          <Card className="bg-black/25 hover:bg-black/30 border border-white/10 transition-colors">
+            <CardContent className="p-4 space-y-3 text-sm">
+              <div className="text-white/90 text-sm font-semibold tracking-wide">AI</div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={(s as any).ai?.coachEnabled ?? true} onChange={(e)=>s.update('ai',{ coachEnabled: e.target.checked })} />
+                  Enable AI Coach
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={(s as any).ai?.includeDigraphs ?? true} onChange={(e)=>s.update('ai',{ includeDigraphs: e.target.checked })} />
+                  Include digraphs
+                </label>
+                <div className="col-span-2">
+                  <div className="text-white/70 mb-1">Intensity</div>
+                  {(["low","med","high"] as const).map(v => (
+                    <label key={v} className="inline-flex items-center gap-2 mr-4">
+                      <input type="radio" name="aiIntensity" checked={(s as any).ai?.intensity===v} onChange={()=>s.update('ai',{ intensity: v })} />
+                      <span className="capitalize">{v}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="text-white/50 text-xs">Controls how aggressively drills target weak spots (and how much exploration we keep).</div>
             </CardContent>
           </Card>
 
