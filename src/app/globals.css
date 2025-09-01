@@ -129,10 +129,11 @@
     radial-gradient(70rem 70rem at 50% 120%, rgba(250,204,21,0.08), transparent 60%);
 }
 
-/* Prevent the 1–2px peek by masking at the clip edge (no background box). */
+/* Prevent the 1–2px peek by masking at the clip edge (but allow disabling) */
 .typing-viewport{
-  -webkit-mask-image: linear-gradient(to bottom, black 4px, black 4px);
-  mask-image: linear-gradient(to bottom, black 4px, black 4px);
+  --bk-viewport-mask: 0px; /* set to 4px to re-enable the old behavior */
+  -webkit-mask-image: linear-gradient(to bottom, black var(--bk-viewport-mask), black var(--bk-viewport-mask));
+  mask-image: linear-gradient(to bottom, black var(--bk-viewport-mask), black var(--bk-viewport-mask));
 }
 
 /* Reduce subpixel bleed while translating. */
@@ -776,6 +777,20 @@ html[data-focus="1"] .bk-flame-bg::after  { animation: none !important; opacity:
   @media (prefers-reduced-motion: reduce) {
     .bk-fire-halo { animation: none; }
   }
+}
+
+/* ---- Typing prompt visual scale (no reflow) ---- */
+:root { --bk-prompt-scale: 1; }
+.bk-prompt-scale-wrap {
+  /* counter-width so scaled content still paints to 100% of parent width */
+  width: calc(100% / var(--bk-prompt-scale));
+}
+.bk-prompt-scale {
+  transform: scale(var(--bk-prompt-scale));
+  transform-origin: left top;
+  will-change: transform;
+  /* keep crisp while transformed */
+  text-rendering: geometricPrecision;
 }
 
 /* XP ember that orbits the ring while filling */

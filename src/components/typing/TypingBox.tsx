@@ -44,6 +44,8 @@ export interface TypingBoxProps {
 const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt, isLoading: externalLoading = false }) => {
   // Fallback; will be replaced by measured DOM line-height
   const LINE_H = 38;
+  // Scale used for all typing prompts (visual-only; no layout reflow)
+  const PROMPT_SCALE = 1.3; // ≈ +30%
 
   const searchParams = useSearchParams();
   const debug = searchParams.get('debug') === '1';
@@ -341,7 +343,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       const el = contentRef.current;
       if (el) {
         const lh = lineHeightRef.current || LINE_H;
-        const px = Math.round(desiredTop * lh);
+        const px = Math.round(desiredTop * lh * PROMPT_SCALE);
         requestAnimationFrame(() => { el.style.transform = `translateY(-${px}px)`; });
       }
     }
@@ -697,7 +699,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   return (
     <div
       ref={containerRef}
-      className="mx-auto max-w-5xl px-4 sm:px-6"
+      className="mx-auto max-w-7xl px-4 sm:px-6"
       style={{
         minHeight: "100svh",
         contain: "layout style paint",
@@ -711,8 +713,9 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         data-bk-viewport
         className="overflow-hidden rounded-xl select-none"
         style={{
-          height: `${TOTAL_LINES * (lineHeightRef.current || LINE_H) + 2}px`,
+          height: `${Math.round((TOTAL_LINES * (lineHeightRef.current || LINE_H)) * PROMPT_SCALE) + 2}px`,
           overscrollBehavior: scrollLocked ? "none" : "auto",
+          ["--bk-viewport-mask" as any]: PROMPT_SCALE > 1 ? '0px' : '4px',
         }}
         onWheelCapture={scrollLocked ? (e) => e.preventDefault() : undefined}
         onTouchMoveCapture={scrollLocked ? (e) => e.preventDefault() : undefined}
@@ -728,9 +731,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
               'JetBrains Mono, Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
             paddingBottom: SAFE_BOTTOM_PX,
             willChange: scrollLocked ? "transform" : "auto",
+            ["--bk-prompt-scale" as any]: PROMPT_SCALE,
           }}
         >
-          <div className="px-4 leading-relaxed text-lg">
+          <div className="bk-prompt-scale-wrap">
+            <div
+              className="px-4 leading-relaxed text-lg bk-prompt-scale"
+            >
             {evals.map((we, wi) => {
               const active = wi === currentWordIndex;
               const expected = we.expected;
@@ -788,6 +795,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
                 </React.Fragment>
               );
             })}
+            </div>
           </div>
         </div>
       </div>
