@@ -152,6 +152,9 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   // FX layer
   const emberRef = React.useRef<EmbersHandle>(null);
+  // Caret overlay anchors
+  const promptWrapRef = useRef<HTMLDivElement | null>(null);
+  const caretRef = useRef<HTMLDivElement | null>(null);
 
   function calculateWPM(correct: number, timeInSeconds: number): number {
     if (timeInSeconds <= 0) return 0;
@@ -381,6 +384,47 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     const py = rect.top + rect.height * 0.2 + window.scrollY;
     emberRef.current?.spawn(px, py, n);
   }
+
+  // --- caret mover: glide to the active char
+  const moveCaret = useCallback(() => {
+    const wrap = promptWrapRef.current;
+    const caret = caretRef.current;
+    if (!wrap || !caret) return;
+
+    const active = wrap.querySelector<HTMLElement>('[data-caret="on"]');
+    if (!active) {
+      try { caret.classList.add('bk-caret-hidden'); } catch {}
+      return;
+    }
+
+    const r = active.getBoundingClientRect();
+    const w = wrap.getBoundingClientRect();
+    // read the visual scale applied to this subtree (inherited CSS var)
+    const sVar = getComputedStyle(wrap).getPropertyValue('--bk-prompt-scale').trim();
+    const s = sVar ? parseFloat(sVar) : 1;
+    const scale = s || 1;
+    // convert to the wrapper's unscaled local space
+    const x = (r.left - w.left) / scale;
+    const y = (r.top  - w.top)  / scale;
+    const h = r.height / scale;
+
+    caret.style.height = `${h}px`;
+    caret.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
+    try { caret.classList.remove('bk-caret-hidden'); } catch {}
+  }, []);
+
+  // Reposition caret on resize and on mount
+  useEffect(() => {
+    const onResize = () => moveCaret();
+    moveCaret();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [moveCaret]);
+
+  // Reposition caret when indices/visibility change or after scroll transform updates
+  useEffect(() => {
+    requestAnimationFrame(moveCaret);
+  }, [moveCaret, currentWordIndex, cursorCol, cursorVisible, visibleStartLine, measured, evals.length]);
 
   const finalizeWordsRun = useCallback(() => {
     if (isCompletedRef.current) return;
@@ -736,13 +780,19 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         >
           <div className="bk-prompt-scale-wrap">
             <div
-              className="px-4 leading-relaxed text-lg bk-prompt-scale"
+              ref={promptWrapRef}
+              data-testid="prompt-root"
+              className="px-4 leading-relaxed text-lg bk-prompt-scale bk-prompt-rel"
             >
+            {/* Overlay caret */}
+            <div ref={caretRef} className="bk-caret-bar bk-caret-hidden" aria-hidden="true" />
             {evals.map((we, wi) => {
               const active = wi === currentWordIndex;
               const expected = we.expected;
-              const input = inputWords[wi] ?? "";
-              const L = Math.max(expected.length, input.length);
+              // Before any typing, force renderer to treat input as empty
+              const typed = (inputWords?.some(w => (w?.length ?? 0) > 0)) ? (inputWords[wi] ?? "") : "";
+              const L = Math.max(expected.length, typed.length);
+              const caretCol = (inputWords?.some(w => (w?.length ?? 0) > 0)) ? cursorCol : 0;
 
               return (
                 <React.Fragment key={wi}>
@@ -759,19 +809,19 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
                       if (ci < expected.length) {
                         // Always render the EXPECTED character for the main word body
                         showChar = expected[ci] ?? "";
-                        if (ci < input.length) {
-                          st = input[ci] === expected[ci] ? "correct" : "incorrect";
+                        if (ci < typed.length) {
+                          st = typed[ci] === expected[ci] ? "correct" : "incorrect";
                         } else {
                           st = "untyped";
                         }
                       } else {
                         // Beyond expected length → extras: render the TYPED character
-                        showChar = input[ci] ?? "";
+                        showChar = typed[ci] ?? "";
                         st = "extra";
                       }
 
                       // Cursor overlay on active word (works both in-body and in extras)
-                      if (active && ci === cursorCol) st = "cursor";
+                      if (active && ci === caretCol) st = "cursor";
 
                       return (
                         <span
@@ -783,7 +833,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
                             st === "incorrect" && "text-red-400 bg-red-900/40 rounded-md shadow-sm",
                             st === "extra" && "text-orange-300/90 underline decoration-dotted",
                             st === "untyped" && "text-gray-600",
-                            st === "cursor" && (cursorVisible ? "bk-caret-on" : "bk-caret-off")
+                            // Cursor letter should appear untyped (not bright)
+                            st === "cursor" && "text-gray-600"
                           )}
                         >
                           {showChar}

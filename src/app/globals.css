@@ -1209,6 +1209,52 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
   backdrop-filter: none !important;
 }
 
+/* Caret bar: make sure transforms use the same origin as the text */
+.bk-caret-bar {
+  transform-origin: left top;
+}
+
+/* Remove the yellow/amber active-word background */
+.bk-word[data-active="1"]{
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* The letter under the caret should keep the UNTYPED color */
+.bk-char[data-caret="on"],
+.bk-char[data-caret="off"] {
+  background: transparent !important;
+  color: var(--bk-untyped-color, #4b5563) !important; /* Tailwind gray-600 fallback */
+  text-shadow: none !important;
+}
+
+/* --- Overlay bar caret (gliding) ---------------------------------------- */
+.bk-prompt-rel { position: relative; }             /* anchor for absolute overlay */
+.bk-caret-bar {
+  position: absolute;
+  top: 0; left: 0;
+  width: var(--bk-caret-w, 2px);
+  height: 1em;                                     /* track current line height */
+  background: color-mix(in oklab, var(--bk-caret-color, #fbbf24), black 25%);
+  border-radius: 1px;
+  pointer-events: none;
+  transform: translate3d(0,0,0);
+  transition: transform 70ms cubic-bezier(.2,.7,.2,1); /* smooth “glide” */
+  animation: caretBlink var(--bk-caret-blink, 700ms) steps(1,end) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bk-caret-bar { transition: none; }
+}
+.bk-caret-hidden { opacity: 0; }
+
+/* --- Neutralize old inline block-caret classes (keep DOM but no paint) -- */
+.bk-caret-on,
+.bk-caret-off {
+  background: transparent !important;
+  color: inherit !important;
+  transform: none !important;
+}
+
 /* --- Lock typing area vertical position using measured top UI height --- */
 .typing-offsetter {
   /* padding-top now set via inline style in React */
