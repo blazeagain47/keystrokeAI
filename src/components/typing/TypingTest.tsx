@@ -26,7 +26,8 @@ import { mulberry32, randomSeed } from "@/lib/prng";
 import { StringLRU } from "@/lib/lru";
 import { buildAdaptiveBatch } from "@/lib/generator/adaptive";
 import { sanitizePrompt } from "@/lib/prompt/sanitize";
-import { toLowerLettersOnly, ensureExactWordCount } from '@/lib/prompt/normalize';
+import { toLowerLettersOnly, ensureExactWordCount, ensureExactNoRepeat } from '@/lib/prompt/normalize';
+import { enforceNoRepeat } from "@/lib/prompt/noRepeatLimiter";
 import { normalizePromptWords } from '@/lib/text';
 import ReadyToast from '@/components/typing/ReadyToast';
 import LogoLoader from '@/components/common/LogoLoader';
@@ -397,7 +398,7 @@ const TypingTest: React.FC = () => {
         if (!useTime) {
           const n = Number(effectiveCount ?? 15);
           if (Number.isFinite(n) && n > 0) {
-            finalPrompt = ensureExactWordCount(finalPrompt, n);
+            finalPrompt = ensureExactNoRepeat(finalPrompt, n);
           }
         }
       }
@@ -669,6 +670,19 @@ const TypingTest: React.FC = () => {
     const allowPunctuation = settings.test.include_punctuation === true;
     const allowNumbers = settings.test.include_numbers === true;
     const clean = sanitizePrompt(ensured.join(' '), { allowPunctuation, allowNumbers });
+    try {
+      const max = Number(settings?.test?.maxRepeatPerWord ?? 2);
+      const arr = clean.split(' ').filter(Boolean);
+      const limited = enforceNoRepeat(arr, {
+        max,
+        hardCap: 3,
+        wordsetKey: settings?.test?.wordSet ?? "core5000",
+        allowPunctuation,
+        allowNumbers,
+      });
+      startCustomRun({ words: limited, mode: 'words' });
+      return;
+    } catch {}
     
     if (process.env.NODE_ENV !== "production") {
       console.debug("[coach] drill", { epsilon: eps, wordSet: settings.test.wordSet });
@@ -694,6 +708,19 @@ const TypingTest: React.FC = () => {
     const allowPunctuation = settings.test.include_punctuation === true;
     const allowNumbers = settings.test.include_numbers === true;
     const clean = sanitizePrompt(picks.join(' '), { allowPunctuation, allowNumbers });
+    try {
+      const max = Number(settings?.test?.maxRepeatPerWord ?? 2);
+      const arr = clean.split(' ').filter(Boolean);
+      const limited = enforceNoRepeat(arr, {
+        max,
+        hardCap: 3,
+        wordsetKey: settings?.test?.wordSet ?? "core5000",
+        allowPunctuation,
+        allowNumbers,
+      });
+      startCustomRun({ words: limited, mode: 'time', durationSec: duration });
+      return;
+    } catch {}
 
     if (process.env.NODE_ENV !== "production") {
       console.debug("[coach] drill timed", { epsilon: eps, wordSet: settings.test.wordSet });

@@ -34,6 +34,7 @@ export interface SettingsState {
     wordSet: WordSetKey;           // "core5000"
     include_numbers: boolean;      // false
     include_punctuation: boolean;  // false
+    maxRepeatPerWord?: number;     // 2 (optional; default in code paths)
     stopOnError: boolean;          // false: allow advance with mistakes
     strictSpace: boolean;          // false: Monkeytype-like spacing
   };
@@ -78,6 +79,7 @@ const DEFAULTS: SettingsState = {
     wordSet: "core5000",
     include_numbers: false,
     include_punctuation: false,
+    maxRepeatPerWord: 2,
     stopOnError: false,
     strictSpace: false,
   },
@@ -165,6 +167,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set, get) => ({
         if (["core200", "core1000", "core5000"].includes(t.wordSet)) next.wordSet = t.wordSet;
         if (typeof t.include_numbers === "boolean") next.include_numbers = t.include_numbers;
         if (typeof t.include_punctuation === "boolean") next.include_punctuation = t.include_punctuation;
+        if (typeof t.maxRepeatPerWord === "number" && t.maxRepeatPerWord >= 1 && t.maxRepeatPerWord <= 5) next.maxRepeatPerWord = Math.floor(t.maxRepeatPerWord);
         if (typeof t.stopOnError === "boolean") next.stopOnError = t.stopOnError;
         if (typeof t.strictSpace === "boolean") next.strictSpace = t.strictSpace;
         set(s => ({ ...s, test: next }));

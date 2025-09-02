@@ -13,6 +13,7 @@ import { evalWord, type WordEval } from "@/lib/typing/state";
 import { tallyWords, wpmFromTally, accuracyFromTally } from "@/lib/typing/metrics";
 import { createRafQueue } from "@/lib/rafQueue";
 import { useStopOnError, useStrictSpace, useSettingsStore } from "@/store/settings";
+import { enforceNoRepeat } from "@/lib/prompt/noRepeatLimiter";
 import { useUIStore } from "@/stores/useUIStore";
 import EmbersLayer, { EmbersHandle } from "@/components/fx/EmbersLayer";
 import { useSearchParams } from "next/navigation";
@@ -185,7 +186,29 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       const add = extra.split(/\s+/).filter(Boolean);
       if (!add.length) return;
 
-      // append words and expand input slots
+      // append words and expand input slots (with repeat limiter)
+      try {
+        const settings = useSettingsStore.getState?.();
+        const max = Number(settings?.test?.maxRepeatPerWord ?? 2);
+        const allowPunctuation = settings?.test?.include_punctuation === true;
+        const allowNumbers = settings?.test?.include_numbers === true;
+        setWords(prev => {
+          const combined = prev.concat(add);
+          const limited = enforceNoRepeat(combined, {
+            max,
+            hardCap: 3,
+            wordsetKey: settings?.test?.wordSet ?? "core5000",
+            allowPunctuation,
+            allowNumbers,
+          });
+          // expand inputs to new length
+          setInputWords(p => p.concat(Array(Math.max(0, limited.length - p.length)).fill("")));
+          return limited;
+        });
+        return;
+      } catch {}
+
+      // fallback (no limiter)
       setWords(prev => prev.concat(add));
       setInputWords(prev => prev.concat(Array(add.length).fill("")));
       // line map gets recomputed by existing effects when `words` changes
@@ -212,7 +235,30 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     resetViewport();
     setRunSeq((x) => x + 1);
     setIsLoading(true);
-    const nextWords = text.split(" ").filter(Boolean);
+    let nextWords = text.split(" ").filter(Boolean);
+    // Enforce per-run max repeats (covers backend/local/time/words/custom)
+    try {
+      const settings = useSettingsStore.getState?.();
+      const max = Number(settings?.test?.maxRepeatPerWord ?? 2);
+      const allowPunctuation = settings?.test?.include_punctuation === true;
+      const allowNumbers = settings?.test?.include_numbers === true;
+      const limited = enforceNoRepeat(nextWords, {
+        max,
+        hardCap: 3,
+        wordsetKey: settings?.test?.wordSet ?? "core5000",
+        allowPunctuation,
+        allowNumbers,
+      });
+      if (Array.isArray(limited) && limited.length === nextWords.length) nextWords = limited;
+      if (process.env.NODE_ENV !== "production") {
+        // quick dev assertion (largest frequency <= hardCap)
+        const freq = new Map<string, number>();
+        for (const w of nextWords) freq.set(w, (freq.get(w) ?? 0) + 1);
+        let worst = 0; for (const v of freq.values()) worst = Math.max(worst, v);
+        // eslint-disable-next-line no-console
+        console.assert(worst <= 3, "[TypingBox.resetFromPrompt] repeat cap exceeded", { worst });
+      }
+    } catch {}
     setWords(nextWords);
     setInputWords(Array(nextWords.length).fill(""));
     setCurrentWordIndex(0);

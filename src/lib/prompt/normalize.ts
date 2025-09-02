@@ -23,4 +23,30 @@ export function ensureExactWordCount(source: string, n: number) {
   return out.join(" ");
 }
 
+// Convenience wrapper to cap repeats after padding/truncation.
+// Note: kept here to avoid circular imports at call sites.
+import { enforceNoRepeat } from "@/lib/prompt/noRepeatLimiter";
+import { useSettingsStore } from "@/store/settings";
+
+export function ensureExactNoRepeat(source: string, n: number) {
+  const s = ensureExactWordCount(source, n);
+  const arr = s.split(/\s+/).filter(Boolean);
+  try {
+    const settings = (useSettingsStore as any)?.getState?.();
+    const max = Number(settings?.test?.maxRepeatPerWord ?? 2);
+    const allowPunctuation = settings?.test?.include_punctuation === true;
+    const allowNumbers = settings?.test?.include_numbers === true;
+    const limited = enforceNoRepeat(arr, {
+      max,
+      hardCap: 3,
+      wordsetKey: settings?.test?.wordSet ?? "core5000",
+      allowPunctuation,
+      allowNumbers,
+    });
+    return limited.join(" ");
+  } catch {
+    return s;
+  }
+}
+
 
