@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Flame, Zap, Target, Clock3, Activity } from "lucide-react";
 import { computeTopErrorTokens } from "@/lib/typing/errors";
 
@@ -38,20 +39,19 @@ export default function ResultsStatsBar({
     { icon: <Clock3 className="size-4" />, label: "Time", value: `${Math.round(durationSec)}s` },
   ];
 
-  // Add Coach WPM with clear labeling
   if (coachWpm != null && coachWpm !== wpm) {
-    items.push({ 
-      icon: <Flame className="size-4" />, 
-      label: "Coach WPM (EMA)", 
+    items.push({
+      icon: <Flame className="size-4" />,
+      label: "Coach WPM (EMA)",
       value: Math.round(coachWpm).toString(),
-      sub: "EMA smoothed speed. Official WPM remains unchanged."
+      sub: "EMA smoothed speed. Official WPM remains unchanged.",
     });
   }
 
   if (consistency != null) {
     items.push({ icon: <Activity className="size-4" />, label: "Consistency", value: `${Math.round(consistency)}%` });
   }
-  // Mode is rendered as a dedicated glowing badge above; do not include in items
+
   if (keystrokes) {
     const total = (keystrokes.correct || 0) + (keystrokes.error || 0);
     items.push({
@@ -62,84 +62,96 @@ export default function ResultsStatsBar({
     });
   }
 
+  const prettyDifficulty =
+    typeof difficultyLabel === "string"
+      ? difficultyLabel.slice(0, 1).toUpperCase() + difficultyLabel.slice(1)
+      : difficultyLabel;
+
   return (
-    <div
+    <Card
       className="
-        relative w-full
-        rounded-3xl border border-orange-500/20
-        bg-gradient-to-r from-orange-500/10 via-amber-400/5 to-transparent
-        backdrop-blur-sm shadow-[0_8px_40px_-10px_rgba(255,120,40,.25)]
-        px-5 py-3 md:px-6 md:py-4
-        overflow-hidden
+        bk-fire-card bk-card-sheen relative overflow-hidden isolate rounded-2xl
       "
+      aria-label='AI-adapted tests summary'
     >
-      {/* subtle sparks */}
-      <div className="pointer-events-none absolute inset-0 animate-sparks opacity-40" />
+      {/* soft vignette over the card */}
+      <div aria-hidden className="bk-card-vignette pointer-events-none absolute inset-0" />
 
-      {/* AI‑adapted tests badge with glow */}
-      {difficultyLabel && (
-        <div className="mb-3 md:mb-4">
-          <div
-            className="
-              inline-flex items-center gap-2
-              rounded-full px-3.5 py-1.5
-              bg-gradient-to-r from-orange-500/20 via-amber-400/15 to-transparent
-              ring-1 ring-orange-400/30
-              shadow-[0_0_20px_rgba(255,125,35,.25)]
-              ai-adapted-badge
-            "
-            title="Adaptive mode selected by AI"
-          >
-            <span className="relative inline-flex">
-              <span className="absolute inset-0 rounded-full blur-[6px] bg-orange-400/40 animate-aiGlow" />
-              <span className="relative block size-2 rounded-full bg-orange-400" />
-            </span>
-            <span className="text-[11px] uppercase tracking-wider text-orange-200/80">
-              AI‑adapted tests:
-            </span>
-            <span className="text-sm font-semibold text-orange-100">
-              {typeof difficultyLabel === 'string'
-                ? difficultyLabel.slice(0,1).toUpperCase() + difficultyLabel.slice(1)
-                : difficultyLabel}
-            </span>
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3 md:gap-4">
-        {items.map((it, i) => (
-          <div
-            key={i}
-            className="
-              group flex items-center gap-2
-              rounded-2xl bg-black/10 px-3 py-2
-              ring-1 ring-white/5 hover:ring-orange-400/40 transition
-            "
-          >
-            <span className="text-orange-400">{it.icon}</span>
-            <div className="leading-tight">
-              <div className="text-[10px] uppercase tracking-wider text-orange-200/70">{it.label}</div>
-              <div className="text-base md:text-lg font-semibold text-orange-100">{it.value}</div>
-              {it.sub && <div className="text-[11px] text-orange-200/70">{it.sub}</div>}
-              {/* Top error tokens under Accuracy */}
-              {it.label === "Accuracy" && (() => {
-                const toks = computeTopErrorTokens(errorEvents as any, errorFallback as any, 3);
-                if (!toks || toks.length === 0) return null;
-                return (
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {toks.map((t) => (
-                      <span key={t} className="px-2 py-0.5 text-xs rounded-full bg-white/5 border border-white/10">
-                        {t === " " ? "␣" : t}
-                      </span>
-                    ))}
-                  </div>
-                );
-              })()}
+      <CardContent className="relative z-10 p-4 sm:p-5">
+        {/* Header badge */}
+        {prettyDifficulty && (
+          <div className="mb-3 md:mb-4">
+            <div
+              className="
+                inline-flex items-center gap-2 rounded-full
+                px-3.5 py-1.5 bg-white/10 ring-1 ring-white/10
+              "
+              title="Adaptive mode selected by AI"
+            >
+              <span className="relative inline-flex">
+                <span className="absolute inset-0 rounded-full blur-[6px] bg-amber-400/40 animate-aiGlow" />
+                <span className="relative block size-2 rounded-full bg-amber-400" />
+              </span>
+              <span className="text-[11px] uppercase tracking-wider text-white/70">
+                AI-adapted tests:
+              </span>
+              <span className="text-sm font-semibold text-white">{prettyDifficulty}</span>
             </div>
           </div>
-        ))}
-      </div>
-    </div>
+        )}
+
+        {/* KPI row */}
+        <div className="flex flex-wrap items-stretch gap-3 md:gap-4">
+          {items.map((it, i) => (
+            <div
+              key={i}
+              className="
+                group flex items-center gap-3 rounded-xl
+                bg-white/5 border border-white/10
+                px-3.5 py-2.5 hover:border-white/20 transition
+              "
+            >
+              <span
+                className="
+                  inline-flex h-7 w-7 shrink-0 items-center justify-center
+                  rounded-lg bg-white/5 ring-1 ring-white/10 group-hover:ring-white/20
+                "
+                aria-hidden
+              >
+                {/* icon tone matches other dark cards */}
+                <span className="text-white/80">{it.icon}</span>
+              </span>
+
+              <div className="leading-tight">
+                <div className="text-[10px] uppercase tracking-wider text-white/60">{it.label}</div>
+                <div className="text-lg sm:text-xl font-semibold bk-fire-text">{it.value}</div>
+
+                {it.sub && <div className="text-[11px] text-white/60">{it.sub}</div>}
+
+                {/* Top error tokens under Accuracy */}
+                {it.label === "Accuracy" && (() => {
+                  const toks = computeTopErrorTokens(errorEvents as any, errorFallback as any, 3);
+                  if (!toks || toks.length === 0) return null;
+                  return (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {toks.map((t) => (
+                        <span
+                          key={t}
+                          className="px-2 py-0.5 text-xs rounded-full bg-white/6 border border-white/12"
+                          title={t === " " ? "space" : t}
+                        >
+                          {t === " " ? "␣" : t}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
