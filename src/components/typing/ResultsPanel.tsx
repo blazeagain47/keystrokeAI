@@ -24,6 +24,8 @@ const AIFeedbackCardRevamp = dynamic(() => import("@/components/feedback/AIFeedb
 });
 import FireSummaryCard from "@/components/test/FireSummaryCard";
 import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
+import CmdHint from "@/components/ui/CmdHint";
+import { useCommandsStore, type CommandAction } from "@/stores/commands";
 import NextTestButton from "@/components/ui/NextTestButton";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { useAuth } from "@/hooks/useAuth";
@@ -79,6 +81,23 @@ const fmt = {
 };
 
 export default function ResultsPanel(props: ResultsPanelProps) {
+  const { registerGroup, setActiveGroup } = useCommandsStore();
+
+  const copyResults = React.useCallback(async () => {
+    const text = `WPM: ${Math.round(Number(props.wpm ?? 0))}, Acc: ${Math.round(Number(props.accuracy ?? 0))}% — Time: ${Math.round(Number(props.time ?? 0))}s`;
+    try { await navigator.clipboard.writeText(text); } catch {}
+  }, [props.wpm, props.accuracy, props.time]);
+
+  React.useEffect(() => {
+    const actions: CommandAction[] = [
+      { id: "restart", label: "Restart test", kbd: "Tab+Enter", run: () => { try { props.onNextTest?.(); } catch {} } },
+      { id: "copy",    label: "Copy results", kbd: "C",           run: copyResults },
+      ...(props.onPracticeWeakSpots ? [{ id: "coach30", label: "Practice weak spots (30 words)", run: () => { try { props.onPracticeWeakSpots?.(); } catch {} } }] as CommandAction[] : []),
+      ...(props.onPracticeWeakSpotsTimed ? [{ id: "coach30s", label: "Practice weak spots (30 sec)", run: () => { try { props.onPracticeWeakSpotsTimed?.(); } catch {} } }] as CommandAction[] : []),
+    ];
+    registerGroup("postTest", actions);
+    setActiveGroup("postTest");
+  }, [registerGroup, setActiveGroup, copyResults, props.onNextTest, props.onPracticeWeakSpots, props.onPracticeWeakSpotsTimed]);
   React.useEffect(() => { mark('results:mount'); }, []);
   const {
     accuracy,
@@ -284,6 +303,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
 
   return (
     <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6 bk-page-content results-scroll-root" aria-label="Results">
+      <CmdHint onOpen={() => { try { (useCommandsStore.getState?.().openPanel?.()) } catch {} }} showWhen={true} corner="br" delayMs={900} />
       {/* Reordered: Blaze stats above the chart; keep two-column layout for chart + AI Feedback */}
       {/* Move Blaze stats summary above the two-column grid */}
       {usedDifficulty && (

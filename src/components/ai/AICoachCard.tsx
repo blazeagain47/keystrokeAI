@@ -7,6 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { Info, Target } from "lucide-react";
 
+function CoachBadge() {
+  return (
+    <span className="relative inline-flex items-center justify-center">
+      <span
+        className="absolute inset-0 rounded-full blur-md opacity-40"
+        style={{ background: "radial-gradient(circle, rgba(255,200,0,.6) 0%, rgba(255,120,0,.2) 60%, transparent 70%)" }}
+        aria-hidden
+      />
+      <Target className="size-5 shrink-0" strokeWidth={2} aria-hidden="true" />
+      <span className="sr-only">Practice weak spots</span>
+    </span>
+  );
+}
+
 export function AICoachCard({
   onPractice,
   onPracticeTimed,
@@ -124,7 +138,7 @@ export function AICoachCard({
         <div className="w-full flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
           {/* Practice label (not a button) */}
           <div className="flex items-center gap-2 md:mr-auto">
-            <Target className="size-5 md:size-6 text-amber-400 motion-safe:animate-glow" />
+            <CoachBadge />
             <span className="bk-fire-text text-base md:text-lg font-semibold">
               Practice weak spots
             </span>

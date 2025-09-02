@@ -1,172 +1,93 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { useIdle } from "@/hooks/useIdle";
-import { useSettingsStore } from "@/store/settings";
-import { useUIStore } from "@/stores/useUIStore";
+import React, { useEffect } from "react";
+import { useCommandsStore } from "@/stores/commands";
 
-type CommandHintsFloatingProps = {
-  context?: "typing" | "results" | "account";
-  defaultMode?: "hidden" | "peek" | "full";
-  className?: string;
-  /** When true (default), hide the dock if any overlay is open */
-  suppressWhenOverlay?: boolean;
-};
+export default function CommandHintsFloating({ context }: { context: "typing"|"results"|"account"|"home"|string }) {
+  const { open, docked, activeGroup, groups, openPanel, closePanel, toggleDocked } = useCommandsStore();
+  const actions = React.useMemo(() => (activeGroup ? (groups[activeGroup] ?? []) : []), [activeGroup, groups]);
 
-const MODE_KEY = "bk:cmdHints.mode";
-const DOCK_KEY = "bk:cmdHints.dock";
-const COACH_KEY = "bk:cmdHints.coachShownV1";
-
-export default function CommandHintsFloating({ context = "typing", defaultMode, className, suppressWhenOverlay = true }: CommandHintsFloatingProps) {
-  const settings = useSettingsStore();
-  const overlayOpen = useUIStore(s => s.overlayOpen);
-  const [mode, setMode] = useState<"hidden" | "peek" | "full">(() => {
-    const w = typeof window !== "undefined" ? window : undefined;
-    const small = w ? w.innerWidth < 1024 : false;
-    const ls = (() => { try { return localStorage.getItem(MODE_KEY) as any; } catch { return null; } })();
-    if (ls === "hidden" || ls === "peek" || ls === "full") return ls;
-    if (defaultMode) return defaultMode;
-    // default from settings if no LS
-    const sDefault = settings?.commands?.defaultMode;
-    if (sDefault === "hidden" || sDefault === "peek" || sDefault === "full") return sDefault;
-    if (context === "typing") return small ? "hidden" : "hidden";
-    if (context === "results") return small ? "full" : "full";
-    if (context === "account") return small ? "hidden" : "peek";
-    return "peek";
-  });
-  const [dock, setDock] = useState<"br"|"bl"|"tr"|"tl">(() => {
-    const v = (() => { try { return localStorage.getItem(DOCK_KEY) as any; } catch { return null; } })();
-    if (v === "br" || v === "bl" || v === "tr" || v === "tl") return v;
-    const sDefault = settings?.commands?.defaultDock;
-    return (sDefault === "br" || sDefault === "bl" || sDefault === "tr" || sDefault === "tl") ? sDefault : "br";
-  });
-
-  const idle = useIdle(context === "typing" ? 4000 : 6000);
-
-  // results: full on mount then peek
-  useEffect(() => {
-    if (context === "results" && settings.commands.autoShowOnResults) {
-      setMode("full");
-      const delay = Math.max(2000, Math.min(20000, Number(settings.commands.autoPeekDelayMs) || 8000));
-      const t = window.setTimeout(() => setMode("peek"), delay);
-      return () => window.clearTimeout(t);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.commands.autoShowOnResults, settings.commands.autoPeekDelayMs]);
-
-  // persist mode/dock
-  useEffect(() => { try { localStorage.setItem(MODE_KEY, mode); } catch {} }, [mode]);
-  useEffect(() => { try { localStorage.setItem(DOCK_KEY, dock); } catch {} }, [dock]);
-
-  // live update listener from settings drawer
-  useEffect(() => {
-    const onUpdate = () => {
-      try {
-        const m = localStorage.getItem(MODE_KEY) as any;
-        if (m === "hidden" || m === "peek" || m === "full") setMode(m);
-        const d = localStorage.getItem(DOCK_KEY) as any;
-        if (d === "br" || d === "bl" || d === "tr" || d === "tl") setDock(d);
-      } catch {}
-    };
-    window.addEventListener("bk:cmdHints:update", onUpdate as any);
-    return () => window.removeEventListener("bk:cmdHints:update", onUpdate as any);
-  }, []);
-
-  // on keydown -> cycle when ? pressed; Shift+D cycles dock
+  // Only results view responds to hotkeys to open; Esc docks
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || (target as any).isContentEditable);
+      if (inInput) return;
       if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
         e.preventDefault();
-        setMode(m => (m === "hidden" ? "peek" : m === "peek" ? "full" : "peek"));
-      } else if ((e.key === "D" || e.key === "d") && e.shiftKey) {
+        if (open) {
+          closePanel();
+        } else {
+          openPanel();
+        }
+      } else if (e.key === "Escape") {
         e.preventDefault();
-        setDock(d => (d === "br" ? "bl" : d === "bl" ? "tl" : d === "tl" ? "tr" : "br"));
-      } else {
-        if (context !== "results" && mode !== "hidden") setMode("peek");
+        closePanel();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [context, mode]);
-
-  // idle -> reveal as peek if hidden
-  useEffect(() => {
-    if (idle && mode === "hidden") setMode("peek");
-  }, [idle, mode]);
-
-  const dockClass = useMemo(() => ({ br: "right-6 bottom-6", bl: "left-6 bottom-6", tr: "right-6 top-24", tl: "left-6 top-24" }[dock]), [dock]);
-
-  // Hooks must not be conditional — guard after hooks.
-  const isPeek = mode === "peek";
-
-  // one-time coachmark
-  const showCoach = useMemo(() => {
-    if (!(context === "results" || context === "account")) return false;
-    try { return localStorage.getItem(COACH_KEY) !== "1"; } catch { return false; }
-  }, [context]);
-
-  const dismissCoach = useCallback(() => { try { localStorage.setItem(COACH_KEY, "1"); } catch {} }, []);
-
-  const suppressed = (suppressWhenOverlay && overlayOpen) || mode === "hidden";
-  if (suppressed) return null;
+    window.addEventListener("keydown", onKey, { capture: true } as any);
+    return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
+  }, [open, openPanel, closePanel]);
 
   return (
-    <motion.aside
-      data-mode={mode}
-      data-dock={dock}
-      role="complementary"
-      aria-label="Keyboard commands"
-      className={`hidden lg:flex fixed z-40 ${dockClass} ${className || ""}`}
-    >
-      {isPeek ? (
-        <div className="bk-peek rounded-full px-3 py-1.5 text-sm bk-glass pointer-events-none hover:pointer-events-auto" title="Press ? to toggle • Shift+D to move">
-          <span className="inline-flex items-center gap-1 text-white/80">
-            <span className="w-2 h-2 rounded-full bg-orange-400" />
-            Commands <kbd className="bk-kbd ml-2">?</kbd>
-          </span>
-        </div>
-      ) : (
-        <div className="bk-glass px-3 py-2 rounded-2xl min-w-[220px] relative">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-white/80 text-sm font-medium">Commands</div>
-            <button onClick={()=>setDock(d => (d === "br" ? "bl" : d === "bl" ? "tl" : d === "tl" ? "tr" : "br"))} className="text-white/60 text-xs px-2 py-0.5 rounded border border-white/10 hover:bg-white/10">Dock</button>
-          </div>
-          <ul className="space-y-2 text-white/75 text-sm">
-            <li className="flex items-center gap-2">
-              <kbd className="bk-chip px-2 py-0.5">Tab</kbd>
-              <span className="text-white/50">then</span>
-              <kbd className="bk-chip px-2 py-0.5">Enter</kbd>
-              <span className="ml-2 inline-flex items-center gap-1">
-                <svg className="h-4 w-4 text-orange-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                  <path d="M12 2s4 3 4 7a4 4 0 1 1-8 0C8 5 12 2 12 2zM6 14c0 3.314 2.686 6 6 6s6-2.686 6-6c0-1.657-1-3-1-3s-.5 1.5-3 1.5S9 11 9 11s-3 1.343-3 3z" />
-                </svg>
-                <span className="font-semibold">New Test</span>
-              </span>
-            </li>
-            <li className="flex items-center gap-2">
-              <kbd className="bk-chip px-2 py-0.5">Space</kbd><span>Next word</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <kbd className="bk-chip px-2 py-0.5">Backspace</kbd><span>Go back</span>
-            </li>
-          </ul>
-
-          {showCoach && (
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="absolute -top-12 left-0 rounded-lg px-3 py-2 text-xs bk-glass shadow"
+    <div className="fixed right-6 bottom-6 z-[100] pointer-events-auto select-none">
+      {!open && (
+        <div className="rounded-2xl bg-black/60 text-white px-4 py-3 shadow-lg backdrop-blur">
+          <div className="flex items-center gap-3">
+            <span className="text-sm">Press <kbd className="bk-kbd">?</kbd> to open</span>
+            <button
+              className="text-xs underline opacity-80 hover:opacity-100"
+              onClick={openPanel}
+              aria-label="Open command hints"
             >
-              <div className="flex items-center gap-2 text-white/80">
-                <span>Press ? to toggle commands. Hover to expand. Shift+D moves corners.</span>
-                <button onClick={dismissCoach} className="text-white/60 border border-white/10 rounded px-1">×</button>
-              </div>
-            </motion.div>
-          )}
+              Open now
+            </button>
+          </div>
         </div>
       )}
-    </motion.aside>
+
+      {open && (
+        <div role="dialog" aria-modal="true" className="rounded-2xl bg-neutral-900/90 text-white p-4 shadow-2xl w-[360px]">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-white/80 text-sm font-medium">Commands</div>
+            <div className="flex items-center gap-2">
+              <button
+                className="text-xs underline opacity-80 hover:opacity-100"
+                onClick={toggleDocked}
+              >
+                {docked ? "Undock" : "Dock"}
+              </button>
+              <button
+                className="text-xs underline opacity-80 hover:opacity-100"
+                onClick={closePanel}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          <ul className="mt-2 space-y-1">
+            {actions.length === 0 ? (
+              <li className="text-sm text-white/60">No actions available.</li>
+            ) : (
+              actions.map(a => (
+                <li key={a.id}>
+                  <button
+                    className="w-full text-left px-2 py-1 rounded hover:bg-white/10 text-sm flex items-center justify-between"
+                    onClick={() => { try { a.run(); } finally { if (!docked) closePanel(); } }}
+                  >
+                    <span>{a.label}</span>
+                    {a.kbd && <kbd className="text-[10px] opacity-70">{a.kbd}</kbd>}
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+          <div className="mt-3 flex items-center justify-between">
+            <div className="text-xs text-white/50">Press Esc to close</div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
