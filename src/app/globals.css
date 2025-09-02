@@ -33,6 +33,34 @@
   .tabular-nums { font-variant-numeric: tabular-nums; }
 }
 
+/* Enhanced fire chart animations */
+@keyframes bk-chart-ember-rise {
+  0% { transform: translateY(0) scale(1); opacity: 0.8; }
+  50% { transform: translateY(-8px) scale(1.2); opacity: 1; }
+  100% { transform: translateY(-16px) scale(0.8); opacity: 0; }
+}
+
+@keyframes bk-fire-pulse-intense {
+  0% { filter: drop-shadow(0 0 8px rgba(255,140,0,.3)) drop-shadow(0 0 16px rgba(255,61,0,.2)); }
+  50% { filter: drop-shadow(0 0 16px rgba(255,140,0,.6)) drop-shadow(0 0 32px rgba(255,61,0,.4)); }
+  100% { filter: drop-shadow(0 0 8px rgba(255,140,0,.3)) drop-shadow(0 0 16px rgba(255,61,0,.2)); }
+}
+
+.bk-chart-ember-particle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #FFD36E 0%, #FF6A00 60%, transparent 100%);
+  animation: bk-chart-ember-rise 2.5s ease-out infinite;
+  pointer-events: none;
+}
+
+.bk-chart-fire-line-enhanced {
+  filter: drop-shadow(0 0 12px rgba(255,130,0,.4));
+  animation: bk-fire-pulse-intense 3.2s ease-in-out infinite alternate;
+}
+
 /* --- AI Coach: fire label text & icon glow --- */
 @layer utilities {
   @keyframes bk-fire-flicker {
@@ -128,6 +156,71 @@
     radial-gradient(50rem 50rem at 110% 10%, rgba(56,189,248,0.10), transparent 60%),
     radial-gradient(70rem 70rem at 50% 120%, rgba(250,204,21,0.08), transparent 60%);
 }
+
+/* Card backdrop & fire text */
+.bk-fire-card {
+  background: rgba(9, 11, 16, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.06) inset,
+    0 10px 30px rgba(0,0,0,.45);
+}
+
+.bk-fire-text {
+  background: linear-gradient(180deg, #ff9900 0%, #ff6a00 60%, #ffd36e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(255,255,255,.15));
+}
+
+/* Soft vignette over the whole card (no rotation) */
+.bk-card-vignette {
+  background:
+    radial-gradient(100% 60% at 50% 110%, rgba(255,120,20,.10), transparent 70%),
+    radial-gradient(60% 50% at 20% 0%, rgba(255,180,60,.06), transparent 60%),
+    radial-gradient(60% 50% at 80% 0%, rgba(255,120,20,.05), transparent 60%);
+}
+
+/* Chart halo & embers (motion-safe) */
+@keyframes bk-halo-breathe {
+  0% { opacity: .55; transform: scale(1); }
+  100% { opacity: .9; transform: scale(1.03); }
+}
+.bk-chart-halo {
+  background: radial-gradient(60% 35% at 50% 98%, rgba(255,160,40,.20), rgba(255,110,20,.08) 40%, transparent 70%);
+  animation: bk-halo-breathe 4s ease-in-out infinite alternate;
+  filter: blur(8px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .bk-chart-halo { animation: none; }
+}
+
+/* Ember layer container */
+.bk-embers-layer { z-index: 0; }
+
+/* Small, rising ember particles. Absolutely-positioned spans created in TS. */
+@keyframes bk-ember-rise {
+  0%   { transform: translate(calc(var(--sx, 50) * 1%), 8%) scale(var(--sz, 1)); opacity: 0; }
+  15%  { opacity: .7; }
+  100% { transform: translate(calc(var(--sx, 50) * 1%), -8%) scale(calc(var(--sz, 1) * .9)); opacity: 0; }
+}
+.bk-ember {
+  position: absolute;
+  left: 0; top: 0;
+  width: max(2px, 0.25rem); height: max(2px, 0.25rem);
+  border-radius: 9999px;
+  background: radial-gradient(circle, #ffd36e 0%, #ff6a00 60%, transparent 100%);
+  filter:
+    drop-shadow(0 0 8px rgba(255, 140, 0, .35))
+    drop-shadow(0 0 16px rgba(255, 96, 0, .25));
+  transform: translate(calc(var(--sx, 50) * 1%), 100%) scale(var(--sz, 1));
+  animation: bk-ember-rise calc(var(--d, 3) * 1s) ease-out infinite;
+  animation-delay: calc(var(--dl, 0) * 1s);
+  will-change: transform, opacity, filter;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) { .bk-ember { display: none } }
 
 /* Prevent the 1–2px peek by masking at the clip edge (but allow disabling) */
 .typing-viewport{
@@ -720,6 +813,32 @@ html[data-focus="1"] .bk-flame-bg::after  { animation: none !important; opacity:
   }
 }
 
+/* Soft pulse on the line to echo BlazeKey's fire visual */
+.bk-fire-line { filter: drop-shadow(0 0 6px rgba(255,130,0,.26)); }
+@media (prefers-reduced-motion: no-preference) {
+  .bk-fire-line { animation: bk-glow 2.8s ease-in-out infinite alternate; }
+  @keyframes bk-glow {
+    0%   { filter: drop-shadow(0 0 4px rgba(255,140,0,.20)); }
+    100% { filter: drop-shadow(0 0 12px rgba(255,160,0,.38)); }
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes ember-float {
+    0%   { transform: translate3d(-6px, 8px, 0) scale(1);   opacity: .85; }
+    50%  { transform: translate3d(8px, -6px, 0) scale(1.06); opacity: .9; }
+    100% { transform: translate3d(-6px, 8px, 0) scale(1);   opacity: .85; }
+  }
+  .animate-ember-float      { animation: ember-float 9s ease-in-out infinite; }
+  .animate-ember-float-slow { animation: ember-float 14s ease-in-out infinite; }
+}
+
+/* Glass tooltip for charts (keep existing semantics) */
+.chart-tooltip { @apply rounded-xl bg-white/5 text-white shadow-xl ring-1 ring-white/10 backdrop-blur px-3 py-2; }
+.chart-tooltip-title { @apply text-xs text-white/70; }
+.chart-tooltip-value { @apply text-sm font-semibold; }
+.chart-tooltip-sub   { @apply text-[11px] text-white/60; }
+
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .fire-border::before { animation: none; }
@@ -865,6 +984,13 @@ html[data-focus="1"] .bk-flame-bg::after  { animation: none !important; opacity:
   position:absolute; bottom:8px; width:4px; height:4px; border-radius:9999px;
   background: rgba(255,174,0,.9); filter: blur(.2px);
   animation: bk-ember-pop 1.6s linear infinite;
+}
+
+/* Missing keyframes referenced by GlobalFireBackdrop */
+@keyframes bk-ember {
+  0% { transform: translateY(0) rotate(0deg); opacity: .8 }
+  50% { transform: translateY(-20px) rotate(180deg); opacity: 1 }
+  100% { transform: translateY(-40px) rotate(360deg); opacity: 0 }
 }
 
 /* Chart title area spacing (if needed) */

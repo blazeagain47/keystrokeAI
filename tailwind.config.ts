@@ -70,6 +70,11 @@ const config: Config = {
           '0%': { filter: 'drop-shadow(0 0 0 rgba(255,170,0,.0))' },
           '100%': { filter: 'drop-shadow(0 0 12px rgba(255,170,0,.35))' }
         },
+        'bg-pan': {
+          '0%': { backgroundPosition: '0% 0%, 0% 0%, 100% 100%' },
+          '50%': { backgroundPosition: '100% 50%, 50% 0%, 0% 100%' },
+          '100%': { backgroundPosition: '0% 0%, 0% 0%, 100% 100%' },
+        },
       },
       animation: {
         "fade-in": "fade-in .4s ease-out both",
@@ -78,6 +83,7 @@ const config: Config = {
         float: "float 6s ease-in-out infinite",
         glow: "glow 2s ease-in-out infinite alternate",
         'bk-glow-slow': 'bk-glow 2.8s ease-in-out infinite alternate',
+        'bg-pan': 'bg-pan 18s linear infinite',
       },
     },
   },

@@ -5,17 +5,6 @@ import * as React from "react";
 import { useMemo, useDeferredValue } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  ReferenceLine,
-  ReferenceDot,
-} from "recharts";
 import AIFeedback from "@/components/feedback/AIFeedback";
 import BlazeFeedbackCard from "@/components/feedback/BlazeFeedbackCard";
 const AIFeedbackCardRevamp = dynamic(() => import("@/components/feedback/AIFeedbackCardRevamp"), {
@@ -26,7 +15,6 @@ import FireSummaryCard from "@/components/test/FireSummaryCard";
 import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
 import CmdHint from "@/components/ui/CmdHint";
 import { useCommandsStore, type CommandAction } from "@/stores/commands";
-import NextTestButton from "@/components/ui/NextTestButton";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { useAuth } from "@/hooks/useAuth";
 import { useTotalsStore } from "@/stores/useTotalsStore";
@@ -35,10 +23,8 @@ import { sanitizeWpmForChart } from "@/lib/typingMetrics";
 import dynamic from "next/dynamic";
 import AICoachCard from "@/components/ai/AICoachCard";
 import { useAICoach } from "@/store/aiCoach";
-const ResultsChart = dynamic(() => import("./ResultsChart"), {
-  ssr: false,
-  loading: () => <div className="h-[260px] md:h-[300px] w-full animate-pulse bg-white/5 rounded-lg" />
-});
+import { ChartProbe } from "@/components/dev/ChartProbe";
+import ResultsChart from "./ResultsChart";
 import { mark } from "@/lib/perf";
 import { tl } from "@/lib/timeline";
 import { devLog } from "@/lib/devLog";
@@ -82,6 +68,7 @@ const fmt = {
 
 export default function ResultsPanel(props: ResultsPanelProps) {
   const { registerGroup, setActiveGroup } = useCommandsStore();
+  const chartBoxRef = React.useRef<HTMLDivElement>(null);
 
   const copyResults = React.useCallback(async () => {
     const text = `WPM: ${Math.round(Number(props.wpm ?? 0))}, Acc: ${Math.round(Number(props.accuracy ?? 0))}% — Time: ${Math.round(Number(props.time ?? 0))}s`;
@@ -147,19 +134,6 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   }, [wpmTrend, props.wpm]);
   const [pulseGlow, setPulseGlow] = React.useState(false);
   const prefersReducedMotion = useReducedMotion();
-  const [showNext, setShowNext] = React.useState(false);
-  const revealedRef = React.useRef(false);
-  const reveal = React.useCallback(() => {
-    if (!revealedRef.current) {
-      revealedRef.current = true;
-      setShowNext(true);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    const id = window.setTimeout(reveal, prefersReducedMotion ? 300 : 3600);
-    return () => window.clearTimeout(id);
-  }, [reveal, prefersReducedMotion]);
 
   React.useEffect(() => {
     let tabHeld = false;
@@ -228,6 +202,12 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     [chartWpm]
   );
 
+  // Debug logging for chart data
+  console.log("[ResultsPanel] chartData preview", {
+    n: chartData.length,
+    preview: chartData.slice(0, 5)
+  });
+
   // (Dev) Debug toggle for series comparison
   React.useEffect(() => {
     if (process.env.NEXT_PUBLIC_DEV_STATS_DEBUG === "1") {
@@ -288,18 +268,6 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     bigrams: !!(lastRun as any)?.errorBigrams, 
     keys: !!((lastRun as any)?.mistypedKeys ?? (lastRun as any)?.errors),
   });
-
-  function FireTooltipContent({ active, label, payload }: any) {
-    if (!active || !payload || payload.length === 0) return null;
-    const first = payload[0];
-    const wpm = Math.round(Number(first?.value ?? 0));
-    return (
-      <div className="chart-tooltip">
-        <div className="chart-tooltip-title">Time = {label}s</div>
-        <div className="chart-tooltip-value">{wpm} WPM</div>
-      </div>
-    );
-  }
 
   return (
     <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6 bk-page-content results-scroll-root" aria-label="Results">
@@ -362,19 +330,17 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             />
           </div>
 
-          <Card className="ks-card">
-            <CardHeader className="pb-2">
+          <Card className="bk-fire-card relative overflow-hidden isolate rounded-2xl">
+            {/* soft inner glow; no rotating border */}
+            <div aria-hidden className="bk-card-vignette pointer-events-none absolute inset-0" />
+            <CardHeader className="pb-2 relative z-10">
               <div className="bk-chart-title mb-2">
-                <CardTitle className="text-base md:text-lg font-semibold bk-wordmark">Typing Speed Trend</CardTitle>
-                {syncing && (
-                  <span className="ml-2 rounded-full px-2 py-0.5 text-[11px] bg-amber-500/10 text-amber-300">
-                    Syncing…
-                  </span>
-                )}
+                <CardTitle className="text-base md:text-lg font-semibold bk-fire-text">Typing Speed Trend</CardTitle>
               </div>
             </CardHeader>
-            <CardContent className="pt-2">
-              <div className="h-[260px] md:h-[300px]">
+            <CardContent className="pt-2 relative z-10">
+              {/* left pad so the plot area aligns with the title start */}
+              <div className="h-[260px] md:h-[300px] pl-6 pr-2">
                 <ResultsChart
                   chartData={chartData}
                   avg={chartAvgWpm}
@@ -385,11 +351,6 @@ export default function ResultsPanel(props: ResultsPanelProps) {
               </div>
             </CardContent>
           </Card>
-          {showNext && (
-            <div className="mt-6 flex w-full justify-center">
-              <NextTestButton onStart={() => { try { tl('results New test click'); } catch {} ; try { devLog('results New test click'); } catch {} ; if (onNextTest) onNextTest(); }} autoFocus />
-            </div>
-          )}
         </motion.div>
 
         {/* RIGHT: Insights */}
