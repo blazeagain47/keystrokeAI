@@ -39,18 +39,18 @@ export function AICoachCard({
 
   return (
     <TooltipProvider>
-    <Card className="bk-fire-card relative overflow-hidden isolate rounded-2xl p-4 md:p-5 min-h-[260px] md:min-h-[280px]">
+    <Card className="bk-fire-card relative overflow-hidden isolate rounded-2xl p-4 md:p-5 pb-3">
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
         {/* Left: Brand + Title */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 text-left">
           {/* Larger transparent mark with halo pulse */}
           <span className="relative inline-flex items-center justify-center">
             <span className="pointer-events-none absolute -inset-2 rounded-2xl blur-md bg-[radial-gradient(closest-side,theme(colors.amber.500/.25),transparent)] motion-safe:animate-pulse-slow" />
-            <LogoMark size={28} />
+            <LogoMark size={24} />
           </span>
 
           <div className="flex items-center gap-2">
-            <CardTitle className="text-base md:text-lg font-semibold">
+            <CardTitle className="text-base md:text-lg font-semibold text-left">
               AI Coach
             </CardTitle>
 
@@ -139,7 +139,7 @@ export function AICoachCard({
           {/* Practice label (not a button) */}
           <div className="flex items-center gap-2 md:mr-auto">
             <CoachBadge />
-            <span className="bk-fire-text text-base md:text-lg font-semibold">
+            <span className="bk-fire-text text-base md:text-lg font-semibold whitespace-nowrap">
               Practice weak spots
             </span>
           </div>

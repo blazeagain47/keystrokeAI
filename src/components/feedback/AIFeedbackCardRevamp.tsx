@@ -198,13 +198,13 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
       initial={prefersReducedMotion ? undefined : { opacity: 0, y: 20 }}
       animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
       transition={{ duration: prefersReducedMotion ? 0 : 0.5, ease: "easeOut" }}
-      className={`relative bg-gradient-to-br from-orange-900/70 via-gray-900 to-purple-900/80 rounded-xl border border-orange-500/30 shadow-2xl shadow-orange-500/10 p-5 overflow-hidden ${className ?? ""}`}
+      className={`relative bg-gradient-to-br from-orange-900/70 via-gray-900 to-purple-900/80 rounded-xl border border-orange-500/30 shadow-2xl shadow-orange-500/10 p-5 pb-3 overflow-hidden self-start ${className ?? ""}`}
     >
       <div className="absolute inset-0 bg-gradient-to-br from-orange-400/5 via-transparent to-purple-400/5" aria-hidden />
 
       <div className="relative z-10">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold bg-gradient-to-r from-orange-300 to-amber-300 bg-clip-text text-transparent">AI Insights</h3>
+          <h3 className="text-lg font-bold bg-gradient-to-r from-orange-300 to-amber-300 bg-clip-text text-transparent text-left">AI Insights</h3>
           <button
             onClick={() => setViewMode(v => (v === "quick" ? "detailed" : "quick"))}
             className="text-xs text-orange-300/70 hover:text-orange-300 transition-colors flex items-center gap-1"

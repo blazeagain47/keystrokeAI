@@ -322,7 +322,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
 
         {/* Middle row: Insights left, Coach right */}
         <div className="col-span-12 lg:col-span-6">
-          <div className="h-full min-h-[360px] [&>*]:h-full cv-auto cv-300">
+          <div className="cv-auto cv-300">
             <AIFeedbackCardRevamp
               wpmTrend={wpmTrend}
               accuracyPct={accuracy}
@@ -337,7 +337,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             const coachStatus = useAICoach((s) => s.status);
             const coachDeltas = useAICoach((s) => s.lastDeltas);
             return (
-              <div className="h-full [&>*]:h-full">
+              <div>
                 <AICoachCard
                   onPractice={onPracticeWeakSpots ?? (() => {})}
                   onPracticeTimed={onPracticeWeakSpotsTimed}
