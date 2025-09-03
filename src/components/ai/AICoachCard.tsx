@@ -39,8 +39,8 @@ export function AICoachCard({
 
   return (
     <TooltipProvider>
-    <Card className="relative overflow-hidden">
-      <CardHeader className="pb-1 flex flex-row items-center justify-between">
+    <Card className="bk-fire-card relative overflow-hidden isolate rounded-2xl p-4 md:p-5 min-h-[260px] md:min-h-[280px]">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between">
         {/* Left: Brand + Title */}
         <div className="flex items-center gap-3">
           {/* Larger transparent mark with halo pulse */}

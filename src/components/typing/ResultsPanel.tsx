@@ -272,66 +272,86 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   return (
     <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6 bk-page-content results-scroll-root" aria-label="Results">
       <CmdHint onOpen={() => { try { (useCommandsStore.getState?.().openPanel?.()) } catch {} }} showWhen={true} corner="br" delayMs={900} />
-      {/* Reordered: Blaze stats above the chart; keep two-column layout for chart + AI Feedback */}
-      {/* Move Blaze stats summary above the two-column grid */}
-      {usedDifficulty && (
-        <div className="mb-2">
-          {/*
-            Build a normalized snapshot for the Blaze Stats card.
-            Maps include_punctuation/include_numbers -> punctuation/numbers
-          */}
-          {(() => {
-            const resolvedLastRunConfig = props.usedConfig
-              ? {
-                  mode: props.usedConfig.mode,
-                  wordCount: props.usedConfig.wordCount ?? null,
-                  durationSec: props.usedConfig.durationSec ?? null,
-                  language: props.usedConfig.language ?? 'english',
-                  // normalize flags for FireSummaryCard
-                  punctuation: !!props.usedConfig.include_punctuation,
-                  numbers: !!props.usedConfig.include_numbers,
-                }
-              : undefined;
+
+      <div className="grid grid-cols-12 gap-4 lg:gap-6 auto-rows-auto">
+        {/* Top banner: Blaze stats full width */}
+        {usedDifficulty && (
+          <div className="col-span-12">
+            {(() => {
+              const resolvedLastRunConfig = props.usedConfig
+                ? {
+                    mode: props.usedConfig.mode,
+                    wordCount: props.usedConfig.wordCount ?? null,
+                    durationSec: props.usedConfig.durationSec ?? null,
+                    language: props.usedConfig.language ?? 'english',
+                    punctuation: !!props.usedConfig.include_punctuation,
+                    numbers: !!props.usedConfig.include_numbers,
+                  }
+                : undefined;
+              return (
+                <FireSummaryCard
+                  difficulty={usedDifficulty}
+                  averageWPM={Math.round(Number(avgWpm ?? 0))}
+                  accuracy={Math.round(Number(avgAcc ?? 0))}
+                  knobs={nextKnobs ?? ["Punctuation off", "Numbers off"]}
+                  trend={trendPercentages}
+                  error={aiError}
+                  className={`${pulseGlow ? 'glow-boost' : ''} self-start`}
+                  lastRunConfig={resolvedLastRunConfig}
+                  headerSlot={null}
+                  prepend={
+                    <ResultsStatsBar
+                      wpm={Number(props.wpm ?? 0)}
+                      accuracy={Number(props.accuracy ?? 0)}
+                      durationSec={Number(props.time ?? 0)}
+                      consistency={Math.round(consistency)}
+                      coachWpm={Math.round(coachWpm)}
+                      difficultyLabel={undefined}
+                      showBadge={false}
+                      variant="compact"
+                      bare
+                      errorEvents={errorEvents}
+                      errorFallback={errorFallback}
+                    />
+                  }
+                />
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Middle row: Insights left, Coach right */}
+        <div className="col-span-12 lg:col-span-6">
+          <div className="h-full min-h-[360px] [&>*]:h-full cv-auto cv-300">
+            <AIFeedbackCardRevamp
+              wpmTrend={wpmTrend}
+              accuracyPct={accuracy}
+              completed={true}
+              runSnapshot={props.usedConfig ?? null}
+            />
+          </div>
+        </div>
+
+        <div className="col-span-12 lg:col-span-6">
+          {(onPracticeWeakSpots || onPracticeWeakSpotsTimed) && (() => {
+            const coachStatus = useAICoach((s) => s.status);
+            const coachDeltas = useAICoach((s) => s.lastDeltas);
             return (
-              <FireSummaryCard
-                difficulty={usedDifficulty}
-                averageWPM={Math.round(Number(avgWpm ?? 0))}
-                accuracy={Math.round(Number(avgAcc ?? 0))}
-                knobs={nextKnobs ?? ["Punctuation off", "Numbers off"]}
-                trend={trendPercentages}
-                error={aiError}
-                className={`mt-0 ${pulseGlow ? 'glow-boost' : ''}`}
-                lastRunConfig={resolvedLastRunConfig}
-              />
+              <div className="h-full [&>*]:h-full">
+                <AICoachCard
+                  onPractice={onPracticeWeakSpots ?? (() => {})}
+                  onPracticeTimed={onPracticeWeakSpotsTimed}
+                  state={coachStatus}
+                  deltas={coachDeltas}
+                />
+              </div>
             );
           })()}
         </div>
-      )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* LEFT: Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-          className="min-h-[340px] cv-auto cv-480"
-        >
-          {/* RESULTS STATS BAR (sits above the chart) */}
-          <div className="mb-4 md:mb-5">
-            <ResultsStatsBar
-              wpm={Number(props.wpm ?? 0)}
-              accuracy={Number(props.accuracy ?? 0)}
-              durationSec={Number(props.time ?? 0)}
-              consistency={Math.round(consistency)}
-              coachWpm={Math.round(coachWpm)}
-              difficultyLabel={props.usedDifficulty ? props.usedDifficulty : undefined}
-              errorEvents={errorEvents}
-              errorFallback={errorFallback}
-            />
-          </div>
-
-          <Card className="bk-fire-card relative overflow-hidden isolate rounded-2xl">
-            {/* soft inner glow; no rotating border */}
+        {/* Bottom: Trend full-width */}
+        <div className="col-span-12 cv-auto cv-480">
+          <Card className="bk-fire-card relative overflow-hidden isolate rounded-2xl h-full min-h-[360px]">
             <div aria-hidden className="bk-card-vignette pointer-events-none absolute inset-0" />
             <CardHeader className="pb-2 relative z-10">
               <div className="bk-chart-title mb-2">
@@ -339,7 +359,6 @@ export default function ResultsPanel(props: ResultsPanelProps) {
               </div>
             </CardHeader>
             <CardContent className="pt-2 relative z-10">
-              {/* left pad so the plot area aligns with the title start */}
               <div className="h-[260px] md:h-[300px] pl-6 pr-2">
                 <ResultsChart
                   chartData={chartData}
@@ -351,41 +370,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
               </div>
             </CardContent>
           </Card>
-        </motion.div>
-
-        {/* RIGHT: Insights */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: "easeOut", delay: 0.05 }}
-          className="flex flex-col gap-6 cv-auto cv-300"
-        >
-          {/* AI Coach (weak spots) */}
-          {(() => {
-            const coachStatus = useAICoach((s) => s.status);
-            const coachDeltas = useAICoach((s) => s.lastDeltas);
-            return (
-              (onPracticeWeakSpots || onPracticeWeakSpotsTimed) && (
-                <AICoachCard
-                  onPractice={onPracticeWeakSpots ?? (() => {})}
-                  onPracticeTimed={onPracticeWeakSpotsTimed}
-                  state={coachStatus}
-                  deltas={coachDeltas}
-                />
-              )
-            );
-          })()}
-
-          {/* Revamped AI feedback card */}
-          <AIFeedbackCardRevamp
-            wpmTrend={wpmTrend}
-            accuracyPct={accuracy}
-            completed={true}
-            runSnapshot={props.usedConfig ?? null}
-          />
-
-          {/* This test card (duplicate at bottom) — removed per design */}
-        </motion.div>
+        </div>
       </div>
 
       {/* Right-side commands (visible only on results screen) */}

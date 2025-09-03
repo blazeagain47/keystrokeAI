@@ -3,6 +3,8 @@ import React, { useEffect } from "react";
 import { useCommandsStore } from "@/stores/commands";
 
 export default function CommandHintsFloating({ context }: { context: "typing"|"results"|"account"|"home"|string }) {
+  // Do not render the commands bar in the live typing view
+  if (context === "typing") return null;
   const { open, docked, activeGroup, groups, openPanel, closePanel, toggleDocked } = useCommandsStore();
   const actions = React.useMemo(() => (activeGroup ? (groups[activeGroup] ?? []) : []), [activeGroup, groups]);
 

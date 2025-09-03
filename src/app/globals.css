@@ -600,6 +600,11 @@ html[data-focus="1"] .bk-flame-bg::after  { animation: none !important; opacity:
     @apply rounded-xl border border-white/10 bg-white/5 px-4 py-3 relative overflow-hidden isolate;
   }
 
+  /* subtle tile ring used inside fire cards */
+  .bk-inner-tile {
+    @apply rounded-xl bg-white/5 ring-1 ring-white/10 hover:ring-white/20 transition;
+  }
+
   /* Prevent metric pairs from wrapping */
   .bk-nowrap { white-space: nowrap; }
   /* Safety utility to disable pointer events */
@@ -1493,4 +1498,35 @@ body.bk-lock {
   overscroll-behavior: none;
   height: 100%;
   touch-action: none;
+}
+
+/* --- Blaze stats tagline effects --- */
+@keyframes bkGlowPulse {
+  0%, 100% { text-shadow: 0 0 0px rgba(255,186,120,0.0), 0 0 0px rgba(255,110,64,0.0); }
+  50%      { text-shadow: 0 0 8px rgba(255,186,120,0.25), 0 0 16px rgba(255,110,64,0.2); }
+}
+
+@keyframes bkShine {
+  0%   { transform: translateX(-120%); opacity: 0; }
+  20%  { opacity: 0.25; }
+  50%  { opacity: 0.35; }
+  100% { transform: translateX(120%); opacity: 0; }
+}
+
+.bk-tagline {
+  background-image: linear-gradient(90deg, #ffd8b3 0%, #ffae73 30%, #ff8a4a 60%, #ffd8b3 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;            /* gradient text */
+  animation: bkGlowPulse 4.5s ease-in-out infinite;
+}
+
+.bk-tagline-shine {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+  filter: blur(2px);
+  animation: bkShine 3.5s linear infinite;
 }

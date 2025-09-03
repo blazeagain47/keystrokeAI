@@ -1223,36 +1223,7 @@ const TypingTest: React.FC = () => {
       {/* Results render via view switch above */}
 
       {/* Bottom Helper Bar - Only show during active typing */}
-      {view === 'typing' && (
-      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-30 animate-in slide-in-from-bottom duration-700 hide-on-test" aria-hidden={view === 'typing' && !isTestComplete && time > 0}>
-        <div className="bg-gray-800/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl px-8 py-4 shadow-2xl">
-          <div className="flex items-center gap-8 text-sm">
-            <div className="flex items-center gap-3 text-gray-400">
-              <div className="flex items-center gap-1">
-                <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Tab</kbd>
-                <span className="text-gray-500">+</span>
-                <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Enter</kbd>
-              </div>
-              <span className="font-medium">restart test</span>
-            </div>
-            
-            <div className="w-px h-6 bg-gray-600/50"></div>
-            
-            <div className="flex items-center gap-3 text-gray-400">
-              <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Space</kbd>
-              <span className="font-medium">next word</span>
-            </div>
-            
-            <div className="w-px h-6 bg-gray-600/50"></div>
-            
-            <div className="flex items-center gap-3 text-gray-400">
-              <kbd className="px-3 py-1 bg-gray-700/60 border border-gray-600/50 rounded-lg text-xs font-mono text-gray-300">Backspace</kbd>
-              <span className="font-medium">go back</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      )}
+      {/* Bottom commands/hotkeys bar removed for typing view per spec */}
 
       {/* Old bottom-corner hint removed in favor of ReadyToTypeHint under controls */}
       <LatencyHUD />

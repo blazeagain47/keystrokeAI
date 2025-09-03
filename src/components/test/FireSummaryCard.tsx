@@ -27,6 +27,10 @@ type Props = {
     include_punctuation?: boolean | null;
     include_numbers?: boolean | null;
   };
+  /** Optional area rendered at the very top of the card */
+  headerSlot?: React.ReactNode;
+  /** Optional content rendered before the Blaze stats pill */
+  prepend?: React.ReactNode;
 };
 
 export default function FireSummaryCard({
@@ -38,6 +42,8 @@ export default function FireSummaryCard({
   error,
   className,
   lastRunConfig,
+  headerSlot,
+  prepend,
 }: Props) {
   const prettyDifficulty = difficulty ? difficulty[0].toUpperCase() + difficulty.slice(1).toLowerCase() : "Easy";
 
@@ -60,7 +66,14 @@ export default function FireSummaryCard({
   const subtitle = sampleCount > 0 ? "Your recent average" : "No recent runs";
 
   return (
-    <section className={`relative bk-fire-card bk-card-sheen p-4 sm:p-5 ${pulse ? "bk-pulse" : ""} ${className ?? ""}`}>
+    <section
+      className={`
+        relative bk-fire-card bk-card-sheen
+        /* tighter vertical padding so the card ends right below the tiles */
+        px-4 sm:px-5 pt-3 sm:pt-3 pb-2 sm:pb-3
+        ${pulse ? "bk-pulse" : ""} ${className ?? ""}
+      `}
+    >
       <EmberField count={12} />
       <div aria-hidden className="bk-card-embers">
         {Array.from({ length: 6 }).map((_, i) => (
@@ -75,45 +88,35 @@ export default function FireSummaryCard({
           />
         ))}
       </div>
-      <div className="relative z-10 space-y-4">
-        {/* Blaze stats header pill */}
-        <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white/80 ring-1 ring-white/10">
-          <span className="inline-flex items-center gap-1 font-semibold tracking-wide">
-            <svg width="14" height="14" viewBox="0 0 24 24" className="opacity-90">
-              <defs>
-                <linearGradient id="bkBolt" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stopColor="#FF3D00" />
-                  <stop offset="0.6" stopColor="#FF6A00" />
-                  <stop offset="1" stopColor="#FFD36E" />
-                </linearGradient>
-              </defs>
-              <path d="M13.5 2 5 13.2h5.6L10 22l9-12.4h-5.5L13.5 2z" fill="url(#bkBolt)" />
-            </svg>
-            Blaze stats
-          </span>
-          {(() => {
-            const badge = "AI adapts the next typing prompt to your skill.";
-            return (
-              <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/5 border border-white/10">
-                <span className="sr-only">{badge}</span>
-                <span aria-hidden className="bk-wave-words">
-                  {badge.trim().split(/\s+/).map((word, wi) => (
-                    <span key={wi} className="bk-wave-fire">
-                      {word.split("").map((ch, ci) => (
-                        <span key={ci} style={{ ["--i" as any]: wi * 8 + ci } as React.CSSProperties}>{ch}</span>
-                      ))}
-                    </span>
-                  ))}
-                </span>
-              </span>
-            );
-          })()}
+      <div className="relative z-10 space-y-3 md:space-y-3">
+        {/* Header: modernized Blaze stats + animated tagline */}
+        <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/5 ring-1 ring-white/10 px-3.5 py-1.5 md:px-4 md:py-2">
+            <span className="text-orange-400">
+              <svg viewBox="0 0 24 24" className="size-4 md:size-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z" />
+              </svg>
+            </span>
+            <span className="text-[15px] md:text-[17px] font-semibold tracking-wide">Blaze stats</span>
+          </div>
+
+          {/* Tagline with animated glow/shine */}
+          <div className="relative overflow-hidden">
+            <span className="bk-tagline block text-xs md:text-sm font-medium text-white/80">
+              AI adapts the next typing prompt to your skill.
+            </span>
+            <span className="bk-tagline-shine" aria-hidden />
+          </div>
         </div>
+        {/* Then the compact metrics chips row (if provided) */}
+        {prepend ? <div className="-mt-0.5">{prepend}</div> : null}
+        {/* Optional extra header slot (unused by default) */}
+        {headerSlot ? <div className="-mt-1">{headerSlot}</div> : null}
 
         {/* Metrics row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-0">
           {/* Difficulty */}
-          <div className="bk-tile">
+          <div className="bk-inner-tile p-3 md:p-4" data-tone="amber">
             <div className="text-[10px] uppercase tracking-wide text-white/50 mb-1">
               Difficulty chosen
             </div>
@@ -126,7 +129,7 @@ export default function FireSummaryCard({
           </div>
 
           {/* Average */}
-          <div className="bk-tile pr-14 overflow-visible">
+          <div className="bk-inner-tile p-3 md:p-4 pr-14 overflow-visible" data-tone="orange">
             <div className="text-[10px] uppercase tracking-wide text-white/50 mb-1">
               {subtitle}
             </div>
@@ -147,7 +150,7 @@ export default function FireSummaryCard({
           </div>
 
           {/* This test */}
-          <div className="bk-tile">
+          <div className="bk-inner-tile p-3 md:p-4">
             <div className="text-[10px] uppercase tracking-wide text-white/50 mb-1">
               This test
             </div>
