@@ -323,7 +323,18 @@ export default function ResultsPanel(props: ResultsPanelProps) {
           </div>
         )}
 
-        {/* Middle row: Coach left, Insights right */}
+        {/* Middle row: Insights left, Coach right */}
+        <div className="col-span-12 lg:col-span-6">
+          <div className="cv-auto cv-300">
+            <AIFeedbackCardRevamp
+              wpmTrend={wpmTrend}
+              accuracyPct={accuracy}
+              completed={true}
+              runSnapshot={props.usedConfig ?? null}
+            />
+          </div>
+        </div>
+
         <div className="col-span-12 lg:col-span-6">
           {(onPracticeWeakSpots || onPracticeWeakSpotsTimed) && (() => {
             const coachStatus = useAICoach((s) => s.status);
@@ -339,17 +350,6 @@ export default function ResultsPanel(props: ResultsPanelProps) {
               </div>
             );
           })()}
-        </div>
-
-        <div className="col-span-12 lg:col-span-6">
-          <div className="cv-auto cv-300">
-            <AIFeedbackCardRevamp
-              wpmTrend={wpmTrend}
-              accuracyPct={accuracy}
-              completed={true}
-              runSnapshot={props.usedConfig ?? null}
-            />
-          </div>
         </div>
 
         {/* Bottom: Trend full-width */}
