@@ -20,9 +20,14 @@ type Props = {
 };
 
 type VariantProps = {
+  /** layout density for paddings/gaps */
   variant?: 'default'|'compact';
+  /** visual scale for icons/numbers */
+  size?: 'md'|'lg';
   bare?: boolean;
   showBadge?: boolean;
+  /** make every pill share equal width in the row */
+  equalWidth?: boolean;
 };
 
 export default function ResultsStatsBar({
@@ -37,8 +42,10 @@ export default function ResultsStatsBar({
   errorFallback,
   className,
   variant = 'default',
+  size = 'md',
   bare = false,
   showBadge = true,
+  equalWidth = false,
 }: Props & VariantProps) {
   const items: Array<{
     icon: React.ReactNode;
@@ -46,15 +53,15 @@ export default function ResultsStatsBar({
     value: string;
     sub?: string;
   }> = [
-    { icon: <Zap className="size-4" />, label: "WPM", value: Math.round(wpm).toString() },
-    { icon: <Target className="size-4" />, label: "Accuracy", value: `${Math.round(accuracy)}%` },
-    { icon: <Clock3 className="size-4" />, label: "Time", value: `${Math.round(durationSec)}s` },
+    { icon: <Zap className={size === 'lg' ? "size-5 md:size-6" : "size-4 md:size-5"} />, label: "WPM", value: Math.round(wpm).toString() },
+    { icon: <Target className={size === 'lg' ? "size-5 md:size-6" : "size-4 md:size-5"} />, label: "Accuracy", value: `${Math.round(accuracy)}%` },
+    { icon: <Clock3 className={size === 'lg' ? "size-5 md:size-6" : "size-4 md:size-5"} />, label: "Time", value: `${Math.round(durationSec)}s` },
   ];
 
   // Show Consistency before Coach WPM
   if (consistency != null) {
     items.push({
-      icon: <Activity className="size-4" />,
+      icon: <Activity className={size === 'lg' ? "size-5 md:size-6" : "size-4 md:size-5"} />,
       label: "Consistency",
       value: `${Math.round(consistency)}%`,
     });
@@ -62,7 +69,7 @@ export default function ResultsStatsBar({
 
   if (coachWpm != null && coachWpm !== wpm) {
     items.push({
-      icon: <Flame className="size-4" />,
+      icon: <Flame className={size === 'lg' ? "size-5 md:size-6" : "size-4 md:size-5"} />,
       label: "Coach WPM (EMA)",
       value: Math.round(coachWpm).toString(),
       sub: "EMA smoothed speed. Official WPM remains unchanged.",
@@ -84,11 +91,33 @@ export default function ResultsStatsBar({
       ? difficultyLabel.slice(0, 1).toUpperCase() + difficultyLabel.slice(1)
       : difficultyLabel;
 
-  const pad = variant === 'compact' ? "px-3 py-1.5 md:px-4 md:py-2" : "p-0";
+  const isLg = size === 'lg';
+  // For bare/embedded use we don't want extra horizontal inset;
+  // rely on the parent section's px. Keep vertical rhythm only.
+  const pad = variant === 'compact'
+    ? (isLg ? "py-2 md:py-2.5" : "py-1.5 md:py-2")
+    : "p-0";
   const pillBase = variant === 'compact'
-    ? "rounded-xl bg-white/5 border border-white/10 px-2.5 py-1.5 hover:border-white/20"
-    : "rounded-xl bg-white/5 border border-white/10 px-3.5 py-2.5 hover:border-white/20";
-  const gapCls = variant === 'compact' ? "gap-2 md:gap-3" : "gap-3 md:gap-4";
+    ? (isLg
+        ? "rounded-xl bg-white/5 border border-white/10 px-3.5 py-2.5 hover:border-white/20"
+        : "rounded-xl bg-white/5 border border-white/10 px-2.5 py-1.5 hover:border-white/20")
+    : (isLg
+        ? "rounded-xl bg-white/5 border border-white/10 px-4 py-3 hover:border-white/20"
+        : "rounded-xl bg-white/5 border border-white/10 px-3.5 py-2.5 hover:border-white/20");
+  const gapCls = variant === 'compact'
+    ? (isLg ? "gap-3 md:gap-4" : "gap-2 md:gap-3")
+    : (isLg ? "gap-4 md:gap-5" : "gap-3 md:gap-4");
+
+  // type scales
+  const labelCls = isLg ? "text-[11px] md:text-xs uppercase tracking-wider text-white/60" : "text-[10px] uppercase tracking-wider text-white/60";
+  // ↓ further reduce value sizes when size='lg' (labels/icons unchanged)
+  const valuePrimary   = isLg ? "text-lg sm:text-xl" : "text-xl sm:text-2xl";
+  const valueSecondary = isLg ? "text-sm sm:text-base" : "text-lg sm:text-xl";
+  const iconBox = isLg ? "h-8 w-8" : "h-7 w-7";
+  // Equal-width chip class: grow to fill each row evenly with a sensible minimum
+  const eqCls = equalWidth
+    ? (isLg ? "flex-1 min-w-[11.5rem]" : "flex-1 min-w-[10rem]")
+    : "";
 
   if (bare) {
     return (
@@ -110,18 +139,27 @@ export default function ResultsStatsBar({
           </div>
         )}
 
-        <div className={cn("flex flex-wrap items-center", gapCls)}>
+        <div className={cn("flex flex-wrap items-center self-start", gapCls)}>
           {items.map((it, i) => (
-            <div key={i} className={cn("group flex items-center gap-2", pillBase)}>
+            <div key={i} className={cn("group flex items-center gap-2", pillBase, eqCls)}>
               <span
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10 group-hover:ring-white/20"
+                className={cn("inline-flex shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10 group-hover:ring-white/20", iconBox)}
                 aria-hidden
               >
                 <span className="text-white/80">{it.icon}</span>
               </span>
               <div className="leading-tight">
-                <div className="text-[10px] uppercase tracking-wider text-white/60">{it.label}</div>
-                <div className="text-lg sm:text-xl font-semibold bk-fire-text">{it.value}</div>
+                <div className={labelCls}>{it.label}</div>
+                {(() => {
+                  // Primary = all key KPIs (WPM, Accuracy, Time, Consistency)
+                  // Secondary = Coach WPM (EMA), Keystrokes, etc.
+                  const isPrimary = !/^(Coach WPM|Keystrokes)/i.test(it.label);
+                  return (
+                    <div className={cn(isPrimary ? valuePrimary : valueSecondary, "font-semibold bk-fire-text")}>
+                      {it.value}
+                    </div>
+                  );
+                })()}
                 {it.sub && <div className="text-[11px] text-white/60">{it.sub}</div>}
                 {it.label === "Accuracy" && (() => {
                   const toks = computeTopErrorTokens(errorEvents as any, errorFallback as any, 3);
@@ -167,15 +205,22 @@ export default function ResultsStatsBar({
           </div>
         )}
 
-        <div className={cn("flex flex-wrap items-stretch", gapCls)}>
+        <div className={cn("flex flex-wrap items-stretch self-start", gapCls)}>
           {items.map((it, i) => (
-            <div key={i} className={cn("group flex items-center gap-3", pillBase)}>
-              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10 group-hover:ring-white/20" aria-hidden>
+            <div key={i} className={cn("group flex items-center gap-3", pillBase, eqCls)}>
+              <span className={cn("inline-flex shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10 group-hover:ring-white/20", iconBox)} aria-hidden>
                 <span className="text-white/80">{it.icon}</span>
               </span>
               <div className="leading-tight">
-                <div className="text-[10px] uppercase tracking-wider text-white/60">{it.label}</div>
-                <div className="text-lg sm:text-xl font-semibold bk-fire-text">{it.value}</div>
+                <div className={labelCls}>{it.label}</div>
+                {(() => {
+                  const isPrimary = !/^(Coach WPM|Keystrokes)/i.test(it.label);
+                  return (
+                    <div className={cn(isPrimary ? valuePrimary : valueSecondary, "font-semibold bk-fire-text")}>
+                      {it.value}
+                    </div>
+                  );
+                })()}
                 {it.sub && <div className="text-[11px] text-white/60">{it.sub}</div>}
                 {it.label === "Accuracy" && (() => {
                   const toks = computeTopErrorTokens(errorEvents as any, errorFallback as any, 3);

@@ -31,6 +31,8 @@ type Props = {
   headerSlot?: React.ReactNode;
   /** Optional content rendered before the Blaze stats pill */
   prepend?: React.ReactNode;
+  /** Size for the second row (“Difficulty chosen”, “Your recent average”, “This test”) */
+  secondarySize?: "sm" | "md";
 };
 
 export default function FireSummaryCard({
@@ -44,7 +46,15 @@ export default function FireSummaryCard({
   lastRunConfig,
   headerSlot,
   prepend,
+  secondarySize = "md",
 }: Props) {
+  const secSm = secondarySize === "sm";
+  // Smaller overall presence in "sm"
+  const diffText = secSm ? "text-lg font-semibold text-white" : "text-2xl font-semibold text-white";
+  const avgNum    = secSm ? "text-lg sm:text-xl font-semibold text-fire leading-none"
+                          : "text-2xl sm:text-3xl font-semibold text-fire leading-none";
+  const avgLabel  = secSm ? "text-[10px] sm:text-[11px] text-white/60 leading-none tracking-tight"
+                          : "text-xs sm:text-sm text-white/60 leading-none tracking-tight";
   const prettyDifficulty = difficulty ? difficulty[0].toUpperCase() + difficulty.slice(1).toLowerCase() : "Easy";
 
   // one-shot pulse when key values change
@@ -114,48 +124,49 @@ export default function FireSummaryCard({
         {headerSlot ? <div className="-mt-1">{headerSlot}</div> : null}
 
         {/* Metrics row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-0">
+        <div className={secSm ? "grid grid-cols-1 sm:grid-cols-3 gap-3 mb-0" : "grid grid-cols-1 sm:grid-cols-3 gap-4 mb-0"}>
           {/* Difficulty */}
-          <div className="bk-inner-tile p-3 md:p-4" data-tone="amber">
+          <div className={secSm ? "bk-inner-tile p-2.5 md:p-3" : "bk-inner-tile p-3 md:p-4"} data-tone="amber">
             <div className="text-[10px] uppercase tracking-wide text-white/50 mb-1">
               Difficulty chosen
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-2xl font-semibold text-white">{prettyDifficulty}</span>
-              <div className="hidden sm:block shrink-0 w-24 h-10">
+              <span className={diffText}>{prettyDifficulty}</span>
+              <div className={secSm ? "hidden sm:block shrink-0 w-20 h-8" : "hidden sm:block shrink-0 w-24 h-10"}>
                 <FireSparkline points={trend} className="w-full h-full pointer-events-none" />
               </div>
             </div>
           </div>
 
           {/* Average */}
-          <div className="bk-inner-tile p-3 md:p-4 pr-14 overflow-visible" data-tone="orange">
+          <div className={secSm ? "bk-inner-tile p-2.5 md:p-3 pr-8 overflow-visible" : "bk-inner-tile p-3 md:p-4 pr-14 overflow-visible"} data-tone="orange">
             <div className="text-[10px] uppercase tracking-wide text-white/50 mb-1">
               {subtitle}
             </div>
             <div className="flex items-baseline flex-wrap justify-start gap-x-6 sm:gap-x-8 gap-y-1 sm:gap-y-0 bk-gap-compact">
               <span className="flex items-baseline gap-2 whitespace-nowrap shrink-0">
-                <span className="text-2xl sm:text-3xl font-semibold text-fire leading-none">
+                <span className={avgNum}>
                   {recentWpmDisplay === "—" ? "—" : <CountUp value={Number(recentWpmDisplay)} />}
                 </span>
-                <span className="text-xs sm:text-sm text-white/60 leading-none tracking-tight">WPM</span>
+                <span className={avgLabel}>WPM</span>
               </span>
               <span className="flex items-baseline gap-1 flex-wrap shrink-0 -mt-0.5 sm:mt-0">
-                <span className="text-2xl sm:text-3xl font-semibold text-fire leading-none tracking-tight whitespace-nowrap">
+                <span className={`${avgNum} tracking-tight whitespace-nowrap`}>
                   {recentAccDisplay === "—" ? "—" : <><CountUp value={Number(recentAccDisplay)} /><span className="align-baseline text-[0.9em] ml-0">%</span></>}
                 </span>
-                <span className="text-xs sm:text-sm text-white/60 leading-none ml-1">Accuracy</span>
+                <span className={`${avgLabel} ml-1`}>Accuracy</span>
               </span>
             </div>
           </div>
 
           {/* This test */}
-          <div className="bk-inner-tile p-3 md:p-4">
+          <div className={secSm ? "bk-inner-tile p-2.5 md:p-3" : "bk-inner-tile p-3 md:p-4"}>
             <div className="text-[10px] uppercase tracking-wide text-white/50 mb-1">
               This test
             </div>
             <SelectedTestChips
               dense
+              size={secSm ? "sm" : "md"}
               mode={lastRunConfig?.mode ?? "words"}
               wordCount={lastRunConfig?.wordCount ?? null}
               durationSec={lastRunConfig?.durationSec ?? null}

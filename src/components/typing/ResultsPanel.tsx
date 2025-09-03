@@ -299,6 +299,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                   className={`${pulseGlow ? 'glow-boost' : ''} self-start`}
                   lastRunConfig={resolvedLastRunConfig}
                   headerSlot={null}
+                  secondarySize="sm"
                   prepend={
                     <ResultsStatsBar
                       wpm={Number(props.wpm ?? 0)}
@@ -309,6 +310,8 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                       difficultyLabel={undefined}
                       showBadge={false}
                       variant="compact"
+                      size="lg"
+                      equalWidth
                       bare
                       errorEvents={errorEvents}
                       errorFallback={errorFallback}
