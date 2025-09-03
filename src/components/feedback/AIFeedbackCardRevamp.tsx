@@ -30,6 +30,9 @@ import {
   Sigma,
 } from "lucide-react";
 
+import FireProgress from "@/components/ui/FireProgress";
+import clsx from "clsx";
+
 type Props = {
   wpmTrend: number[];
   accuracyPct: number;
@@ -198,16 +201,21 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
       initial={prefersReducedMotion ? undefined : { opacity: 0, y: 20 }}
       animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
       transition={{ duration: prefersReducedMotion ? 0 : 0.5, ease: "easeOut" }}
-      className={`relative bg-gradient-to-br from-orange-900/70 via-gray-900 to-purple-900/80 rounded-xl border border-orange-500/30 shadow-2xl shadow-orange-500/10 p-5 pb-3 overflow-hidden self-start ${className ?? ""}`}
+      className={clsx(
+        "relative bk-fire-card bk-card-sheen rounded-xl p-5 pb-4 overflow-hidden self-start",
+        "ring-1 ring-white/10 hover:ring-white/20 transition",
+        className
+      )}
     >
-      <div className="absolute inset-0 bg-gradient-to-br from-orange-400/5 via-transparent to-purple-400/5" aria-hidden />
+      {/* optional embers layer available via .bk-card-embers if desired */}
 
       <div className="relative z-10">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold bg-gradient-to-r from-orange-300 to-amber-300 bg-clip-text text-transparent text-left">AI Insights</h3>
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="text-lg font-semibold text-white text-left">AI Insights</h3>
           <button
             onClick={() => setViewMode(v => (v === "quick" ? "detailed" : "quick"))}
-            className="text-xs text-orange-300/70 hover:text-orange-300 transition-colors flex items-center gap-1"
+            aria-expanded={viewMode !== "quick"}
+            className="text-xs inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-white/80 hover:border-white/20 transition"
           >
             {viewMode === "quick" ? "Show details" : "Show summary"}
             <ChevronRight className="w-3 h-3" />
@@ -223,7 +231,7 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
               exit={prefersReducedMotion ? undefined : { opacity: 0, y: -8 }}
             >
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-xs text-amber-200/80">
+                <div className="flex items-center gap-2 text-xs text-white/70">
                   {totalsReady ? (
                     <>
                       <span>Good {timeOfDay}!</span>
@@ -233,25 +241,38 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
                     <span className="w-40 h-3 bg-white/10 rounded animate-pulse" />
                   )}
                 </div>
-                <p className="text-sm text-white/90 leading-relaxed">{feedbackMessage}</p>
-                <div className="flex gap-3 justify-between">
-                  <div className="flex items-center gap-1 text-xs"><Target className="w-3 h-3 text-green-400" /><span className="text-white/80">{Math.round(accuracyPct)}%</span></div>
-                  <div className="flex items-center gap-1 text-xs"><Gauge className="w-3 h-3 text-blue-400" /><span className="text-white/80">{Math.round(currentWpm)} WPM</span></div>
-                  <div className="flex items-center gap-1 text-xs"><TrendingUp className="w-3 h-3 text-purple-400" /><span className={deltaWpm && deltaWpm > 0 ? "text-green-400" : "text-rose-400"}>{deltaWpm!=null ? `${deltaWpm>0?"+":""}${Math.round(deltaWpm)}` : "--"}</span></div>
+                <p className="text-sm text-white/90 leading-relaxed whitespace-pre-line tabular-nums">{feedbackMessage}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="bk-segment text-xs">
+                    <Target className="w-3 h-3 opacity-80" />
+                    <span className="tabular-nums">{Math.round(accuracyPct)}%</span>
+                  </span>
+                  <span className="bk-segment text-xs">
+                    <Gauge className="w-3 h-3 opacity-80" />
+                    <span className="tabular-nums">{Math.round(currentWpm)} WPM</span>
+                  </span>
+                  <span className="bk-segment text-xs">
+                    <TrendingUp className="w-3 h-3 opacity-80" />
+                    <span className={deltaWpm && deltaWpm > 0 ? "text-green-400 tabular-nums" : "text-rose-400 tabular-nums"}>
+                      {deltaWpm!=null ? `${deltaWpm>0?"+":""}${Math.round(deltaWpm)}` : "--"}
+                    </span>
+                  </span>
                 </div>
                 <div className="pt-2">
                   {totalsReady ? (
                     <>
-                      <div className="flex justify-between text-xs text-amber-200/70 mb-1">
+                      <div className="flex justify-between text-xs text-white/60 mb-1">
                         <span>Next rank</span>
-                        <span>{totalXp} / {rank.nextAt}</span>
+                        <span className="tabular-nums">{totalXp} / {rank.nextAt}</span>
                       </div>
-                      <div className="w-full bg-gray-800 rounded-full h-1.5">
+                      <div className="relative">
+                        <FireProgress height={6} className="opacity-70" />
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ width: `${Math.min(100, Math.round((totalXp / Math.max(1, rank.nextAt)) * 100))}%` }}
                           transition={{ duration: prefersReducedMotion ? 0 : 0.8, ease: "easeOut" }}
-                          className="h-1.5 rounded-full bg-gradient-to-r from-amber-400 to-orange-500"
+                          className="absolute inset-y-0 left-0 bg-gradient-to-r from-amber-400 to-orange-500 rounded-full"
+                          style={{ height: 6 }}
                         />
                       </div>
                     </>
@@ -304,10 +325,10 @@ function DetailedView({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <MetricCard title="WPM" value={Math.round(currentWpm)} delta={deltaWpm} icon={<Gauge className="w-4 h-4" />} />
-        <MetricCard title="Accuracy" value={Math.round(accuracyPct)} suffix="%" icon={<Target className="w-4 h-4" />} />
-        <MetricCard title="Consistency" value={Math.round(consistency)} suffix="%" icon={<Sigma className="w-4 h-4" />} />
-        <MetricCard title="Peak" value={Math.round(peakWpm)} icon={<ArrowUp className="w-4 h-4" />} />
+        <div className="bk-inner-tile p-3"><MetricCard title="WPM" value={Math.round(currentWpm)} delta={deltaWpm} icon={<Gauge className="w-4 h-4" />} /></div>
+        <div className="bk-inner-tile p-3"><MetricCard title="Accuracy" value={Math.round(accuracyPct)} suffix="%" icon={<Target className="w-4 h-4" />} /></div>
+        <div className="bk-inner-tile p-3"><MetricCard title="Consistency" value={Math.round(consistency)} suffix="%" icon={<Sigma className="w-4 h-4" />} /></div>
+        <div className="bk-inner-tile p-3"><MetricCard title="Peak" value={Math.round(peakWpm)} icon={<ArrowUp className="w-4 h-4" />} /></div>
       </div>
 
       <ExpandableSection
@@ -315,9 +336,10 @@ function DetailedView({
         isExpanded={expanded === "rhythm"}
         onToggle={() => setExpanded(expanded === "rhythm" ? null : "rhythm")}
       >
-        <div className="text-xs text-white/80 space-y-2">
+        <div className="bk-inner-tile p-3 text-xs text-white/80 space-y-2">
           <p>Your typing rhythm was {consistency > 80 ? "consistent" : "variable"} throughout.</p>
-          <div className="h-12">
+          <div className="h-12 relative">
+            <div className="absolute inset-x-0 bottom-0 h-6 bk-chart-halo rounded-full pointer-events-none" />
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={wpmTrend.map((wpm, i) => ({ second: i + 1, wpm }))}>
                 <Area type="monotone" dataKey="wpm" stroke="#f97316" fill="url(#colorWpm)" />
@@ -337,14 +359,14 @@ function DetailedView({
         initial={prefersReducedMotion ? undefined : { opacity: 0, y: 10 }}
         animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
         transition={{ duration: prefersReducedMotion ? 0 : 0.3 }}
-        className="p-3 bg-gradient-to-r from-orange-900/40 to-purple-900/40 rounded-lg border border-orange-500/20"
+        className="bk-inner-tile p-3"
       >
         <h4 className="text-sm font-medium text-amber-300 mb-2 flex items-center gap-2">
           <Zap className="w-4 h-4" />
           Next challenge
         </h4>
         <p className="text-xs text-white/90 mb-2">Aim for a steady cadence and fewer corrections next run.</p>
-        <button className="text-xs bg-gradient-to-r from-amber-500 to-orange-600 text-white px-3 py-1.5 rounded-md hover:shadow-lg transition-all">
+        <button className="text-xs bk-segment px-3 py-1.5 hover:ring-white/20 transition-all">
           +40 XP
         </button>
       </motion.div>
