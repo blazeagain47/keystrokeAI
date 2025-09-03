@@ -202,7 +202,7 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
       animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
       transition={{ duration: prefersReducedMotion ? 0 : 0.5, ease: "easeOut" }}
       className={clsx(
-        "relative bk-fire-card bk-card-sheen rounded-xl p-5 pb-4 overflow-hidden self-start",
+        "relative bk-fire-card bk-card-sheen rounded-xl p-5 pb-4 overflow-hidden self-stretch h-full flex flex-col",
         "ring-1 ring-white/10 hover:ring-white/20 transition",
         className
       )}

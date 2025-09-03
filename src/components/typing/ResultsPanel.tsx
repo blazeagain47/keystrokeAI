@@ -13,7 +13,6 @@ const AIFeedbackCardRevamp = dynamic(() => import("@/components/feedback/AIFeedb
 });
 import FireSummaryCard from "@/components/test/FireSummaryCard";
 import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
-import CmdHint from "@/components/ui/CmdHint";
 import { useCommandsStore, type CommandAction } from "@/stores/commands";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { useAuth } from "@/hooks/useAuth";
@@ -271,7 +270,6 @@ export default function ResultsPanel(props: ResultsPanelProps) {
 
   return (
     <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6 bk-page-content results-scroll-root" aria-label="Results">
-      <CmdHint onOpen={() => { try { (useCommandsStore.getState?.().openPanel?.()) } catch {} }} showWhen={true} corner="br" delayMs={900} />
 
       <div className="grid grid-cols-12 gap-4 lg:gap-6 auto-rows-auto">
         {/* Top banner: Blaze stats full width */}

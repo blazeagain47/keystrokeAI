@@ -39,14 +39,14 @@ export function AICoachCard({
 
   return (
     <TooltipProvider>
-    <Card className="bk-fire-card relative overflow-hidden isolate rounded-2xl p-4 md:p-5 pb-3">
-      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+    <Card className="bk-fire-card relative overflow-hidden isolate rounded-2xl p-5 pb-4 min-h-[225px] flex flex-col">
+      <CardHeader className="p-0 pb-2 flex flex-row items-start justify-between">
         {/* Left: Brand + Title */}
-        <div className="flex items-center gap-3 text-left">
+        <div className="flex items-center gap-2 text-left">
           {/* Larger transparent mark with halo pulse */}
-          <span className="relative inline-flex items-center justify-center">
-            <span className="pointer-events-none absolute -inset-2 rounded-2xl blur-md bg-[radial-gradient(closest-side,theme(colors.amber.500/.25),transparent)] motion-safe:animate-pulse-slow" />
-            <LogoMark size={24} />
+          <span className="relative inline-flex items-center justify-center motion-safe:animate-bk-glow-slow">
+            <span className="pointer-events-none absolute -inset-3 rounded-2xl blur-md bg-[radial-gradient(closest-side,theme(colors.amber.500/.25),transparent)] motion-safe:animate-pulse-slow" />
+            <LogoMark size={36} />
           </span>
 
           <div className="flex items-center gap-2">
@@ -87,7 +87,7 @@ export function AICoachCard({
         )}
       </CardHeader>
 
-      <CardContent className="pt-2">
+      <CardContent className="p-0 pt-2 flex-1">
         {/* Chips */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -134,7 +134,7 @@ export function AICoachCard({
       </CardContent>
 
       {/* CTA row */}
-      <CardFooter className="pt-2">
+      <CardFooter className="p-0 mt-auto pt-3">
         <div className="w-full flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
           {/* Practice label (not a button) */}
           <div className="flex items-center gap-2 md:mr-auto">
