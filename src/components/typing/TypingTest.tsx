@@ -439,6 +439,12 @@ const TypingTest: React.FC = () => {
 
   const busyRef = useRef(false);
   const lastRestartRef = useRef<number>(0);
+  const pendingRestartRef = useRef<{
+    count?: number;
+    flags?: { include_punctuation?: boolean; include_numbers?: boolean }
+  } | null>(null);
+  const cooldownTimerRef = useRef<number | null>(null);
+  const COOLDOWN_MS = 1000;
 
   const handleRestart = useCallback(async (desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) => {
     try { devLog('restartTest()', { desiredCount, flags: flagOverrides }); } catch {}
@@ -474,21 +480,50 @@ const TypingTest: React.FC = () => {
     await loadPromptOnce({ overrides });
   }, [loadPromptOnce]);
 
-  const safeRestart = useCallback(async (desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) => {
-    console.log('safeRestart called', { view, busy: busyRef.current, t: Date.now() });
-    if (busyRef.current) return;
-    // Prevent rapid restarts (1000ms cooldown)
+  const safeRestart = useCallback(async (
+    desiredCount?: number,
+    flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }
+  ) => {
     const now = Date.now();
-    if (now - lastRestartRef.current < 1000) {
-      console.log('safeRestart blocked by cooldown');
+    const elapsed = now - lastRestartRef.current;
+
+    // Helper: schedule a trailing run of the latest pending request
+    const scheduleTrailing = (delayMs: number) => {
+      if (cooldownTimerRef.current) {
+        window.clearTimeout(cooldownTimerRef.current);
+        cooldownTimerRef.current = null;
+      }
+      cooldownTimerRef.current = window.setTimeout(() => {
+        const p = pendingRestartRef.current;
+        if (!p) return;
+        // attempt to flush the latest request
+        pendingRestartRef.current = null;
+        void safeRestart(p.count, p.flags);
+      }, Math.max(0, delayMs));
+    };
+
+    // If we can't run now, queue latest and schedule trailing
+    if (busyRef.current || elapsed < COOLDOWN_MS) {
+      pendingRestartRef.current = { count: desiredCount, flags: flagOverrides };
+      const delay = busyRef.current ? 50 : (COOLDOWN_MS - elapsed + 10);
+      scheduleTrailing(delay);
       return;
     }
+
+    // We can run immediately
     lastRestartRef.current = now;
     busyRef.current = true;
     try {
       await handleRestart(desiredCount, flagOverrides);
     } finally {
       busyRef.current = false;
+      // If another request arrived while we were busy, flush it quickly
+      if (pendingRestartRef.current) {
+        const p = pendingRestartRef.current;
+        pendingRestartRef.current = null;
+        // allow paint/layout to settle
+        setTimeout(() => { void safeRestart(p?.count, p?.flags); }, 0);
+      }
       try {
         requestAnimationFrame(() => {
           try { recalcOffsets(); } catch {}
@@ -909,7 +944,7 @@ const TypingTest: React.FC = () => {
               onClick={async () => {
                 const next = !showPunctuation;
                 setShowPunctuation(next);
-                await handleRestart(undefined, { include_punctuation: next });
+                await safeRestart(undefined, { include_punctuation: next });
               }}
             >
               <AtSign className="h-4 w-4" />
@@ -929,7 +964,7 @@ const TypingTest: React.FC = () => {
               onClick={async () => {
                 const next = !showNumbers;
                 setShowNumbers(next);
-                await handleRestart(undefined, { include_numbers: next });
+                await safeRestart(undefined, { include_numbers: next });
               }}
             >
               <Hash className="h-4 w-4" />
@@ -951,7 +986,7 @@ const TypingTest: React.FC = () => {
                     : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
                 )}
                 aria-pressed={testMode === 'time'}
-                onClick={async () => { setTestMode('time'); setMode('time'); setView('typing'); await handleRestart(); }}
+                onClick={async () => { setTestMode('time'); setMode('time'); setView('typing'); await safeRestart(); }}
               >
                 <Clock className="h-4 w-4" />
                 time
@@ -966,7 +1001,7 @@ const TypingTest: React.FC = () => {
                     : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
                 )}
                 aria-pressed={testMode === 'words'}
-                onClick={async () => { setTestMode('words'); setMode('words'); setView('typing'); await handleRestart(); }}
+                onClick={async () => { setTestMode('words'); setMode('words'); setView('typing'); await safeRestart(); }}
               >
                 <span className="text-lg font-bold">A</span>
                 words
