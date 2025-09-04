@@ -39,6 +39,9 @@ type Props = {
   completed: boolean;
   runSnapshot?: RunSnapshot | null;
   className?: string;
+  onNextTest?: () => void;
+  onPracticeWeakSpots?: () => void;
+  onPracticeWeakSpotsTimed?: () => void;
 };
 
 function buildMessage(wpmTrend: number[], acc: number) {
@@ -167,7 +170,7 @@ function generatePersonalizedFeedback(
   return `${emoji}${suggestion}`;
 }
 
-export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed, runSnapshot, className }: Props) {
+export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed, runSnapshot, className, onNextTest, onPracticeWeakSpots, onPracticeWeakSpotsTimed }: Props) {
   const [viewMode, setViewMode] = useState<'quick' | 'detailed'>("quick");
   const prefersReducedMotion = useReducedMotion();
 
@@ -296,6 +299,9 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
                 consistency={consistency}
                 peakWpm={peakWpm}
                 deltaWpm={deltaWpm}
+                onNextTest={onNextTest}
+                onPracticeWeakSpots={onPracticeWeakSpots}
+                onPracticeWeakSpotsTimed={onPracticeWeakSpotsTimed}
               />
             </motion.div>
           )}
@@ -312,6 +318,9 @@ function DetailedView({
   consistency,
   peakWpm,
   deltaWpm,
+  onNextTest,
+  onPracticeWeakSpots,
+  onPracticeWeakSpotsTimed,
 }: {
   wpmTrend: number[];
   accuracyPct: number;
@@ -319,16 +328,52 @@ function DetailedView({
   consistency: number;
   peakWpm: number;
   deltaWpm: number | null;
+  onNextTest?: () => void;
+  onPracticeWeakSpots?: () => void;
+  onPracticeWeakSpotsTimed?: () => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const prefersReducedMotion = useReducedMotion();
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bk-inner-tile p-3"><MetricCard title="WPM" value={Math.round(currentWpm)} delta={deltaWpm} icon={<Gauge className="w-4 h-4" />} /></div>
-        <div className="bk-inner-tile p-3"><MetricCard title="Accuracy" value={Math.round(accuracyPct)} suffix="%" icon={<Target className="w-4 h-4" />} /></div>
-        <div className="bk-inner-tile p-3"><MetricCard title="Consistency" value={Math.round(consistency)} suffix="%" icon={<Sigma className="w-4 h-4" />} /></div>
-        <div className="bk-inner-tile p-3"><MetricCard title="Peak" value={Math.round(peakWpm)} icon={<ArrowUp className="w-4 h-4" />} /></div>
+      <div className="grid grid-cols-2 gap-3 items-stretch auto-rows-[1fr]">
+        <div className="bk-inner-tile p-3 h-full"><MetricCard title="WPM" value={Math.round(currentWpm)} delta={deltaWpm} icon={<Gauge className="w-4 h-4" />} /></div>
+        <div className="bk-inner-tile p-3 h-full"><MetricCard title="Accuracy" value={Math.round(accuracyPct)} suffix="%" icon={<Target className="w-4 h-4" />} /></div>
+        <div className="bk-inner-tile p-3 h-full"><MetricCard title="Consistency" value={Math.round(consistency)} suffix="%" icon={<Sigma className="w-4 h-4" />} /></div>
+        <div className="bk-inner-tile p-3 h-full"><MetricCard title="Peak" value={Math.round(peakWpm)} icon={<ArrowUp className="w-4 h-4" />} /></div>
+      </div>
+
+      {/* Sticky nudges to keep momentum */}
+      <div className="flex flex-wrap items-center justify-between gap-2 md:gap-3 pt-1">
+        <div className="text-[11px] text-white/60 flex items-center gap-2">
+          Press <kbd className="px-1.5 py-0.5 rounded-md bg-white/10 border border-white/10 text-[10px]">Enter</kbd> to start next test
+        </div>
+        <div className="flex items-center gap-2">
+          {onPracticeWeakSpots && (
+            <button
+              onClick={onPracticeWeakSpots}
+              className="text-xs rounded-lg px-3 py-1.5 bg-amber-400 text-black hover:bg-amber-300"
+            >
+              Practice weak spots
+            </button>
+          )}
+          {onPracticeWeakSpotsTimed && (
+            <button
+              onClick={onPracticeWeakSpotsTimed}
+              className="text-xs rounded-lg px-3 py-1.5 bg-indigo-500 text-white hover:bg-indigo-500/90"
+            >
+              30 sec drill
+            </button>
+          )}
+          {onNextTest && (
+            <button
+              onClick={onNextTest}
+              className="text-xs rounded-lg px-3 py-1.5 bg-white/10 border border-white/10 hover:bg-white/15"
+            >
+              Start next
+            </button>
+          )}
+        </div>
       </div>
 
       <ExpandableSection
@@ -376,7 +421,10 @@ function DetailedView({
 
 function MetricCard({ title, value, delta, suffix, icon }: { title: string; value: number; delta?: number | null; suffix?: string; icon: React.ReactNode; }) {
   return (
-    <motion.div whileHover={{ y: -2 }} className="bg-gray-800/50 backdrop-blur-sm rounded-lg p-3 border border-gray-700/50">
+    <motion.div
+      whileHover={{ y: -2 }}
+      className="h-full min-h-[120px] flex flex-col justify-between bg-gray-800/50 backdrop-blur-sm rounded-lg p-3 border border-gray-700/50"
+    >
       <div className="flex justify-between items-start mb-2">
         <span className="text-xs text-gray-400">{title}</span>
         <div className="text-amber-400/80">{icon}</div>

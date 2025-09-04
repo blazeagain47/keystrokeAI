@@ -329,6 +329,9 @@ export default function ResultsPanel(props: ResultsPanelProps) {
               accuracyPct={accuracy}
               completed={true}
               runSnapshot={props.usedConfig ?? null}
+              onNextTest={onNextTest}
+              onPracticeWeakSpots={onPracticeWeakSpots}
+              onPracticeWeakSpotsTimed={onPracticeWeakSpotsTimed}
             />
           </div>
         </div>
