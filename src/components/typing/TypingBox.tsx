@@ -102,6 +102,21 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const lastCharRef = useRef<string | null>(null);
   const nowTs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
+  // ---- debug sink (devtools) ----
+  const dbgLogRef = useRef<any[]>([]);
+  useEffect(() => {
+    (window as any).bkRun = {
+      log: dbgLogRef.current,
+      clear: () => { dbgLogRef.current.length = 0; },
+      state: () => ({
+        wi: currentWordIndex,
+        col: cursorCol,
+        words,
+        input: inputWords,
+      }),
+    };
+  }, [currentWordIndex, cursorCol, words, inputWords]);
+
   // keep center-of-window invariant no matter the mode
   const TOTAL_LINES = 3;
   const CENTER_OFFSET = 1; // active line stays centered: 0 (top), 1 (middle), 2 (bottom)
@@ -117,6 +132,19 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   // Gates centering/transform until after we have real measurements
   const [measured, setMeasured] = React.useState(false);
+
+  // ---- input buffering while prompt is not yet ready ----
+  const bufferRef = useRef<string[]>([]);
+  const readyRef = useRef<boolean>(false);
+  const promptReady = useMemo(() => (words.length > 0 && !externalLoading && !isLoading), [words.length, externalLoading, isLoading]);
+  useEffect(() => { readyRef.current = !!promptReady; }, [promptReady]);
+  const flushBuffer = useCallback(() => {
+    if (!readyRef.current) return;
+    if (!bufferRef.current.length) return;
+    const batch = bufferRef.current.splice(0, bufferRef.current.length);
+    for (const ch of batch) enqueueKey(ch);
+  }, []);
+  useEffect(() => { if (promptReady) flushBuffer(); }, [promptReady]);
 
   // Lock page scroll any time the typing screen is visible.
   // Pre-test (not started) -> locked
@@ -484,6 +512,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     return () => window.removeEventListener('resize', onResize);
   }, [moveCaret]);
 
+  // Focus the container when overlay is not open to ensure key flow
+  useEffect(() => {
+    if (!overlayOpen) {
+      try { containerRef.current?.focus?.(); } catch {}
+    }
+  }, [overlayOpen]);
+
   // Reposition caret when indices/visibility change or after scroll transform updates
   useEffect(() => {
     requestAnimationFrame(moveCaret);
@@ -501,6 +536,9 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     onTestComplete(finalWpm, finalAcc, elapsedSec, (inputWords || []).join(' '));
     try { weakspot.commitRun(); } catch {}
   }, [words, inputWords, startTime, onTestComplete]);
+
+  // Helpers: printable detection for keydown fallback/guards
+  const isPrintableKey = useCallback((e: KeyboardEvent) => (e.key.length === 1 && !e.ctrlKey && !e.metaKey), []);
 
   /* rAF-batched input handling */
   const applyBatch = useCallback((items: KeyEvent[]) => {
@@ -533,6 +571,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
     for (const k of normalized) {
       if (k === 'Backspace') {
+        try { dbgLogRef.current.push({ ts: performance.now(), kind: 'backspace', wi, col }); } catch {}
         const curr = nextWords[wi] ?? "";
         if (col > 0 && curr.length > 0) {
           commitInput(wi, curr.slice(0, -1));
@@ -549,6 +588,15 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
       // ── Space key: Monkeytype semantics ──────────────────────────────
       if (k === ' ') {
+        try {
+          dbgLogRef.current.push({
+            ts: performance.now(),
+            kind: 'space',
+            wi,
+            currLen: (nextWords[wi] ?? '').length,
+            expectedLen: (words[wi] ?? '').length,
+          });
+        } catch {}
         // current word input and expected target
         const expected = words[wi] ?? "";
         const curr = nextWords[wi] ?? "";
@@ -617,6 +665,17 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         // check if this char is correct and spawn embers
         const we = evalWord(words[wi] ?? "", curr + ch);
         const st = we.states[colBefore];
+        try {
+          dbgLogRef.current.push({
+            ts: performance.now(),
+            kind: 'char',
+            wi,
+            ci: colBefore,
+            expected: (words[wi] ?? '')[colBefore] ?? null,
+            typed: ch,
+            verdict: st,
+          });
+        } catch {}
         // AI Coach: per-keystroke observation (no behavior change)
         try {
           const ts = nowTs();
@@ -690,22 +749,64 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     return (k: string) => q({ k, __ts: (typeof performance !== 'undefined' ? performance.now() : Date.now()) });
   }, [applyBatch]);
 
+  // BEFOREINPUT: single-source for printable characters (including space) and IME composition text
+  const handleBeforeInput = useCallback((e: InputEvent) => {
+    if (isCompletedRef.current) return;
+    if ((e as any).isComposing) return; // compositionend will deliver the final text
+    const t = (e as any).inputType as string | undefined;
+    if (t === "insertText" || t === "insertCompositionText") {
+      // Ensure run starts on first printable input
+      if (!hasStarted) {
+        setHasStarted(true);
+        setStartTime(Date.now());
+        if (focusEnabled && !overlayOpen) { try { setFocus(true); } catch {} }
+        if (mode === 'time') endAtRef.current = Date.now() + durationSec * 1000;
+      }
+      const data = (e as any).data ?? "";
+      const ch = normalizeInputChar(String(data));
+      if (!ch) { try { e.preventDefault(); } catch {} ; return; }
+      try { e.preventDefault(); } catch {}
+      if (!readyRef.current) { bufferRef.current.push(ch); return; }
+      enqueueKey(ch);
+    }
+  }, [enqueueKey, hasStarted, focusEnabled, overlayOpen, mode, durationSec]);
+
+  // IME: commit composed text
+  const handleCompositionEnd = useCallback((e: CompositionEvent) => {
+    const text = (e as any).data ?? "";
+    if (!text) return;
+    // Ensure run starts if composition commits before keydown path
+    if (!hasStarted) {
+      setHasStarted(true);
+      setStartTime(Date.now());
+      if (focusEnabled && !overlayOpen) { try { setFocus(true); } catch {} }
+      if (mode === 'time') endAtRef.current = Date.now() + durationSec * 1000;
+    }
+    const segs = Array.from(text);
+    for (const raw of segs) enqueueKey(normalizeInputChar(raw));
+  }, [enqueueKey, hasStarted, focusEnabled, overlayOpen, mode, durationSec]);
+
+  // Attach beforeinput/composition listeners (capture) to receive even without focused inputs
+  // COMMENTED OUT: beforeinput is not firing on this page, so we handle printable chars in keydown
+  /*
+  useEffect(() => {
+    try { window.addEventListener('beforeinput', handleBeforeInput as any, { capture: true } as AddEventListenerOptions); } catch { window.addEventListener('beforeinput', handleBeforeInput as any); }
+    try { window.addEventListener('compositionend', handleCompositionEnd as any, { capture: true } as AddEventListenerOptions); } catch { window.addEventListener('compositionend', handleCompositionEnd as any); }
+    return () => {
+      try { window.removeEventListener('beforeinput', handleBeforeInput as any, { capture: true } as AddEventListenerOptions); } catch { window.removeEventListener('beforeinput', handleBeforeInput as any); }
+      try { window.removeEventListener('compositionend', handleCompositionEnd as any, { capture: true } as AddEventListenerOptions); } catch { window.removeEventListener('compositionend', handleCompositionEnd as any); }
+    };
+  }, [handleBeforeInput, handleCompositionEnd]);
+  */
+
   /* ───────── Keyboard handler ───────── */
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // Allow ESC to exit focus (do not prevent default; let modals handle too)
-      if (e.key === 'Escape') {
-        if (!overlayOpen) { try { setFocus(false); } catch {} }
-        return;
-      }
-      const target = e.target as HTMLElement | null;
-      if (target?.closest?.("[data-click-only]")) {
-        return;
-      }
-
-      if (externalLoading || isLoading || isComplete) return;
-
-      /* start timer */
+      // ignore IME composition and OS key-repeat for character/control keys
+      if ((e as any).isComposing) return;
+      if (e.repeat && (e.key.length === 1 || e.key === ' ' || e.key === 'Backspace')) return;
+      
+      // Start the run on first visible key BEFORE any guards
       if (!hasStarted && e.key.length === 1) {
         try { tl('first key', { key: e.key, runId: 'n/a' }); } catch {}
         try { devLog('first keydown', e.key); } catch {}
@@ -717,6 +818,18 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           endAtRef.current = Date.now() + durationSec * 1000;
         }
       }
+
+      // Allow ESC to exit focus (do not prevent default; let modals handle too)
+      if (e.key === 'Escape') {
+        if (!overlayOpen) { try { setFocus(false); } catch {} }
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.("[data-click-only]")) {
+        return;
+      }
+
+      if (externalLoading || isLoading || isComplete) return;
 
       /* restart combo handling */
       if (e.key === 'Tab') {
@@ -746,17 +859,15 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         return;
       }
 
-      /* space */
-      if (e.key === ' ') {
-        e.preventDefault();
-        enqueueKey(' ');
-        return;
-      }
-
-      /* regular char */
-      if (e.key.length === 1) {
-        e.preventDefault();
-        enqueueKey(e.key);
+      // Printable characters (including space) → process here instead of relying on beforeinput
+      if (e.key.length === 1 || e.key === ' ') {
+        const ch = normalizeInputChar(e.key);
+        if (!ch) return;
+        // do not rely on beforeinput; enqueue directly
+        enqueueKey(ch);
+        // we generally don't need preventDefault since nothing is focused,
+        // but prevent scroll on Space just in case:
+        if (e.key === ' ') e.preventDefault();
         return;
       }
     },
@@ -781,7 +892,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       resetFromPrompt,
       onRequestNewPrompt,
       prompt,
-      enqueueKey
+      enqueueKey,
+      isPrintableKey,
+      focusEnabled,
+      overlayOpen,
+      setFocus
     ]
   );
 
@@ -794,11 +909,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   /* attach listener */
   useEffect(() => {
     try { document.body.classList.add("bk-typing-active"); } catch {}
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    try { window.addEventListener('keydown', handleKeyDown as any, { capture: true } as AddEventListenerOptions); } catch { window.addEventListener('keydown', handleKeyDown as any); }
+    try { window.addEventListener('keyup', handleKeyUp as any, { capture: true } as AddEventListenerOptions); } catch { window.addEventListener('keyup', handleKeyUp as any); }
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      try { window.removeEventListener('keydown', handleKeyDown as any, { capture: true } as AddEventListenerOptions); } catch { window.removeEventListener('keydown', handleKeyDown as any); }
+      try { window.removeEventListener('keyup', handleKeyUp as any, { capture: true } as AddEventListenerOptions); } catch { window.removeEventListener('keyup', handleKeyUp as any); }
       try { document.body.classList.remove("bk-typing-active"); } catch {}
       try { setFocus(false); } catch {}
     };
@@ -828,7 +943,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   return (
     <div
       ref={containerRef}
-      className="mx-auto max-w-7xl px-4 sm:px-6"
+      className="mx-auto max-w-7xl px-4 sm:px-6 outline-none"
+      tabIndex={-1}
       style={{
         minHeight: "100svh",
         contain: "layout style paint",

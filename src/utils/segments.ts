@@ -10,12 +10,17 @@ export function segmentGraphemes(text: string): string[] {
 export function normalizeInputChar(ch: string): string {
   // Map non-breaking space to normal space
   if (ch === "\u00A0") return " ";
-  // Normalize to NFC and lowercase to avoid case/diacritic mismatches with displayed target
-  try {
-    return ch.normalize("NFC");
-  } catch {
-    return ch;
-  }
+  // Normalize to NFKC and unify common variants to mirror compare.ts
+  try { ch = ch.normalize("NFKC"); } catch {}
+  ch = ch
+    // strip zero-width/BOM
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+    // unify quotes
+    .replace(/[\u2018\u2019\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u2033]/g, '"')
+    // unify hyphen/minus
+    .replace(/[\u2010-\u2015\u2212]/g, "-");
+  return ch;
 }
 
 export function displayChar(grapheme: string): string {
