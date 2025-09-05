@@ -42,28 +42,118 @@ function useCanvasSize(ref: React.RefObject<HTMLDivElement>) {
   return size;
 }
 
-/**
- * Line reveal plugin: clips the chart area from left -> right based on `progress`.
- * This creates a true "draw on" effect instead of simply fading points in.
- */
-const lineRevealPlugin: Plugin<"line"> = {
+// --- Plugins: local-only, passed via <Line plugins={[...]} /> ---
+
+// 1) Reveal animation: progressively clips the drawing area from left->right.
+const bkLineReveal: Plugin<"line"> = {
   id: "bk-line-reveal",
   beforeDatasetsDraw(chart, _args, opts) {
+    const progress = (opts as any)?.progress ?? 1; // 0..1
     const { ctx, chartArea } = chart;
-    // @ts-ignore - our custom opts
-    const progress: number = opts?.progress ?? 1;
-    if (progress >= 1) return;
+    if (!chartArea || progress >= 1) return;
     ctx.save();
+    const w = chartArea.right - chartArea.left;
+    const h = chartArea.bottom - chartArea.top;
     ctx.beginPath();
-    ctx.rect(chartArea.left, chartArea.top, chartArea.width * Math.max(0, progress), chartArea.height);
+    ctx.rect(chartArea.left, chartArea.top, w * Math.max(0, Math.min(1, progress)), h);
     ctx.clip();
   },
-  afterDatasetsDraw(chart, _args, _opts) {
-    chart.ctx.restore();
+  afterDatasetsDraw(chart, _args, opts) {
+    const progress = (opts as any)?.progress ?? 1;
+    if (progress < 1) chart.ctx.restore();
   },
 };
 
-ChartJS.register(lineRevealPlugin);
+// 2) Optional accurate data-space guides (disabled by default).
+//    We keep this for future: avg WPM (horizontal) and finishSec (vertical).
+export const bkGuides: Plugin<"line"> = {
+  id: "bk-guides",
+  afterDraw(chart, _args, opts) {
+    const { ctx, scales } = chart;
+    const show = (opts as any)?.showGuides ?? false;
+    if (!show) return;
+    const avg = (opts as any)?.avg;
+    const finishSec = (opts as any)?.finishSec;
+
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+
+    // Horizontal @ avg WPM
+    if (typeof avg === "number" && isFinite(avg)) {
+      const y = (scales as any).y.getPixelForValue(avg);
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.beginPath();
+      ctx.moveTo((scales as any).x.left, y);
+      ctx.lineTo((scales as any).x.right, y);
+      ctx.stroke();
+    }
+
+    // Vertical @ finish second
+    if (typeof finishSec === "number" && isFinite(finishSec)) {
+      const x = (scales as any).x.getPixelForValue(finishSec);
+      ctx.strokeStyle = "rgba(255,255,255,0.30)";
+      ctx.beginPath();
+      ctx.moveTo(x, (scales as any).y.top);
+      ctx.lineTo(x, (scales as any).y.bottom);
+      ctx.stroke();
+    }
+    ctx.restore();
+  },
+};
+
+// 3) Fire-themed glow around the plot area frame (inside chart padding)
+const bkFrameGlow: Plugin<"line"> = {
+  id: "bk-frame-glow",
+  afterDraw(chart, _args, opts) {
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    const { left, right, top, bottom } = chartArea;
+
+    // configurable via options.plugins["bk-frame-glow"]
+    const lineWidth = (opts as any)?.lineWidth ?? 2;
+    const shadowBlur = (opts as any)?.shadowBlur ?? 14;
+    const colorCore = (opts as any)?.colorCore ?? "rgba(255,140,30,0.9)";   // bright ember
+    const colorHalo = (opts as any)?.colorHalo ?? "rgba(255,110,20,0.35)";   // soft outer halo
+    const radius = (opts as any)?.radius ?? 8;
+
+    // helper to draw a rounded rect around chartArea
+    const roundedRect = (r: number) => {
+      const x = left + 0.5, y = top + 0.5, w = right - left - 1, h = bottom - top - 1;
+      const rr = Math.min(r, w / 10, h / 10);
+      ctx.beginPath();
+      ctx.moveTo(x + rr, y);
+      ctx.lineTo(x + w - rr, y);
+      ctx.arcTo(x + w, y, x + w, y + rr, rr);
+      ctx.lineTo(x + w, y + h - rr);
+      ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+      ctx.lineTo(x + rr, y + h);
+      ctx.arcTo(x, y + h, x, y + h - rr, rr);
+      ctx.lineTo(x, y + rr);
+      ctx.arcTo(x, y, x + rr, y, rr);
+    };
+
+    ctx.save();
+
+    // Outer halo (lighter mode for additive glow)
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineWidth = lineWidth;
+    ctx.shadowBlur = shadowBlur;
+    ctx.shadowColor = colorHalo;
+    ctx.strokeStyle = colorHalo;
+    roundedRect(radius);
+    ctx.stroke();
+
+    // Core ember stroke on top (sharper)
+    ctx.shadowBlur = Math.max(6, shadowBlur * 0.55);
+    ctx.shadowColor = colorCore;
+    ctx.strokeStyle = colorCore;
+    roundedRect(radius);
+    ctx.stroke();
+
+    ctx.restore();
+  },
+};
 
 export default function ResultsChart({
   chartData,
@@ -98,26 +188,21 @@ export default function ResultsChart({
     return g;
   }, []);
 
-  // Reveal animation progress
-  const [progress, setProgress] = React.useState(0);
+  // Reveal animation progress (0..1)
+  const [reveal, setReveal] = React.useState(0);
   React.useEffect(() => {
-    if (reducedMotion) {
-      setProgress(1);
-      onFirstPaint?.();
-      return;
-    }
     let raf = 0;
-    const dur = 1000; // ms
     const start = performance.now();
+    const dur = reducedMotion ? 0 : 650; // ms
     const tick = (t: number) => {
-      const p = Math.min(1, (t - start) / dur);
-      setProgress(p);
+      const p = dur === 0 ? 1 : Math.min(1, (t - start) / dur);
+      setReveal(p);
       if (p < 1) raf = requestAnimationFrame(tick);
       else onFirstPaint?.();
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [reducedMotion, onFirstPaint]);
+  }, [chartData, reducedMotion, onFirstPaint]);
 
   // Subtle ember particles (pure CSS) — randomize on mount
   React.useEffect(() => {
@@ -167,7 +252,8 @@ export default function ResultsChart({
   const options: ChartOptions<"line"> = {
     responsive: true,
     maintainAspectRatio: false,
-    layout: { padding: { left: 8, right: 12, top: 8, bottom: 28 } },
+    layout: { padding: { left: 8, right: 12, top: 8, bottom: 20 } },
+    interaction: { mode: "nearest", intersect: false, axis: "x" },
     plugins: {
       legend: { display: false },
       tooltip: {
@@ -178,22 +264,48 @@ export default function ResultsChart({
         displayColors: false,
         padding: 10,
         callbacks: {
-          title: (ctx) => `Time: ${ctx[0].label}s`,
-          label: (ctx) => `${Math.round(Number(ctx.raw))} WPM`,
+          title: (ctx) => `Time (seconds): ${ctx[0].label}`,
+          label: (ctx) => `Words per minute: ${Math.round(Number(ctx.raw))}`,
         },
       },
-      // reveal progress fed to plugin
-      "bk-line-reveal": { progress },
     } as any,
+    elements: {
+      point: {
+        radius: 0,
+        hitRadius: 16,
+        hoverRadius: 5,
+      },
+    },
     scales: {
       x: {
         grid: { color: "rgba(255,255,255,.14)", lineWidth: 1, drawBorder: false },
         ticks: { color: "rgba(255,255,255,.7)", padding: 6 },
+        title: {
+          display: ({ chart }) => chart.width > 420,
+          text: "Time",
+          color: "rgba(255,180,100,.9)",
+          // ~1.2× bigger; clamps 14–18px based on canvas height
+          font: (ctx: any) => ({
+            weight: 700,
+            size: Math.max(14, Math.min(18, Math.round(ctx.chart.height / 18))),
+          }),
+          padding: { top: 10 },
+        } as any,
       },
       y: {
         beginAtZero: true,
         grid: { color: "rgba(255,255,255,.14)", lineWidth: 1, drawBorder: false },
         ticks: { color: "rgba(255,255,255,.7)", padding: 6 },
+        title: {
+          display: ({ chart }) => chart.height > 220,
+          text: "WPM",
+          color: "rgba(255,180,100,.9)",
+          font: (ctx: any) => ({
+            weight: 700,
+            size: Math.max(14, Math.min(18, Math.round(ctx.chart.height / 18))),
+          }),
+          padding: { bottom: 10 },
+        } as any,
       },
     },
     animation: reducedMotion
@@ -212,27 +324,30 @@ export default function ResultsChart({
       <div aria-hidden className="pointer-events-none absolute inset-0 bk-chart-halo" />
       {/* the chart itself */}
       {w > 0 && h > 0 ? (
-        <Line data={data} options={options} width={w} height={h} />
+        <Line
+          data={data}
+          options={{
+            ...options,
+            plugins: {
+              ...options.plugins,
+              // feed progress into reveal; keep guides off by default
+              "bk-line-reveal": { progress: reveal },
+              "bk-guides": { showGuides: false, avg, finishSec },
+              "bk-frame-glow": {
+                lineWidth: 2,
+                shadowBlur: 16,
+                colorCore: "rgba(255,140,30,0.9)",
+                colorHalo: "rgba(255,110,20,0.35)",
+                radius: 8,
+              },
+            } as any,
+          }}
+          width={w}
+          height={h}
+          plugins={[bkLineReveal, bkGuides, bkFrameGlow]}
+        />
       ) : (
         <div className="absolute inset-0 animate-pulse bg-white/5 rounded-lg" />
-      )}
-
-      {/* reference lines overlays (avg + finish) */}
-      {typeof avg === "number" && (
-        <div
-          aria-hidden
-          className="absolute left-14 right-4 border-t border-dashed border-white/40"
-          style={{
-            top: "20%", // visually close to the chart's upper area; Chart.js overlay mapping is heavier. Keep it simple + consistent.
-          }}
-        />
-      )}
-      {typeof finishSec === "number" && (
-        <div
-          aria-hidden
-          className="absolute top-2 bottom-8 border-l border-dashed border-white/30"
-          style={{ left: "70%" }}
-        />
       )}
     </div>
   );

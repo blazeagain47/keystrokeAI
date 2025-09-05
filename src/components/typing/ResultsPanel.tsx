@@ -355,7 +355,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
 
         {/* Bottom: Trend full-width */}
         <div className="col-span-12 cv-auto cv-480">
-          <Card className="bk-fire-card relative overflow-hidden isolate rounded-2xl h-full min-h-[360px]">
+          <Card className="bk-fire-card relative overflow-hidden isolate rounded-2xl h-full min-h-[432px]">
             <div aria-hidden className="bk-card-vignette pointer-events-none absolute inset-0" />
             <CardHeader className="pb-2 relative z-10">
               <div className="bk-chart-title mb-2">
@@ -363,7 +363,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
               </div>
             </CardHeader>
             <CardContent className="pt-2 relative z-10">
-              <div className="h-[260px] md:h-[300px] pl-6 pr-2">
+              <div className="h-[312px] md:h-[360px] pl-6 pr-2">
                 <ResultsChart
                   chartData={chartData}
                   avg={chartAvgWpm}
