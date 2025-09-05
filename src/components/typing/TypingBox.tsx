@@ -260,6 +260,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   /* ───────── Load prompt from prop ───────── */
   const resetFromPrompt = useCallback((text: string) => {
+    readyRef.current = false; // block input until prompt is fully applied
     resetViewport();
     setRunSeq((x) => x + 1);
     setIsLoading(true);
@@ -306,6 +307,14 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     try { weakspot.resetRun(); } catch {}
     lastDownAtRef.current = null;
     lastCharRef.current = null;
+    // Defer 'ready' to the next frame so the new words are rendered before we accept input.
+    requestAnimationFrame(() => {
+      readyRef.current = true;
+      if (bufferRef.current.length) {
+        const pending = bufferRef.current.splice(0);
+        for (const k of pending) enqueueKey(k);
+      }
+    });
   }, []);
 
   /* init & prop change */
@@ -819,6 +828,17 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         }
       }
 
+      // If we aren't ready or still (externally) loading, BUFFER printable/backspace/space.
+      const isPrintableOrControl = (e.key.length === 1 || e.key === ' ' || e.key === 'Backspace');
+      if (externalLoading || isLoading || !readyRef.current) {
+        if (isPrintableOrControl) {
+          const token = (e.key === 'Backspace') ? 'Backspace' : normalizeInputChar(e.key);
+          if (token) bufferRef.current.push(token);
+          if (e.key === ' ') e.preventDefault(); // avoid page scroll while buffering space
+        }
+        return; // swallow until ready; we'll flush in rAF
+      }
+
       // Allow ESC to exit focus (do not prevent default; let modals handle too)
       if (e.key === 'Escape') {
         if (!overlayOpen) { try { setFocus(false); } catch {} }
@@ -829,7 +849,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         return;
       }
 
-      if (externalLoading || isLoading || isComplete) return;
+      if (isComplete) return;
 
       /* restart combo handling */
       if (e.key === 'Tab') {
