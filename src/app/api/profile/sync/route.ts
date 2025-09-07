@@ -11,18 +11,19 @@ export async function POST(req: Request) {
     const { uid, username, photoURL } = body || {};
     const usernameClean = String(username || "").trim();
 
-    if (!uid && !usernameClean) {
-      return NextResponse.json({ error: "missing uid/username" }, { status: 400 });
+    if (!usernameClean) {
+      return NextResponse.json({ error: "username required" }, { status: 400 });
     }
 
     const db = getAdminDb();
-    const docId = leaderboardDocId({ uid, username: usernameClean });
-    const usernameLower = usernameClean ? usernameClean.toLowerCase() : null;
+    const docId = leaderboardDocId({ uid: null, username: usernameClean });
+    const usernameLower = usernameClean.toLowerCase();
 
     await db.collection("users").doc(docId).set(
       {
         // keep username fields authoritative for display + search
-        ...(usernameClean && { username: usernameClean, usernameLower }),
+        username: usernameClean, 
+        usernameLower,
         xpTotal: admin.firestore.FieldValue.increment(0), // initialize if absent
         xpToday: admin.firestore.FieldValue.increment(0),
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
