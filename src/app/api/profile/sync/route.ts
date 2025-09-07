@@ -1,42 +1,39 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb, verifyIdTokenFromAuthHeader } from "@/lib/firebaseAdmin";
+import { NextResponse } from "next/server";
+import admin from "firebase-admin";
+import { getAdminDb } from "@/lib/firebaseAdmin";
+import { leaderboardDocId } from "@/lib/leaderboardUser";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Upsert public username so the leaderboard can display nice labels.
-// Safe to call repeatedly; merges username into both `public_users_v1` and `user_totals_v1`.
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const authz = req.headers.get("authorization") || "";
-    const decoded = await verifyIdTokenFromAuthHeader(authz);
-    const uid = decoded?.uid;
-    if (!uid) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
     const body = await req.json().catch(() => ({}));
-    const username = typeof (body as any)?.username === "string" ? (body as any).username.trim() : "";
+    const { uid, username, photoURL } = body || {};
+    const usernameClean = String(username || "").trim();
 
-    if (!username) return NextResponse.json({ ok: true }); // no-op
+    if (!uid && !usernameClean) {
+      return NextResponse.json({ error: "missing uid/username" }, { status: 400 });
+    }
 
     const db = getAdminDb();
-    const lower = username.toLowerCase();
+    const docId = leaderboardDocId({ uid, username: usernameClean });
+    const usernameLower = usernameClean ? usernameClean.toLowerCase() : null;
 
-    await Promise.all([
-      db.collection("public_users_v1").doc(uid).set(
-        { username, usernameLower: lower, updatedAt: Date.now() },
-        { merge: true }
-      ),
-      db.collection("user_totals_v1").doc(uid).set(
-        { username, usernameLower: lower, updatedAt: Date.now() },
-        { merge: true }
-      ),
-    ]);
+    await db.collection("users").doc(docId).set(
+      {
+        // keep username fields authoritative for display + search
+        ...(usernameClean && { username: usernameClean, usernameLower }),
+        xpTotal: admin.firestore.FieldValue.increment(0), // initialize if absent
+        xpToday: admin.firestore.FieldValue.increment(0),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        photoURL: photoURL ?? null,
+      },
+      { merge: true }
+    );
 
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("[api/profile/sync] failed:", e);
-    return NextResponse.json({ ok: false, error: "internal" }, { status: 500 });
+    return NextResponse.json({ ok: true, docId });
+  } catch (err: any) {
+    console.error("[profile/sync] error", err);
+    return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }
 }
-
-

@@ -10,6 +10,7 @@ export type User = {
   xpTotal: number;
   streak: number;
   createdAt: string;
+  firebaseUid?: string | null;
 };
 
 type AuthState = {
@@ -41,6 +42,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const me: User | null = raw ? normalizeUser(raw, prev) : null;
       set({ user: me, error: null });
       try { const { pingStreak } = await import("@/lib/streakClient"); await pingStreak(); } catch {}
+      // Attach Firebase UID so UI can compare against leaderboard row ids (Firebase uids)
+      try {
+        const { signInAnonymously, onAuthStateChanged } = await import("firebase/auth");
+        const { auth } = await import("@/lib/firebaseClient");
+        if (!auth.currentUser) await signInAnonymously(auth);
+        const setFirebaseUid = (uid: string | null) => {
+          const current = get().user;
+          if (current && current.firebaseUid !== uid) set({ user: { ...current, firebaseUid: uid } });
+        };
+        onAuthStateChanged(auth, (u) => {
+          setFirebaseUid(u?.uid ?? null);
+          // Sync profile when auth changes
+          if (u) {
+            fetch("/api/profile/sync", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                uid: u.uid,
+                username: u.displayName ?? null,
+                displayName: u.displayName ?? null,
+                photoURL: u.photoURL ?? null,
+              }),
+            }).catch((e) => console.error("profile sync failed", e));
+          }
+        }, () => setFirebaseUid(null));
+      } catch {}
     } catch (err: any) {
       set({ user: null, error: err?.message || "Not authenticated" });
     } finally {
@@ -55,7 +82,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         method: "POST",
         body: JSON.stringify({ username, password }),
       } as any);
-      set({ user: normalizeUser(raw, get().user), ready: true });
+      const user = normalizeUser(raw, get().user);
+      set({ user, ready: true });
+      
+      // Ensure user appears on leaderboard immediately
+      try {
+        await fetch("/api/profile/sync", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ username: user.username }),
+        });
+      } catch (e) {
+        console.warn("Profile sync failed after login:", e);
+      }
+      
       try { const { pingStreak } = await import("@/lib/streakClient"); await pingStreak(); } catch {}
     } finally {
       set({ loading: false });
@@ -69,7 +109,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         method: "POST",
         body: JSON.stringify({ username, password, email }),
       } as any);
-      set({ user: normalizeUser(raw, get().user), ready: true });
+      const user = normalizeUser(raw, get().user);
+      set({ user, ready: true });
+      
+      // Ensure user appears on leaderboard immediately
+      try {
+        await fetch("/api/profile/sync", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ username: user.username }),
+        });
+      } catch (e) {
+        console.warn("Profile sync failed after registration:", e);
+      }
+      
       try { const { pingStreak } = await import("@/lib/streakClient"); await pingStreak(); } catch {}
     } finally {
       set({ loading: false });

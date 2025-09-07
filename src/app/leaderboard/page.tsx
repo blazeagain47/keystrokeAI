@@ -8,28 +8,78 @@ import { Card, CardContent } from "@/components/ui/card";
 import { tl } from "@/lib/timeline";
 import { devLog } from "@/lib/devLog";
 
-type Row = { id: string; username: string; xpTotal: number; bestWpm?: number|null; streakDays?: number|null };
+type Row = { id: string; username: string; xpTotal: number; xpToday?: number; lastUpdated?: string | null; photoURL?: string | null; bestWpm?: number|null; streakDays?: number|null };
 
 export default function LeaderboardPage() {
-  const me = useAuthStore(s => s.user);
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [me, setMe] = useState<{ username?: string } | null>(null);
+  const [meRow, setMeRow] = useState<Row | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [q, setQ] = useState("");
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/leaderboard?limit=100", { cache: "no-store", credentials: "include" });
-        const json = await res.json();
-        setRows(Array.isArray(json?.rows) ? json.rows : []);
-      } catch { setRows([]); }
+        // 1) who am I?
+        const meRes = await fetch("/api/auth/me", { cache: "no-store" }).catch(() => null);
+        const meJson = meRes?.ok ? await meRes.json() : null;
+        const meUsername = meJson?.username?.trim?.().toLowerCase?.() || "";
+
+        setMe(meJson ?? null);
+
+        // 2) get leaderboard + meRow in one call
+        const lbRes = await fetch(`/api/leaderboard?limit=50${meUsername ? `&meUsername=${encodeURIComponent(meUsername)}` : ""}`, { cache: "no-store" });
+        const lb = lbRes.ok ? await lbRes.json() : { rows: [], me: null };
+
+        setRows(lb.rows || []);
+        setMeRow(lb.me || null);
+        setNextCursor(lb.nextCursor || null);
+        setLoading(false);
+      } catch (e) {
+        console.error("Leaderboard fetch failed", e);
+        setRows([]);
+        setLoading(false);
+      }
     })();
   }, []);
 
+  const youId = useMemo(() => meRow?.id ?? null, [meRow]);
+  const listHasMe = useMemo(() => (youId ? rows.some(r => r.id === youId) : false), [rows, youId]);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return rows ?? [];
-    return (rows ?? []).filter(r => r.username?.toLowerCase().includes(needle));
+    if (!needle) return rows;
+    return rows.filter(r => r.username?.toLowerCase().includes(needle));
   }, [rows, q]);
+
+  const [searchRows, setSearchRows] = useState<Row[] | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    const v = q.trim().toLowerCase();
+    if (!v) { setSearchRows(null); return; }
+    const h = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/leaderboard?q=${encodeURIComponent(v)}&limit=20`, { cache: "no-store", signal: controller.signal });
+        const json = await res.json();
+        setSearchRows(Array.isArray(json?.rows) ? json.rows : []);
+      } catch { setSearchRows([]); }
+    }, 250);
+    return () => { clearTimeout(h); controller.abort(); };
+  }, [q]);
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-white/10 rounded w-48"></div>
+          <div className="space-y-2">
+            {Array.from({length:6}).map((_,i)=><div key={i} className="h-12 bg-white/5 rounded-xl" />)}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -49,25 +99,21 @@ export default function LeaderboardPage() {
         </div>
       </header>
 
-      <Podium rows={filtered.slice(0,3) as Row[]} meId={me?.id ? String(me.id) : null} />
+      <Podium rows={filtered.slice(0,3) as Row[]} meId={youId} />
 
       <Card className="rounded-2xl border border-white/10 bg-white/5 cv-auto cv-480">
         <CardContent className="p-0">
-          {!rows ? (
-            <div className="p-6 animate-pulse space-y-2">
-              {Array.from({length:6}).map((_,i)=><div key={i} className="h-10 bg-white/5 rounded-xl" />)}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="p-6 text-white/70">No players found.</div>
+          {filtered.length === 0 ? (
+            <div className="p-6 text-white/70">No players yet. Create an account and we'll place you on the board instantly.</div>
           ) : (
             <ul className="divide-y divide-white/10">
-              {filtered.map((r, idx) => {
-                const isMe = me && (String(me.id) === String(r.id) || me.username === r.username);
+              {(searchRows ?? filtered).map((r, idx) => {
+                const isMe = !!youId && String(r.id) === String(youId);
                 return (
                   <li key={r.id} className={`flex items-center justify-between px-4 py-3 ${isMe ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"}`}>
                     <div className="flex items-center gap-3">
                       <RankBadge rank={idx+1} />
-                      <AvatarDot name={r.username} />
+                      <AvatarDot name={r.username} photoURL={r.photoURL} />
                       <div className="flex items-center gap-2">
                         <span className="text-white/90 font-medium">{r.username}</span>
                         {isMe && <span className="text-xs text-white/70 bg-white/10 px-2 py-0.5 rounded-full">you</span>}
@@ -86,6 +132,45 @@ export default function LeaderboardPage() {
         </CardContent>
       </Card>
 
+      {/* Pinned self card if not in the top N but signed-in */}
+      {meRow && !listHasMe && !q && (
+        <Card className="rounded-2xl border border-white/10 bg-white/5">
+          <CardContent className="p-4">
+            <div className="text-sm mb-2 text-white/70">Your position</div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AvatarDot name={meRow.username} photoURL={meRow.photoURL} />
+                <div className="flex items-center gap-2">
+                  <span className="text-white/90 font-medium">{meRow.username}</span>
+                  <span className="text-xs text-white/70 bg-white/10 px-2 py-0.5 rounded-full">you</span>
+                </div>
+              </div>
+              <div className="text-sm text-white/70">
+                <span className="text-white/90 font-semibold tabular-nums">{meRow.xpTotal}</span> XP
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {(!q && nextCursor) ? (
+        <div className="flex justify-center">
+          <button
+            className="mt-3 px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10 text-sm"
+            onClick={async () => {
+              try {
+                const res = await fetch(`/api/leaderboard?limit=50&after=${encodeURIComponent(nextCursor!)}`, { cache: "no-store", credentials: "include" });
+                const json = await res.json();
+                setRows([...(rows || []), ...((json?.rows as Row[]) || [])]);
+                setNextCursor(json?.nextCursor || null);
+              } catch {}
+            }}
+          >
+            Load more
+          </button>
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-gradient-to-r from-orange-500/10 to-amber-300/10 p-4">
         <div className="text-white/80 text-sm">Want to climb faster? Practice a quick test.</div>
         <Link href="/#new" className="px-3 py-1.5 rounded-xl bg-white text-black text-sm font-medium" onClick={() => { try { tl("leaderboard New test click"); } catch {} ; try { devLog("nav: leaderboard new test"); } catch {} }}>New test</Link>
@@ -101,10 +186,17 @@ function RankBadge({ rank }: { rank: number }) {
   return <span className="w-6 text-right text-white/60 tabular-nums">#{rank}</span>;
 }
 
-function AvatarDot({ name }: { name: string }) {
+function AvatarDot({ name, photoURL }: { name: string; photoURL?: string | null }) {
   const letter = (name || "?").slice(0,1).toUpperCase();
   return (
-    <div className="w-7 h-7 rounded-full grid place-items-center bg-white/10 ring-1 ring-white/10 text-white text-sm font-semibold">{letter}</div>
+    <div className="w-7 h-7 rounded-full grid place-items-center bg-white/10 ring-1 ring-white/10 text-white text-sm font-semibold overflow-hidden">
+      {photoURL ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img alt="" src={photoURL} className="h-full w-full object-cover" />
+      ) : (
+        letter
+      )}
+    </div>
   );
 }
 
@@ -117,7 +209,7 @@ function Podium({ rows, meId }: { rows: Row[]; meId: string | null }) {
         <div key={r.id} className={`rounded-2xl border border-white/10 p-4 ${i===1 ? "bg-gradient-to-b from-white/[0.08] to-transparent" : "bg-white/5"}`}>
           <div className="flex items-center gap-2 mb-2">{i===1 ? <Crown className="h-4 w-4 text-yellow-300"/> : <Trophy className="h-4 w-4 text-amber-300" />}<span className="text-white/80 text-sm">{i===1?"Champion":"Top"}</span></div>
           <div className="flex items-center gap-3">
-            <AvatarDot name={r.username}/>
+            <AvatarDot name={r.username} photoURL={r.photoURL}/>
             <div className="leading-tight">
               <div className="text-white font-semibold">{r.username} {meId && String(r.id)===meId && <span className="text-xs text-white/70 bg-white/10 px-2 py-0.5 rounded-full ml-1">you</span>}</div>
               <div className="text-white/70 text-sm"><span className="text-white/90 font-semibold tabular-nums">{r.xpTotal}</span> XP</div>

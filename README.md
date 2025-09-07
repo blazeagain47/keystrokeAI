@@ -24,3 +24,5 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 ```
 
 On Windows, ensure newlines in `FIREBASE_PRIVATE_KEY` are encoded as `\n`.
+
+You can also copy `.env.example` into `.env.local` and fill in the values.

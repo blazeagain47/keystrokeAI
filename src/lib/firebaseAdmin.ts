@@ -1,56 +1,65 @@
-import * as admin from "firebase-admin";
+// src/lib/firebaseAdmin.ts
+import { cert, getApps, initializeApp, App, ServiceAccount } from "firebase-admin/app";
+import { getFirestore, Firestore } from "firebase-admin/firestore";
 
-let app: admin.app.App;
-
-if (!admin.apps.length) {
-  const projectId = process.env.FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-
-  if (!projectId || !clientEmail || !privateKey) {
-    const msg = "Missing Firebase Admin env vars. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY.";
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[firebaseAdmin] env missing", {
-        hasProjectId: !!projectId,
-        hasClientEmail: !!clientEmail,
-        hasPrivateKey: !!privateKey,
-      });
-    }
-    throw new Error(msg);
-  }
-
-  app = admin.initializeApp({
-    credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
-  });
-} else {
-  app = admin.app();
+declare global {
+  // eslint-disable-next-line no-var
+  var __FIREBASE_ADMIN_APP__: App | undefined;
+  // eslint-disable-next-line no-var
+  var __FIREBASE_ADMIN_DB__: Firestore | undefined;
 }
 
-export const adminAuth = admin.auth();
-export const adminDb = admin.firestore();
-export const serverTs = () => admin.firestore.FieldValue.serverTimestamp();
-export const inc = (n: number) => admin.firestore.FieldValue.increment(n);
-export const getAdminDb = () => adminDb;
+function getAdminApp(): App {
+  if (!global.__FIREBASE_ADMIN_APP__) {
+    const projectId = process.env.FIREBASE_PROJECT_ID!;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL!;
+    const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
 
-export async function verifyIdTokenFromAuthHeader(authHeader?: string | null) {
-  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-  const token = authHeader.slice("Bearer ".length);
+    global.__FIREBASE_ADMIN_APP__ = initializeApp({
+      credential: cert({ projectId, clientEmail, privateKey } as ServiceAccount),
+      projectId,
+    });
+  }
+  return global.__FIREBASE_ADMIN_APP__!;
+}
+
+export function getAdminDb(): Firestore {
+  if (!global.__FIREBASE_ADMIN_DB__) {
+    const app = getAdminApp();
+    const db = getFirestore(app);
+    // IMPORTANT: do NOT call db.settings() repeatedly in dev/hot-reload.
+    // If you need ignoreUndefinedProperties, set once here and never again:
+    // (Uncomment ONLY if you didn't call it anywhere else)
+    // db.settings({ ignoreUndefinedProperties: true });
+
+    global.__FIREBASE_ADMIN_DB__ = db;
+  }
+  return global.__FIREBASE_ADMIN_DB__!;
+}
+
+// Legacy exports for compatibility
+export const adminDb = getAdminDb();
+
+// Helper functions that may be used elsewhere
+export async function verifyIdTokenFromAuthHeader(authHeader: string | null) {
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  
+  const idToken = authHeader.replace("Bearer ", "");
   try {
-    return await adminAuth.verifyIdToken(token);
-  } catch (e: any) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[firebaseAdmin] verifyIdToken failed", { name: e?.name, code: e?.code, message: e?.message });
-    }
+    const { getAuth } = await import("firebase-admin/auth");
+    const auth = getAuth(getAdminApp());
+    return await auth.verifyIdToken(idToken);
+  } catch {
     return null;
   }
 }
 
-export function adminDiag() {
-  return {
-    hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
-    hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
-    hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
-  };
+export function serverTs() {
+  const { FieldValue } = require("firebase-admin/firestore");
+  return FieldValue.serverTimestamp();
 }
 
-
+export function inc(n: number) {
+  const { FieldValue } = require("firebase-admin/firestore");
+  return FieldValue.increment(n);
+}

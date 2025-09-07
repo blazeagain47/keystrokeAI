@@ -70,7 +70,8 @@ export default function Leaderboard() {
         <div className="mt-3">
           <AnimatePresence initial={false}>
             {rows.map((r, i) => {
-              const me = user && (String(user.id) === String(r.id) || user?.username === r?.username);
+              const myUid = (user as any)?.firebaseUid ?? null;
+              const me = !!myUid && String(r.id) === String(myUid);
               const rank = i + 1;
               const top = rows[0]?.xpTotal || 1;
               const pct = Math.round((r.xpTotal / top) * 100);
