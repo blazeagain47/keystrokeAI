@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 
 export default function LoginPage() {
+  // Start on "login"; we'll sync from URL right after mount to avoid SSR mismatch.
   const [tab, setTab] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -16,6 +17,28 @@ export default function LoginPage() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  // Read desired tab from URL on mount and when URL changes (hash/popstate).
+  useEffect(() => {
+    const applyFromUrl = () => {
+      try {
+        const hash = (window.location.hash || "").replace(/^#/, "").toLowerCase();
+        const q = new URLSearchParams(window.location.search).get("tab")?.toLowerCase() || "";
+        const wantsRegister = hash === "register" || hash === "signup" || q === "register" || q === "signup";
+        const wantsLogin = hash === "login" || q === "login";
+        setTab(wantsRegister ? "register" : wantsLogin ? "login" : "login");
+      } catch {
+        setTab("login");
+      }
+    };
+    applyFromUrl();
+    window.addEventListener("hashchange", applyFromUrl);
+    window.addEventListener("popstate", applyFromUrl);
+    return () => {
+      window.removeEventListener("hashchange", applyFromUrl);
+      window.removeEventListener("popstate", applyFromUrl);
+    };
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,8 +58,8 @@ export default function LoginPage() {
   if (!mounted) return null;
 
   return (
-    <div className="max-w-md mx-auto" suppressHydrationWarning>
-      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-6" suppressHydrationWarning>
+    <main className="min-h-[100dvh] flex items-center justify-center px-4" suppressHydrationWarning>
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-6">
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setTab("login")}
@@ -104,7 +127,7 @@ export default function LoginPage() {
           {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
         </form>
       </div>
-    </div>
+    </main>
   );
 }
 

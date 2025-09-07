@@ -112,7 +112,7 @@ export default function Header() {
           ) : (
             <>
               <Link
-                href="/login"
+                href="/login?tab=login"
                 className={clsx(
                   "px-3 py-1 rounded-xl border border-white/10 hover:bg-white/10 text-sm"
                 )}
@@ -121,7 +121,7 @@ export default function Header() {
                 Sign in
               </Link>
               <Link
-                href="/login#register"
+                href="/login?tab=register"
                 className={clsx(
                   "px-3 py-1 rounded-xl bg-white text-black text-sm font-medium"
                 )}
