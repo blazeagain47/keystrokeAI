@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import admin from "firebase-admin";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { leaderboardDocId } from "@/lib/leaderboardUser";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
@@ -19,14 +19,15 @@ export async function POST(req: Request) {
     const docId = leaderboardDocId({ uid: null, username: usernameClean });
     const usernameLower = usernameClean.toLowerCase();
 
+    const { FieldValue } = await import("firebase-admin/firestore");
     await db.collection("users").doc(docId).set(
       {
         // keep username fields authoritative for display + search
         username: usernameClean, 
         usernameLower,
-        xpTotal: admin.firestore.FieldValue.increment(0), // initialize if absent
-        xpToday: admin.firestore.FieldValue.increment(0),
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        xpTotal: FieldValue.increment(0), // initialize if absent
+        xpToday: FieldValue.increment(0),
+        lastUpdated: FieldValue.serverTimestamp(),
         photoURL: photoURL ?? null,
       },
       { merge: true }
