@@ -14,7 +14,7 @@ function looksLikeUid(s: string) {
 
 export default function Leaderboard() {
   const { user } = useAuth();
-  const { ref, visible } = useOnVisible<HTMLDivElement>("250px");
+  const { ref, visible } = useOnVisible<HTMLDivElement>({ rootMargin: "250px" });
   const [rows, setRows] = React.useState<Row[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
