@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { Trophy, Crown, Medal, Award, Search } from "lucide-react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
@@ -94,6 +94,7 @@ export default function LeaderboardPage() {
   }
 
   return (
+    <Suspense fallback={null}>
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       {/* Join-the-leaderboard CTA (logged-out only) */}
       <Modal open={ctaOpen} onClose={dismissCta} ariaLabel="Join the leaderboard">
@@ -224,6 +225,7 @@ export default function LeaderboardPage() {
         <Link href="/#new" className="px-3 py-1.5 rounded-xl bg-white text-black text-sm font-medium" onClick={() => { try { tl("leaderboard New test click"); } catch {} ; try { devLog("nav: leaderboard new test"); } catch {} }}>New test</Link>
       </div>
     </div>
+    </Suspense>
   );
 }
 

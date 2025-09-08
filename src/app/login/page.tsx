@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 
@@ -58,6 +58,7 @@ export default function LoginPage() {
   if (!mounted) return null;
 
   return (
+    <Suspense fallback={null}>
     <main className="min-h-[100dvh] flex items-center justify-center px-4" suppressHydrationWarning>
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-6">
         <div className="flex gap-2 mb-6">
@@ -128,6 +129,7 @@ export default function LoginPage() {
         </form>
       </div>
     </main>
+    </Suspense>
   );
 }
 
