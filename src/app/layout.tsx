@@ -11,6 +11,7 @@ import AppBoot from '@/components/AppBoot'
 import SettingsModal from '@/components/settings/SettingsModal'
 import HotkeysGlobal from '@/components/system/HotkeysGlobal'
 import PerfBootMarker from '@/components/PerfBootMarker'
+import { Analytics } from '@vercel/analytics/next'
 
 const inter = Inter({ subsets: ['latin'], display: 'swap', preload: true })
 
@@ -58,6 +59,7 @@ export default function RootLayout({
             <SettingsModal />
           </ThemeProvider>
         </Suspense>
+        <Analytics />
       </body>
     </html>
   )
