@@ -1,21 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { API_BASE } from "@/lib/api";
+import type { GenerateIn } from "@/server/generatePrompt";
+import { generatePrompt } from "@/server/generatePrompt";
+
+// Ensure Node runtime (avoid any edge/crypto fetch quirks)
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const fetchCache = "default-no-store";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.text();
-    const r = await fetch(`${API_BASE}/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-    });
-    const text = await r.text();
-    return new NextResponse(text, {
-      status: r.status,
-      headers: { "Content-Type": r.headers.get("content-type") || "application/json" },
-    });
-  } catch (e: any) {
-    return NextResponse.json({ error: "proxy_failed", detail: String(e), apiBase: API_BASE }, { status: 502 });
+    const body = await req.json().catch(() => ({}));
+    const input = body as GenerateIn;
+
+    const out = await generatePrompt(input);
+    return NextResponse.json(out, { status: 200 });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "GENERATION_FAILED", detail: String(err?.message ?? err) },
+      { status: 500 }
+    );
   }
 }
 

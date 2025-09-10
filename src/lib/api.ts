@@ -1,11 +1,38 @@
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || "http://127.0.0.1:8000";
+const FALLBACK = "http://127.0.0.1:8000";
+
+function normalize(u?: string | null) {
+  return u ? u.replace(/\/+$/, "") : u;
+}
+
+/**
+ * Resolved API base:
+ * - Prefers NEXT_PUBLIC_API_URL
+ * - Trims trailing slashes
+ * - In production, throws if unset or points to localhost/127.0.0.1
+ */
+export const API_BASE: string = (() => {
+  const fromEnv = normalize(process.env.NEXT_PUBLIC_API_URL);
+  const val = fromEnv || FALLBACK;
+
+  const isProd = process.env.NODE_ENV === "production";
+  const isLocal =
+    /(^|\/)\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/i.test(val);
+
+  if (isProd && (!fromEnv || isLocal)) {
+    // Throw during route execution (will show up clearly in logs)
+    throw new Error(
+      `API_BASE misconfigured in production. Set NEXT_PUBLIC_API_URL to your upstream base (e.g. https://api.blazekeyapp.com). Current: "${val}".`
+    );
+  }
+  return val;
+})();
 
 export function withBase(path: string) {
   if (!path.startsWith("/")) path = `/${path}`;
   return `${API_BASE}${path}`;
 }
 
+// Generic JSON fetcher (unchanged)
 export type FetchJSONOptions = {
   method?: "GET" | "POST";
   body?: any;
@@ -33,26 +60,18 @@ export async function fetchJSON<T = any>(
   }: FetchJSONOptions = {}
 ): Promise<T> {
   const attempt = async () => {
-    // New combined controller per attempt so timeout works on retries
     const combined = new AbortController();
     const timeout = setTimeout(() => combined.abort(), timeoutMs);
-    // Forward user abort into combined
-    if (signal) {
-      signal.addEventListener("abort", () => combined.abort(), { once: true });
-    }
+    if (signal) signal.addEventListener("abort", () => combined.abort(), { once: true });
     try {
       const res = await fetch(url, {
         method,
-        headers: {
-          "Content-Type": "application/json",
-          ...headers,
-        },
+        headers: { "Content-Type": "application/json", ...headers },
         body: body ? JSON.stringify(body) : undefined,
         signal: combined.signal,
+        cache: "no-store",
       });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as T;
     } finally {
       clearTimeout(timeout);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { API_BASE } from "@/lib/api";
 import { slog } from "@/lib/log";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const fetchCache = "default-no-store";
 
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
 
     const body = await res.text();
     if (!res.ok) {
-      slog("me upstream error", res.status, body);
+      slog("me upstream error", res.status, body?.slice?.(0, 512));
       return new NextResponse(body || "", {
         status: res.status,
         headers: {
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
 
     return new NextResponse(body, { status: 200, headers });
   } catch (err: any) {
-    slog("me proxy failed", 500, String(err?.stack || err));
+    slog("me proxy failed", String(err?.stack || err));
     return NextResponse.json({ detail: "proxy_failed" }, { status: 500 });
   }
 }
