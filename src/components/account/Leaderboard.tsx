@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useOnVisible } from "@/lib/useOnVisible";
-import { motion, AnimatePresence } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import { Trophy, Crown, Medal, Award, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -14,7 +14,7 @@ function looksLikeUid(s: string) {
 
 export default function Leaderboard() {
   const { user } = useAuth();
-  const { ref, visible } = useOnVisible<HTMLDivElement>("250px");
+  const { ref, visible } = useOnVisible<HTMLDivElement>({ rootMargin: "250px" });
   const [rows, setRows] = React.useState<Row[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -78,7 +78,7 @@ export default function Leaderboard() {
               const RankIcon = rank === 1 ? Crown : rank === 2 ? Medal : rank === 3 ? Award : null;
 
               return (
-                <motion.div
+                <m.div
                   key={`${r.id}-${i}`}
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -112,7 +112,7 @@ export default function Leaderboard() {
                       <span className="font-semibold">{r.xpTotal}</span> <span className="text-white/60">XP</span>
                     </div>
                   </div>
-                </motion.div>
+                </m.div>
               );
             })}
           </AnimatePresence>

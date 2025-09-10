@@ -63,3 +63,14 @@ export function inc(n: number) {
   const { FieldValue } = require("firebase-admin/firestore");
   return FieldValue.increment(n);
 }
+
+// --- dev-only diagnostics (safe, minimal) ---
+export function adminDiag() {
+  return {
+    node: process.version,
+    env: process.env.NODE_ENV,
+    projectId: process.env.FIREBASE_PROJECT_ID ?? null,
+    hasApp: !!global.__FIREBASE_ADMIN_APP__,
+    hasDb: !!global.__FIREBASE_ADMIN_DB__,
+  };
+}

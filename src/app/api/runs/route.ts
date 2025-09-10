@@ -14,6 +14,7 @@ type RunPayload = {
   wpm?: number;
   accuracy?: number;
   guestId?: string | null;
+  clientRunId?: string;
 };
 
 // Helper to get current app user from session/cookies

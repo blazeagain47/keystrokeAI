@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import admin from "firebase-admin";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { leaderboardDocId } from "@/lib/leaderboardUser";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
@@ -11,21 +11,23 @@ export async function POST(req: Request) {
     const { uid, username, photoURL } = body || {};
     const usernameClean = String(username || "").trim();
 
-    if (!uid && !usernameClean) {
-      return NextResponse.json({ error: "missing uid/username" }, { status: 400 });
+    if (!usernameClean) {
+      return NextResponse.json({ error: "username required" }, { status: 400 });
     }
 
     const db = getAdminDb();
-    const docId = leaderboardDocId({ uid, username: usernameClean });
-    const usernameLower = usernameClean ? usernameClean.toLowerCase() : null;
+    const docId = leaderboardDocId({ uid: null, username: usernameClean });
+    const usernameLower = usernameClean.toLowerCase();
 
+    const { FieldValue } = await import("firebase-admin/firestore");
     await db.collection("users").doc(docId).set(
       {
         // keep username fields authoritative for display + search
-        ...(usernameClean && { username: usernameClean, usernameLower }),
-        xpTotal: admin.firestore.FieldValue.increment(0), // initialize if absent
-        xpToday: admin.firestore.FieldValue.increment(0),
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        username: usernameClean, 
+        usernameLower,
+        xpTotal: FieldValue.increment(0), // initialize if absent
+        xpToday: FieldValue.increment(0),
+        lastUpdated: FieldValue.serverTimestamp(),
         photoURL: photoURL ?? null,
       },
       { merge: true }

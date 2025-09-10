@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { Trophy, Crown, Medal, Award, Search } from "lucide-react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
 import { Card, CardContent } from "@/components/ui/card";
+import Modal from "@/components/ui/Modal";
 import { tl } from "@/lib/timeline";
 import { devLog } from "@/lib/devLog";
 
@@ -12,11 +13,18 @@ type Row = { id: string; username: string; xpTotal: number; xpToday?: number; la
 
 export default function LeaderboardPage() {
   const [rows, setRows] = useState<Row[]>([]);
-  const [me, setMe] = useState<{ username?: string } | null>(null);
+  const [meData, setMeData] = useState<{ username?: string } | null>(null);
   const [meRow, setMeRow] = useState<Row | null>(null);
   const [loading, setLoading] = useState(true);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [ctaOpen, setCtaOpen] = useState(false);
+
+  // Close & remember the dismissal for 24h
+  const dismissCta = () => {
+    localStorage.setItem("lb_cta_hide_until", String(Date.now() + 24 * 60 * 60 * 1000));
+    setCtaOpen(false);
+  };
 
   useEffect(() => {
     (async () => {
@@ -26,7 +34,7 @@ export default function LeaderboardPage() {
         const meJson = meRes?.ok ? await meRes.json() : null;
         const meUsername = meJson?.username?.trim?.().toLowerCase?.() || "";
 
-        setMe(meJson ?? null);
+        setMeData(meJson ?? null);
 
         // 2) get leaderboard + meRow in one call
         const lbRes = await fetch(`/api/leaderboard?limit=50${meUsername ? `&meUsername=${encodeURIComponent(meUsername)}` : ""}`, { cache: "no-store" });
@@ -36,6 +44,10 @@ export default function LeaderboardPage() {
         setMeRow(lb.me || null);
         setNextCursor(lb.nextCursor || null);
         setLoading(false);
+
+        // Decide whether to open the CTA
+        const hideUntil = Number(localStorage.getItem("lb_cta_hide_until") || 0);
+        if (!meJson && Date.now() > hideUntil) setCtaOpen(true);
       } catch (e) {
         console.error("Leaderboard fetch failed", e);
         setRows([]);
@@ -82,7 +94,44 @@ export default function LeaderboardPage() {
   }
 
   return (
+    <Suspense fallback={null}>
     <div className="max-w-6xl mx-auto p-6 space-y-6">
+      {/* Join-the-leaderboard CTA (logged-out only) */}
+      <Modal open={ctaOpen} onClose={dismissCta} ariaLabel="Join the leaderboard">
+        <div className="p-6 md:p-8">
+          <h3 className="text-xl font-semibold mb-2">Join the leaderboard</h3>
+          <p className="text-white/70 mb-6">
+            Create a free account to claim your spot and start earning XP.
+          </p>
+
+          <div className="flex items-center gap-3">
+            {/* Both buttons go to login to avoid 404s */}
+            <Link
+              href="/login"
+              className="px-4 py-2 rounded-xl bg-white text-black font-medium"
+              onClick={() => setCtaOpen(false)}
+            >
+              Register
+            </Link>
+
+            <Link
+              href="/login"
+              className="px-4 py-2 rounded-xl border border-white/20 hover:bg-white/10"
+              onClick={() => setCtaOpen(false)}
+            >
+              Sign in
+            </Link>
+
+            <button
+              type="button"
+              onClick={dismissCta}
+              className="ml-auto px-3 py-2 text-white/70 hover:text-white"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      </Modal>
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Trophy className="h-6 w-6 text-amber-300" />
@@ -176,6 +225,7 @@ export default function LeaderboardPage() {
         <Link href="/#new" className="px-3 py-1.5 rounded-xl bg-white text-black text-sm font-medium" onClick={() => { try { tl("leaderboard New test click"); } catch {} ; try { devLog("nav: leaderboard new test"); } catch {} }}>New test</Link>
       </div>
     </div>
+    </Suspense>
   );
 }
 

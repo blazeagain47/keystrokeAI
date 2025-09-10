@@ -26,11 +26,13 @@ async function dumpSampleDocs() {
       
       console.log(`   Found ${snapshot.size} documents (showing latest 10):\n`);
       
-      snapshot.forEach((doc, index) => {
+      let i = 0;
+      snapshot.forEach((doc) => {
         const data = doc.data();
-        console.log(`   Document ${index + 1} (ID: ${doc.id}):`);
+        console.log(`   Document ${i + 1} (ID: ${doc.id}):`);
         console.log("   └─ Data:", JSON.stringify(data, null, 2));
         console.log("");
+        i++;
       });
       
     } catch (error) {

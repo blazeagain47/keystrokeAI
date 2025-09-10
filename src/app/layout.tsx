@@ -1,6 +1,6 @@
 // src/app/layout.tsx
 import type { Metadata } from 'next'
-import React from 'react'
+import React, { Suspense } from 'react'
 import AuthGate from '@/components/auth/AuthGate'
 import { Inter } from 'next/font/google'
 import './globals.css'
@@ -39,23 +39,25 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className={`${inter.className} page-bg bk-flame-bg min-h-dvh antialiased overflow-x-clip`}>
-        {/* Client bootstrap for auth + appearance */}
-        <AppBoot />
-        <PerfBootMarker />
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <GlobalFireBackdrop />
-          <Header />
-          <HotkeysGlobal />
-          {children}
-          {/* Global auth modal gate */}
-          <AuthGate />
-          <SettingsModal />
-        </ThemeProvider>
+        <Suspense fallback={null}>
+          {/* Client bootstrap for auth + appearance */}
+          <AppBoot />
+          <PerfBootMarker />
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <GlobalFireBackdrop />
+            <Header />
+            <HotkeysGlobal />
+            {children}
+            {/* Global auth modal gate */}
+            <AuthGate />
+            <SettingsModal />
+          </ThemeProvider>
+        </Suspense>
       </body>
     </html>
   )

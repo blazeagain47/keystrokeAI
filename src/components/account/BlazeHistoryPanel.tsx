@@ -23,7 +23,7 @@ export default function BlazeHistoryPanel() {
   useEffect(() => {
     if (!userId || ready) return;
     const ac = new AbortController();
-    (async () => { try { await hydrate(String(userId), { signal: ac.signal as any }); } catch {} })();
+    (async () => { try { await hydrate(String(userId)); } catch {} })();
     return () => ac.abort();
   }, [ready, userId, hydrate]);
 

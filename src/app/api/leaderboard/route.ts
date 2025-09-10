@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
@@ -30,17 +31,21 @@ export async function GET(req: Request) {
     }
 
     const snap = await query.get();
-    const rows = snap.docs.map((d) => {
-      const v = d.data() || {};
-      return {
-        id: d.id,
-        username: v.username ?? "player",
-        xpTotal: v.xpTotal ?? 0,
-        xpToday: v.xpToday ?? 0,
-        lastUpdated: v.lastUpdated?.toDate?.()?.toISOString?.() ?? null,
-        photoURL: v.photoURL ?? null,
-      };
-    });
+    const rows = snap.docs
+      .map((d) => {
+        const v = d.data() || {};
+        const name = typeof v.username === "string" ? v.username.trim() : "";
+        if (!name) return null; // ← skip docs that never had a username
+        return {
+          id: d.id,
+          username: name,
+          xpTotal: Number(v.xpTotal ?? 0),
+          xpToday: Number(v.xpToday ?? 0),
+          lastUpdated: v.lastUpdated?.toDate?.()?.toISOString?.() ?? null,
+          photoURL: v.photoURL ?? null,
+        };
+      })
+      .filter(Boolean); // remove nulls
 
     // Optionally fetch the signed-in user by usernameLower (for "pinned self" use)
     let me: any = null;
@@ -54,14 +59,17 @@ export async function GET(req: Request) {
       const doc = meQ.docs[0];
       if (doc) {
         const v = doc.data() || {};
-        me = {
-          id: doc.id,
-          username: v.username ?? "player",
-          xpTotal: v.xpTotal ?? 0,
-          xpToday: v.xpToday ?? 0,
-          lastUpdated: v.lastUpdated?.toDate?.()?.toISOString?.() ?? null,
-          photoURL: v.photoURL ?? null,
-        };
+        const name = typeof v.username === "string" ? v.username.trim() : "";
+        if (name) {
+          me = {
+            id: doc.id,
+            username: name,
+            xpTotal: Number(v.xpTotal ?? 0),
+            xpToday: Number(v.xpToday ?? 0),
+            lastUpdated: v.lastUpdated?.toDate?.()?.toISOString?.() ?? null,
+            photoURL: v.photoURL ?? null,
+          };
+        }
       }
     }
 
