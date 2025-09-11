@@ -4,6 +4,7 @@
 import * as React from "react";
 import { useMemo, useDeferredValue } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import { useOnVisible } from "@/lib/useOnVisible";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import AIFeedback from "@/components/feedback/AIFeedback";
 import BlazeFeedbackCard from "@/components/feedback/BlazeFeedbackCard";
@@ -133,6 +134,11 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   }, [wpmTrend, props.wpm]);
   const [pulseGlow, setPulseGlow] = React.useState(false);
   const prefersReducedMotion = useReducedMotion();
+  // Reveal the chart only when the card is scrolled into view
+  const { ref: trendRef, visible: trendVisible } = useOnVisible<HTMLDivElement>({
+    rootMargin: "0px 0px -120px 0px",
+    threshold: 0.2,
+  });
 
   React.useEffect(() => {
     let tabHeld = false;
@@ -363,15 +369,22 @@ export default function ResultsPanel(props: ResultsPanelProps) {
               </div>
             </CardHeader>
             <CardContent className="pt-2 relative z-10">
-              <div className="h-[312px] md:h-[360px] pl-6 pr-2">
+              <motion.div
+                ref={trendRef}
+                className="h-[312px] md:h-[360px] pl-6 pr-2"
+                initial={prefersReducedMotion ? undefined : { opacity: 0, y: 12 }}
+                animate={prefersReducedMotion ? undefined : (trendVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 })}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+              >
                 <ResultsChart
                   chartData={chartData}
                   avg={chartAvgWpm}
                   finishSec={finishSec}
                   reducedMotion={prefersReducedMotion}
+                  visible={trendVisible}
                   onFirstPaint={() => mark('chart:rendered')}
                 />
-              </div>
+              </motion.div>
             </CardContent>
           </Card>
         </div>

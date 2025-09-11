@@ -17,6 +17,51 @@ import { Line } from "react-chartjs-2";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 
+// ---- Centered autoscale helpers ----
+function computeCenteredYRange(values: number[], opts?: { pad?: number; minSpan?: number; floor?: number }) {
+  const pad = opts?.pad ?? 0.25;
+  const minSpan = opts?.minSpan ?? 30;
+  const floor = opts?.floor ?? 0;
+  if (!values?.length) return { min: 0, max: minSpan };
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const vmin = Math.min(...values), vmax = Math.max(...values);
+  const dev = Math.max(mean - vmin, vmax - mean, minSpan / 2);
+  let yMin = Math.max(floor, mean - dev * (1 + pad));
+  let yMax = mean + dev * (1 + pad);
+  if (yMax - yMin < minSpan) {
+    const extra = (minSpan - (yMax - yMin)) / 2;
+    yMin = Math.max(floor, yMin - extra);
+    yMax = yMax + extra;
+  }
+  return { min: yMin, max: yMax };
+}
+function niceStep(min: number, max: number, approxTicks = 6) {
+  const span = Math.max(1, max - min);
+  const rough = span / approxTicks;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough)));
+  const choices = [1, 2, 2.5, 5, 10];
+  const step = (choices.find((c) => c * pow >= rough) ?? 10) * pow;
+  return step;
+}
+
+// ---- Stroke gradient plugin (subtle) ----
+const bkGradientStroke: Plugin<"line"> = {
+  id: "bk-gradient-stroke",
+  beforeDatasetsDraw(chart) {
+    const { ctx, chartArea } = chart as any;
+    if (!chartArea) return;
+    const grad = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+    grad.addColorStop(0, "#FFA856");
+    grad.addColorStop(1, "#FF6E40");
+    // apply to datasets that opt in
+    // @ts-ignore: using private opt-in flag
+    chart.config.data.datasets.forEach((ds: any) => {
+      if (ds._useBkGradient) ds.borderColor = grad;
+    });
+  },
+};
+
+ChartJS.register(bkGradientStroke);
 type Point = { second: number; wpm: number };
 
 type Props = {
@@ -24,6 +69,7 @@ type Props = {
   avg?: number | null;         // optional avg reference line
   finishSec?: number | null;   // optional finish vertical line
   reducedMotion?: boolean;
+  visible?: boolean;           // scroll-in trigger
   onFirstPaint?: () => void;
   className?: string;
 };
@@ -160,6 +206,7 @@ export default function ResultsChart({
   avg = null,
   finishSec = null,
   reducedMotion = false,
+  visible = true,
   onFirstPaint,
   className,
 }: Props) {
@@ -188,21 +235,22 @@ export default function ResultsChart({
     return g;
   }, []);
 
-  // Reveal animation progress (0..1)
+  // Reveal animation progress (0..1), starts when visible
   const [reveal, setReveal] = React.useState(0);
   React.useEffect(() => {
+    if (reducedMotion) { setReveal(1); return; }
+    if (!visible) return;
     let raf = 0;
     const start = performance.now();
-    const dur = reducedMotion ? 0 : 650; // ms
+    const dur = 900; // ms
     const tick = (t: number) => {
-      const p = dur === 0 ? 1 : Math.min(1, (t - start) / dur);
+      const p = Math.min(1, (t - start) / dur);
       setReveal(p);
-      if (p < 1) raf = requestAnimationFrame(tick);
-      else onFirstPaint?.();
+      if (p < 1) raf = requestAnimationFrame(tick); else onFirstPaint?.();
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [chartData, reducedMotion, onFirstPaint]);
+  }, [visible, reducedMotion, onFirstPaint]);
 
   // Subtle ember particles (pure CSS) — randomize on mount
   React.useEffect(() => {
@@ -228,23 +276,29 @@ export default function ResultsChart({
   const labels = chartData.map(d => d.second);
   const values = chartData.map(d => d.wpm);
 
+  // Compute centered Y range so the line sits mid-chart
+  const yCentered = computeCenteredYRange(values, { pad: 0.25, minSpan: 30, floor: 0 });
+
   const data: ChartData<"line"> = {
     labels,
     datasets: [
       {
         label: "WPM",
         data: values,
-        borderColor: (ctx) => gradientStroke(ctx),
+        // gradient applied by plugin when _useBkGradient = true
+        borderColor: "#FF9C5A",
         backgroundColor: (ctx) => gradientFill(ctx),
         fill: true,
         borderWidth: 3,
-        pointRadius: 0,
+        pointRadius: (ctx) => (ctx.dataIndex === values.length - 1 ? 3.5 : 0),
         tension: 0.35,
         // nice micro glow on hover
         pointHoverRadius: 5,
         pointHoverBackgroundColor: "#FFD36E",
         pointHoverBorderColor: "#FF6A00",
         pointHoverBorderWidth: 2,
+        // @ts-ignore opt-in for gradient stroke plugin
+        _useBkGradient: true,
       },
     ],
   };
@@ -282,7 +336,7 @@ export default function ResultsChart({
         ticks: { color: "rgba(255,255,255,.7)", padding: 6 },
         title: {
           display: ({ chart }) => chart.width > 420,
-          text: "Time",
+          text: "Time (s)",
           color: "rgba(255,180,100,.9)",
           // ~1.2× bigger; clamps 14–18px based on canvas height
           font: (ctx: any) => ({
@@ -293,9 +347,14 @@ export default function ResultsChart({
         } as any,
       },
       y: {
-        beginAtZero: true,
+        min: yCentered.min,
+        max: yCentered.max,
         grid: { color: "rgba(255,255,255,.14)", lineWidth: 1, drawBorder: false },
-        ticks: { color: "rgba(255,255,255,.7)", padding: 6 },
+        ticks: {
+          color: "rgba(255,255,255,.7)",
+          padding: 6,
+          stepSize: niceStep(yCentered.min, yCentered.max, 6),
+        },
         title: {
           display: ({ chart }) => chart.height > 220,
           text: "WPM",
@@ -344,7 +403,7 @@ export default function ResultsChart({
           }}
           width={w}
           height={h}
-          plugins={[bkLineReveal, bkGuides, bkFrameGlow]}
+          plugins={[bkLineReveal, bkGuides, bkFrameGlow, bkGradientStroke]}
         />
       ) : (
         <div className="absolute inset-0 animate-pulse bg-white/5 rounded-lg" />
