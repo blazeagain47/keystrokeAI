@@ -34,7 +34,7 @@ export default function SelectedTestChips({
       : mode === "time"
       ? formatSettingChip("time", `${Number(durationSec ?? 0)}s`)
       : mode === "quote"
-      ? "Quote"
+      ? "<> coder"
       : mode === "zen"
       ? "Zen"
       : "Custom";

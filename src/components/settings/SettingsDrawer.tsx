@@ -103,7 +103,7 @@ export default function SettingsPanel() {
                   {(["words","time","quote","custom"] as TestMode[]).map(m => (
                     <label key={m} className="flex items-center gap-2 mb-1">
                       <input type="radio" name="testMode" checked={s.test.defaultMode===m} onChange={()=>s.update('test',{ defaultMode: m })} />
-                      <span className="capitalize">{m}</span>
+                      <span className="capitalize">{m === "quote" ? "<> coder" : m}</span>
                     </label>
                   ))}
                 </div>

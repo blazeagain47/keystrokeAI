@@ -28,7 +28,7 @@ export default function ThisTestCard({
       : mode === "time"
       ? `Time · ${durationSec ?? "—"}s`
       : mode === "quote"
-      ? "Quote"
+      ? "<> coder"
       : mode === "zen"
       ? "Zen"
       : "Custom";

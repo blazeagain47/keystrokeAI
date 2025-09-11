@@ -102,7 +102,13 @@ export default function RecentSessionsTable({ rows }: Props) {
 				<div className="flex items-center gap-2">
 					<span className="text-white/60 text-sm">Mode:</span>
 					{(["all","words","time","quote","custom"] as ModeKey[]).map(m => (
-						<button key={m} onClick={() => setMode(m)} className={`inline-flex items-center rounded-full px-3 py-1.5 text-sm border transition ${chipCls(mode===m)}`}>{m === "all" ? "All" : m}</button>
+						<button
+							key={m}
+							onClick={() => setMode(m)}
+							className={`inline-flex items-center rounded-full px-3 py-1.5 text-sm border transition ${chipCls(mode===m)}`}
+						>
+							{m === "all" ? "All" : (m === "quote" ? "<> coder" : m)}
+						</button>
 					))}
 				</div>
 				<div className="flex items-center gap-2">

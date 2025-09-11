@@ -8,7 +8,6 @@ import {
   Clock, 
   Hash,
   AtSign,
-  Quote,
   Triangle,
   Wrench,
   Globe,
@@ -1018,8 +1017,7 @@ const TypingTest: React.FC = () => {
                 aria-pressed={testMode === 'quote'}
                 onClick={() => setTestMode('quote')}
               >
-                <Quote className="h-4 w-4" />
-                quote
+                {"<> coder"}
               </button>
               
               <button 
