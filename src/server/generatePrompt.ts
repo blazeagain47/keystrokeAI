@@ -156,7 +156,9 @@ export async function generatePrompt(input: GenerateIn): Promise<GenerateOut> {
   }[difficulty];
 
   const { easy, medium, hard } = partitionBanks(EN_CORE_5K);
-  const banks = [easy, medium, hard];
+  // NEW: restrict to ≤8 letters for default path
+  const cap8 = (arr: string[]) => arr.filter(w => /^[a-z]{1,8}$/i.test(String(w)));
+  const banks = [cap8(easy), cap8(medium), cap8(hard)];
 
   const seed = Math.floor(Math.random() * 2_000_000_000) + 1;
   const rand = rng(seed);
@@ -165,7 +167,10 @@ export async function generatePrompt(input: GenerateIn): Promise<GenerateOut> {
   for (let i = 0; i < count; i++) {
     const bankIdx = pickWeighted(rand, [0, 1, 2], tierParams.bankMix);
     const bank = banks[bankIdx];
-    tokens.push(bank[Math.floor(rand() * bank.length)]);
+    const pick = () => bank[Math.floor(rand() * bank.length)];
+    let t = pick();
+    if (i > 0 && tokens[i - 1] === t) t = pick(); // prevent immediate duplicates
+    tokens.push(t);
   }
 
   const withNums = flags.numbers ? injectNumbers(rand, tokens, tierParams.numberRate) : tokens;

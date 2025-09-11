@@ -31,6 +31,8 @@ export function generateLocalPrompt(opts: LocalPromptOpts = {}) {
     if (!allowNums && /[0-9]/.test(s)) return false;
     if (!allowPunct && /[^a-zA-Z0-9]/.test(s)) return false;
     if (s.length < minLen) return false;
+    // NEW: cap long tokens for fallback path (letters-only length)
+    if (s.replace(/[^a-z]/gi, '').length > 8) return false;
     return true;
   });
 

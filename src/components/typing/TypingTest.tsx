@@ -25,6 +25,8 @@ import { mulberry32, randomSeed } from "@/lib/prng";
 import { StringLRU } from "@/lib/lru";
 import { buildAdaptiveBatch } from "@/lib/generator/adaptive";
 import { sanitizePrompt } from "@/lib/prompt/sanitize";
+import { applyEasyFilter } from "@/lib/prompt/easyFilter";
+import { getEasyPool, getEasyPoolSync } from "@/lib/wordbanks/easyPool";
 import { toLowerLettersOnly, ensureExactWordCount, ensureExactNoRepeat } from '@/lib/prompt/normalize';
 import { enforceNoRepeat } from "@/lib/prompt/noRepeatLimiter";
 import { normalizePromptWords } from '@/lib/text';
@@ -403,6 +405,18 @@ const TypingTest: React.FC = () => {
       }
       finalPrompt = toLowerLettersOnly(finalPrompt, 'en-US');
       finalPrompt = normalizePromptWords(finalPrompt);
+
+      // --- Default Easy Words pass (≤8 letters; letters-only; avoid adjacent duplicates)
+      try {
+        const poolSync = getEasyPoolSync(8);
+        finalPrompt = applyEasyFilter(finalPrompt, poolSync, { maxLen: 8, maxRepeat: 2 });
+        // Opportunistic client-side enrichment if optional Monkeytype file exists
+        getEasyPool().then(extra => {
+          if (extra.length > poolSync.length) {
+            finalPrompt = applyEasyFilter(finalPrompt, extra, { maxLen: 8, maxRepeat: 2 });
+          }
+        }).catch(() => {});
+      } catch {}
       if (myToken !== loadTokenRef.current) { try { devLog('prompt:drop-stale', { token: myToken }); } catch {}; return; }
       {
         const allowPunctuation = useSettingsStore.getState().test.include_punctuation === true;
