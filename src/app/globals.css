@@ -1530,3 +1530,19 @@ body.bk-lock {
   filter: blur(2px);
   animation: bkShine 3.5s linear infinite;
 }
+
+/* --- Title unification & glow (for Blaze stats, AI Insights, AI Coach, Trend) --- */
+@keyframes bkTitleGlow {
+  0%, 100% { text-shadow: 0 0 0 rgba(255,170,90,0), 0 0 0 rgba(255,115,64,0); }
+  50%      { text-shadow: 0 0 10px rgba(255,170,90,0.25), 0 0 20px rgba(255,115,64,0.18); }
+}
+.bk-title {
+  color: #fff;                  /* unify to white */
+  letter-spacing: 0.2px;        /* subtle modern feel; layout-neutral */
+}
+.bk-title--glow {
+  animation: bkTitleGlow 4.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bk-title--glow { animation: none; }
+}

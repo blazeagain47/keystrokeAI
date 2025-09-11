@@ -359,7 +359,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             <div aria-hidden className="bk-card-vignette pointer-events-none absolute inset-0" />
             <CardHeader className="pb-2 relative z-10">
               <div className="bk-chart-title mb-2">
-                <CardTitle className="text-base md:text-lg font-semibold bk-fire-text">Typing Speed Trend</CardTitle>
+                <CardTitle className="text-base md:text-lg font-semibold bk-title bk-title--glow">Typing Speed Trend</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="pt-2 relative z-10">

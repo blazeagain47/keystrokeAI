@@ -101,16 +101,12 @@ export default function FireSummaryCard({
       <div className="relative z-10 space-y-3 md:space-y-3">
         {/* Header: modernized Blaze stats + animated tagline */}
         <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/5 ring-1 ring-white/10 px-3.5 py-1.5 md:px-4 md:py-2">
-            <span className="text-orange-400">
-              <svg viewBox="0 0 24 24" className="size-4 md:size-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z" />
-              </svg>
-            </span>
-            <span className="text-[15px] md:text-[17px] font-semibold tracking-wide">Blaze stats</span>
-          </div>
+          {/* Title (unified classes) */}
+          <h3 className="text-base md:text-lg font-semibold text-left bk-title bk-title--glow">
+            Blaze stats
+          </h3>
 
-          {/* Tagline with animated glow/shine */}
+          {/* Tagline with animated glow/shine (unchanged) */}
           <div className="relative overflow-hidden">
             <span className="bk-tagline block text-xs md:text-sm font-medium text-white/80">
               AI adapts the next typing prompt to your skill.

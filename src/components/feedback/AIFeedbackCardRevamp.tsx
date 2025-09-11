@@ -214,7 +214,7 @@ export default function AIFeedbackCardRevamp({ wpmTrend, accuracyPct, completed,
 
       <div className="relative z-10">
         <div className="flex justify-between items-center mb-3">
-          <h3 className="text-lg font-semibold text-white text-left">AI Insights</h3>
+          <h3 className="text-base md:text-lg font-semibold text-left bk-title bk-title--glow">AI Insights</h3>
           <button
             onClick={() => setViewMode(v => (v === "quick" ? "detailed" : "quick"))}
             aria-expanded={viewMode !== "quick"}

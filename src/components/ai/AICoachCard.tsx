@@ -50,7 +50,7 @@ export function AICoachCard({
           </span>
 
           <div className="flex items-center gap-2">
-            <CardTitle className="text-base md:text-lg font-semibold text-left">
+            <CardTitle className="text-base md:text-lg font-semibold text-left bk-title bk-title--glow">
               AI Coach
             </CardTitle>
 
