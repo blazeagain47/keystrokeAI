@@ -25,6 +25,10 @@ import { mulberry32, randomSeed } from "@/lib/prng";
 import { StringLRU } from "@/lib/lru";
 import { buildAdaptiveBatch } from "@/lib/generator/adaptive";
 import { sanitizePrompt } from "@/lib/prompt/sanitize";
+import BlazeOverlay from "./BlazeOverlay";
+import BlazeInterlude from "./BlazeInterlude";
+import { Switch } from "@/components/ui/switch";
+import * as Tooltip from "@/components/ui/tooltip";
 import { applyEasyFilter } from "@/lib/prompt/easyFilter";
 import { getEasyPool, getEasyPoolSync } from "@/lib/wordbanks/easyPool";
 import { toLowerLettersOnly, ensureExactWordCount, ensureExactNoRepeat } from '@/lib/prompt/normalize';
@@ -46,6 +50,7 @@ import { useUIStore } from "@/stores/useUIStore";
 import { useSettingsStore } from "@/store/settings";
 import { weakspot } from "@/ai/weakspot";
 import { useAICoach } from "@/store/aiCoach";
+import { useHydrated } from "@/lib/useHydrated";
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -77,7 +82,17 @@ const TypingTest: React.FC = () => {
   
   type PromptLoad = 'idle'|'loading'|'ready'|'error';
   const [promptLoad, setPromptLoad] = useState<PromptLoad>('idle');
+  const [blazeTransition, setBlazeTransition] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
+  const [blazeUi, setBlazeUi] = React.useState<'off'|'toggle'|'post'>('off');
+
+  // Hydration and Blaze state
+  const isHydrated = useHydrated();
+  const blazeEnabled = useSettingsStore(s => s.test.blazeModeEnabled);
+
+  // Hold times
+  const BLAZE_TOGGLE_MIN_MS = 3000; // 3s pre-test
+  const BLAZE_POST_MIN_MS = 3500;   // 3.5s pre-results
   const bootLockRef = useRef(false);
   const bootAbortRef = useRef<AbortController | null>(null);
   const [wpm, setWpm] = useState(0);
@@ -787,7 +802,47 @@ const TypingTest: React.FC = () => {
     setWpm(finalWpm);
     setAccuracy(finalAccuracy);
     setTime(finalTime);
-    React.startTransition(() => setView('results'));
+
+    const blazeOn = useSettingsStore.getState().test.blazeModeEnabled === true;
+
+    if (blazeOn) {
+      setBlazeUi("post");
+
+      const tasks: Promise<unknown>[] = [];
+      try {
+        // 1) Prefetch next prompt for the upcoming run
+        // @ts-ignore internal prefetch flag supported in your loader
+        tasks.push(loadPromptOnce({
+          __prefetch: true,
+          overrides: {
+            count: (mode === 'words' ? wordCount : undefined),
+            include_punctuation: showPunctuation,
+            include_numbers: showNumbers,
+          }
+        }));
+
+        // 2) Hydrate totals now so results won't wait on it
+        try {
+          const hydrateTotals = useTotalsStore.getState().hydrate;
+          tasks.push(Promise.resolve(hydrateTotals?.()));
+        } catch {}
+
+        // 3) Preload AI card chunk used on results
+        tasks.push(import("@/components/feedback/AIFeedbackCardRevamp").then(() => undefined));
+      } catch {}
+
+      // Hold at least 3.5s; give tasks up to ~1.5s extra (max ~5s)
+      const MIN = BLAZE_POST_MIN_MS; // 3500ms
+      const EXTRA = 1500;
+      await new Promise(res => setTimeout(res, MIN));
+      await Promise.race([Promise.allSettled(tasks), new Promise(res => setTimeout(res, EXTRA))]);
+
+      React.startTransition(() => setView('results'));
+      // gentle fade-out overlap to avoid flicker
+      setTimeout(() => setBlazeUi("off"), 250);
+    } else {
+      React.startTransition(() => setView('results'));
+    }
     // update local history for adaptive difficulty
     try {
       const items = readHist();
@@ -1119,12 +1174,46 @@ const TypingTest: React.FC = () => {
               )}
             </div>
 
-            {/* Language Selector */}
-            <button data-lang-pill className="group px-5 py-3 rounded-2xl text-sm font-semibold bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm transition-all duration-300 flex items-center gap-2 shadow-lg hover:scale-105 bk-lang bk-focus">
-              <Globe className="h-4 w-4 group-hover:rotate-12 transition-transform duration-300" />
-              english
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            </button>
+            {/* Right controls: Blaze toggle + language */}
+            <div className="flex items-center gap-3">
+              {isHydrated && (
+                <Tooltip.TooltipProvider delayDuration={150}>
+                  <Tooltip.Tooltip>
+                    <Tooltip.TooltipTrigger asChild>
+                      <div className="flex items-center gap-2 bg-gray-800/30 backdrop-blur-sm border border-gray-700/30 rounded-xl px-3 py-2">
+                        <span className="text-xs uppercase tracking-wider text-gray-400">Blaze mode (AI)</span>
+                        <Switch
+                          checked={blazeEnabled}
+                          onCheckedChange={async (v) => {
+                            useSettingsStore.getState().update("test", { blazeModeEnabled: !!v });
+                            if (v) {
+                              // Show interlude for a guaranteed 3s while regenerating
+                              setBlazeUi("toggle");
+                              const t0 = performance.now();
+                              const minDelay = new Promise(res => setTimeout(res, BLAZE_TOGGLE_MIN_MS));
+                              const restart = safeRestart();
+                              await Promise.all([minDelay, restart]);
+                              // allow a small fade-out overlap
+                              setTimeout(() => setBlazeUi("off"), 200);
+                            } else {
+                              await safeRestart();
+                            }
+                          }}
+                        />
+                      </div>
+                    </Tooltip.TooltipTrigger>
+                    <Tooltip.TooltipContent>AI adapts your next test using your recent results.</Tooltip.TooltipContent>
+                  </Tooltip.Tooltip>
+                </Tooltip.TooltipProvider>
+              )}
+
+              {/* Language Selector */}
+              <button data-lang-pill className="group px-5 py-3 rounded-2xl text-sm font-semibold bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm transition-all duration-300 flex items-center gap-2 shadow-lg hover:scale-105 bk-lang bk-focus">
+                <Globe className="h-4 w-4 group-hover:rotate-12 transition-transform duration-300" />
+                english
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              </button>
+            </div>
           </div>
           {/* Floating toast anchored to language pill */}
           {!isTestComplete && <ReadyToast />}
@@ -1245,6 +1334,8 @@ const TypingTest: React.FC = () => {
         )}
         {/* Single, centered logo loader */}
         <LogoLoader show={promptLoad === 'loading' && !currentPrompt} />
+        {/* AI interlude overlay (toggle-on & post-run) */}
+        <BlazeInterlude show={blazeUi !== 'off'} />
         {view === 'results' && (
           <div className="mt-6 md:mt-10">
             <ResultsPanel

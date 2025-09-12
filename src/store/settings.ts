@@ -82,6 +82,7 @@ const DEFAULTS: SettingsState = {
     maxRepeatPerWord: 2,
     stopOnError: false,
     strictSpace: false,
+    blazeModeEnabled: false,
   },
   ai: {
     coachEnabled: true,

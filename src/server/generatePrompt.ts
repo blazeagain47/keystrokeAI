@@ -10,6 +10,7 @@ export type GenerateIn = {
   difficulty?: "easy" | "medium" | "hard" | "auto" | null;
   recent_wpm?: number | null;
   recent_accuracy?: number | null;
+  blaze?: boolean | null;
 };
 
 export type GenerateOut = {
@@ -140,6 +141,7 @@ function assembleSentences(
 }
 
 export async function generatePrompt(input: GenerateIn): Promise<GenerateOut> {
+  const isBlaze = input.blaze === true;
   const mode = (input.mode === "time" ? "time" : "words") as "words" | "time";
   const count =
     mode === "time"
@@ -156,12 +158,24 @@ export async function generatePrompt(input: GenerateIn): Promise<GenerateOut> {
   }[difficulty];
 
   const { easy, medium, hard } = partitionBanks(EN_CORE_5K);
-  // NEW: restrict to ≤8 letters for default path
+  // Default: restrict to ≤8 letters; Blaze: lift the cap
   const cap8 = (arr: string[]) => arr.filter(w => /^[a-z]{1,8}$/i.test(String(w)));
-  const banks = [cap8(easy), cap8(medium), cap8(hard)];
+  const banks = isBlaze ? [easy, medium, hard] : [cap8(easy), cap8(medium), cap8(hard)];
 
   const seed = Math.floor(Math.random() * 2_000_000_000) + 1;
   const rand = rng(seed);
+
+  // Slightly nudge difficulty mix for Blaze
+  if (isBlaze) {
+    if (difficulty === "easy") {
+      // gently increase medium presence even when auto resolved to easy
+      (tierParams as any).bankMix = [0.70, 0.25, 0.05] as [number, number, number];
+    } else if (difficulty === "medium") {
+      (tierParams as any).bankMix = [0.55, 0.35, 0.10] as [number, number, number];
+    } else if (difficulty === "hard") {
+      (tierParams as any).bankMix = [0.40, 0.40, 0.20] as [number, number, number];
+    }
+  }
 
   const tokens: string[] = [];
   for (let i = 0; i < count; i++) {

@@ -25,6 +25,10 @@ import AICoachCard from "@/components/ai/AICoachCard";
 import { useAICoach } from "@/store/aiCoach";
 import { ChartProbe } from "@/components/dev/ChartProbe";
 import ResultsChart from "./ResultsChart";
+import { Switch } from "@/components/ui/switch";
+import * as Tooltip from "@/components/ui/tooltip";
+import { useSettingsStore } from "@/store/settings";
+import { useHydrated } from "@/lib/useHydrated";
 import { mark } from "@/lib/perf";
 import { tl } from "@/lib/timeline";
 import { devLog } from "@/lib/devLog";
@@ -69,6 +73,9 @@ const fmt = {
 export default function ResultsPanel(props: ResultsPanelProps) {
   const { registerGroup, setActiveGroup } = useCommandsStore();
   const chartBoxRef = React.useRef<HTMLDivElement>(null);
+
+  const isHydrated = useHydrated();
+  const blazeEnabled = useSettingsStore(s => s.test.blazeModeEnabled);
 
   const copyResults = React.useCallback(async () => {
     const text = `WPM: ${Math.round(Number(props.wpm ?? 0))}, Acc: ${Math.round(Number(props.accuracy ?? 0))}% — Time: ${Math.round(Number(props.time ?? 0))}s`;
@@ -278,6 +285,29 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6 bk-page-content results-scroll-root" aria-label="Results">
 
       <div className="grid grid-cols-12 gap-4 lg:gap-6 auto-rows-auto">
+        {/* Top row: Blaze toggle + simple label */}
+        <div className="col-span-12 -mb-2 flex items-center justify-between">
+          <div className="text-sm font-medium opacity-80">Results</div>
+          {isHydrated && (
+            <Tooltip.TooltipProvider delayDuration={150}>
+              <Tooltip.Tooltip>
+                <Tooltip.TooltipTrigger asChild>
+                  <div className="flex items-center gap-2 bg-gray-800/30 backdrop-blur-sm border border-gray-700/30 rounded-xl px-3 py-2">
+                    <span className="text-xs uppercase tracking-wider text-gray-400">Blaze mode (AI)</span>
+                    <Switch
+                      checked={blazeEnabled}
+                      onCheckedChange={(v) => {
+                        useSettingsStore.getState().update("test", { blazeModeEnabled: !!v });
+                        props.onNextTest?.(); // immediately regenerate with new mode
+                      }}
+                    />
+                  </div>
+                </Tooltip.TooltipTrigger>
+                <Tooltip.TooltipContent>AI adapts your next test using your recent results.</Tooltip.TooltipContent>
+              </Tooltip.Tooltip>
+            </Tooltip.TooltipProvider>
+          )}
+        </div>
         {/* Top banner: Blaze stats full width */}
         {usedDifficulty && (
           <div className="col-span-12">
