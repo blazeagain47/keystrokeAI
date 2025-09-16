@@ -490,13 +490,24 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     const sVar = getComputedStyle(wrap).getPropertyValue('--bk-prompt-scale').trim();
     const s = sVar ? parseFloat(sVar) : 1;
     const scale = s || 1;
+    // --- NEW: compensate for global UI zoom (Chromium/Safari).
+    // Firefox ignores CSS zoom, so computed zoom will be "" → fallback to 1.
+    const readUiZoom = () => {
+      if (typeof window === 'undefined') return 1;
+      const body = document.body;
+      if (!body) return 1;
+      const z = parseFloat((getComputedStyle(body) as any).zoom || '1');
+      return Number.isFinite(z) && z > 0 ? z : 1;
+    };
+    const uiZoom = readUiZoom(); // e.g., 0.8 when body { zoom: .8 }
     // device-pixel snapping for crispness
     const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
     const snap = (px: number) => Math.round(px * dpr) / dpr;
-    // convert to the wrapper's unscaled local space and snap
-    const x = snap((r.left - w.left) / scale);
-    const y = snap((r.top  - w.top)  / scale);
-    const h = snap(r.height / scale);
+    // convert to the wrapper's local space, then de-zoom so the translated value,
+    // after the global zoom is applied, lands exactly under the glyph.
+    const x = snap((r.left - w.left) / (scale * uiZoom));
+    const y = snap((r.top  - w.top)  / (scale * uiZoom));
+    const h = snap(r.height / (scale * uiZoom));
 
     caret.style.height = `${h}px`;
     caret.style.transform = `translate3d(${x}px, ${y}px, 0)`;

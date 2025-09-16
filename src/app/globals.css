@@ -1001,7 +1001,8 @@ html[data-focus="1"] .bk-flame-bg::after  { animation: none !important; opacity:
 /* Chart title area spacing (if needed) */
 .bk-chart-title { display:flex; align-items:center; gap:.6ch }
 
-html, body { overflow-x: clip }
+/* Prevent accidental horizontal scrolling when global zoom is active */
+html, body { overflow-x: hidden }
 /* === Appearance tokens (defaults) === */
 :root{
   --bk-accent-h: 24;
@@ -1546,3 +1547,10 @@ body.bk-lock {
 @media (prefers-reduced-motion: reduce) {
   .bk-title--glow { animation: none; }
 }
+
+/* === Global UI zoom (Chromium/Safari only) ================================
+   Scales the entire interface to ~80% to match the preferred localhost view.
+   Firefox ignores `zoom` — acceptable per requirements.
+--------------------------------------------------------------------------- */
+:root { --bk-ui-zoom: 0.8; }         /* Single source of truth for default UI scale */
+body  { zoom: var(--bk-ui-zoom, .8); }
