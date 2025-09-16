@@ -18,6 +18,7 @@ import { useUIStore } from "@/stores/useUIStore";
 import EmbersLayer, { EmbersHandle } from "@/components/fx/EmbersLayer";
 import { useSearchParams } from "next/navigation";
 import { tl } from "@/lib/timeline";
+import { trace } from "@/utils/debugTrace";
 import { devLog } from "@/lib/devLog";
 import useLockScroll from "@/hooks/useLockScroll";
 import { useInputLatencyProbe } from "@/hooks/useInputLatencyProbe";
@@ -94,6 +95,16 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const lastStatusRef = useRef<Record<string, 'correct' | 'incorrect' | 'cursor' | 'untyped'>>({});
   const isCompletedRef = useRef(false);
 
+  // NEW: write-through refs to avoid stale React state between rAF batches
+  const inputWordsRef = useRef<string[]>([]);
+  const currentWordIndexRef = useRef(0);
+  const cursorColRef = useRef(0);
+  const hasStartedRef = useRef(false);
+  useEffect(() => { inputWordsRef.current = inputWords; }, [inputWords]);
+  useEffect(() => { currentWordIndexRef.current = currentWordIndex; }, [currentWordIndex]);
+  useEffect(() => { cursorColRef.current = cursorCol; }, [cursorCol]);
+  useEffect(() => { hasStartedRef.current = hasStarted; }, [hasStarted]);
+
   // Tab/restart handling
   const isTabHeldRef = useRef(false);
   const lastTabDownAtRef = useRef(0);
@@ -142,6 +153,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     if (!readyRef.current) return;
     if (!bufferRef.current.length) return;
     const batch = bufferRef.current.splice(0, bufferRef.current.length);
+    try { trace('BUFFER_FLUSH', { count: batch.length }); } catch {}
     for (const ch of batch) enqueueKey(ch);
   }, []);
   useEffect(() => { if (promptReady) flushBuffer(); }, [promptReady]);
@@ -261,6 +273,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   /* ───────── Load prompt from prop ───────── */
   const resetFromPrompt = useCallback((text: string) => {
     readyRef.current = false; // block input until prompt is fully applied
+    try { trace('PROMPT_APPLY', { length: text?.length ?? 0 }); } catch {}
     resetViewport();
     setRunSeq((x) => x + 1);
     setIsLoading(true);
@@ -295,6 +308,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     setHasStarted(false);
     setStartTime(null);
     setIsComplete(false);
+    // Keep refs consistent with the reset to avoid cross-run carryover
+    inputWordsRef.current = Array(nextWords.length).fill("");
+    currentWordIndexRef.current = 0;
+    cursorColRef.current = 0;
+    hasStartedRef.current = false;
     isCompletedRef.current = false;
     setCorrectChars(0);
     setTotalChars(0);
@@ -308,10 +326,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     lastDownAtRef.current = null;
     lastCharRef.current = null;
     // Defer 'ready' to the next frame so the new words are rendered before we accept input.
+    try { trace('READY_SCHEDULED'); } catch {}
     requestAnimationFrame(() => {
       readyRef.current = true;
+      try { trace('READY_TRUE'); } catch {}
       if (bufferRef.current.length) {
         const pending = bufferRef.current.splice(0);
+        try { trace('BUFFER_FLUSH', { count: pending.length, reason: 'ready' }); } catch {}
         for (const k of pending) enqueueKey(k);
       }
     });
@@ -564,6 +585,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const applyBatch = useCallback((items: KeyEvent[]) => {
     if (!items.length) return;
     if (isCompletedRef.current) return;
+    try { trace('BATCH_FLUSH', { count: items.length }); } catch {}
     // Normalize within the frame: apply letters before control keys (space/backspace)
     const keys = items.map(i => i.k);
     const normalized: string[] = [];
@@ -580,10 +602,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     }
     flushLetters();
 
-    // local copies for single-commit
-    let nextWords = inputWords.slice();
-    let wi = currentWordIndex;
-    let col = cursorCol;
+    // local copies for single-commit, seeded from refs (fresh immediately after previous batch)
+    let nextWords = inputWordsRef.current.slice();
+    let wi = currentWordIndexRef.current;
+    let col = cursorColRef.current;
     let finishedByTyping = false;
     let finishedBySpace = false;
 
@@ -603,6 +625,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         }
         // advance anchor for flight timing (optional)
         lastDownAtRef.current = nowTs();
+        try { trace('APPEND_CHAR', { ch: 'Backspace', status: hasStartedRef.current ? 'running' : 'pre', idx: wi, typedWord: nextWords[wi] ?? '' }); } catch {}
         continue;
       }
 
@@ -620,6 +643,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         // current word input and expected target
         const expected = words[wi] ?? "";
         const curr = nextWords[wi] ?? "";
+        try { trace('EVAL', { reason: 'space', target: expected, typed: curr, idx: wi }); } catch {}
 
         // 1) If pressed at the very start (no first letter yet) → DO NOTHING
         //    (Don't advance, don't mark anything.)
@@ -673,6 +697,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         const colBefore = col;
         commitInput(wi, curr + ch);
         col = col + 1;
+        try { trace('APPEND_CHAR', { ch, status: hasStartedRef.current ? 'running' : 'pre', idx: wi, typedWord: (curr + ch) }); } catch {}
         // If we’re on the last word and we've now typed at least expected length → finish
         const isLastWord = wi >= words.length - 1;
         if (isLastWord) {
@@ -685,6 +710,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         // check if this char is correct and spawn embers
         const we = evalWord(words[wi] ?? "", curr + ch);
         const st = we.states[colBefore];
+        try { trace('EVAL', { reason: 'char', target: words[wi] ?? '', typed: curr + ch, idx: wi }); } catch {}
         try {
           dbgLogRef.current.push({
             ts: performance.now(),
@@ -716,7 +742,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       }
     }
 
-    // Single commit of state
+    // Single commit of state (+ keep refs in sync immediately for the next rAF batch)
+    inputWordsRef.current = nextWords;
+    currentWordIndexRef.current = wi;
+    cursorColRef.current = col;
     setInputWords(nextWords);
     setCurrentWordIndex(wi);
     setCursorCol(col);
@@ -733,7 +762,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     }
 
     // compute metrics once per frame
-    if (hasStarted && startTime && !isComplete) {
+    if (hasStartedRef.current && startTime && !isComplete) {
       const now = Date.now();
       const elapsed = (now - startTime) / 1000;
       const wevals: WordEval[] = words.map((w, i) => evalWord(w, nextWords[i] ?? ""));
@@ -759,7 +788,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         onTestComplete(finalWpm, finalAcc, elapsed, nextWords.join(' '));
       }
     }
-  }, [inputWords, currentWordIndex, cursorCol, hasStarted, startTime, isComplete, words, mode, onStatsUpdate, onTestComplete, stopOnError, finalizeWordsRun]);
+  }, [
+    /* remove rapidly-changing state deps that seed batch baselines: */
+    startTime, isComplete, words, mode,
+    onStatsUpdate, onTestComplete, stopOnError, finalizeWordsRun
+  ]);
 
   const enqueueKey = useMemo(() => {
     const q = createRafQueue<KeyEvent>(
@@ -775,10 +808,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     if ((e as any).isComposing) return; // compositionend will deliver the final text
     const t = (e as any).inputType as string | undefined;
     if (t === "insertText" || t === "insertCompositionText") {
+      try { trace('KEY', { type: 'beforeinput', key: (e as any).data ?? '', inputType: t, status: hasStarted ? 'running' : 'pre', idx: currentWordIndex, typedWord: inputWords[currentWordIndex] ?? '' }); } catch {}
       // Ensure run starts on first printable input
       if (!hasStarted) {
+        try { trace('START_TEST_CALLED', { callsite: 'beforeinput', statusBefore: hasStarted ? 'running' : 'pre' }); } catch {}
         setHasStarted(true);
         setStartTime(Date.now());
+        try { trace('STATUS_RUNNING', { startedAt: Date.now() }); } catch {}
         if (focusEnabled && !overlayOpen) { try { setFocus(true); } catch {} }
         if (mode === 'time') endAtRef.current = Date.now() + durationSec * 1000;
       }
@@ -794,11 +830,14 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   // IME: commit composed text
   const handleCompositionEnd = useCallback((e: CompositionEvent) => {
     const text = (e as any).data ?? "";
+    try { trace('KEY', { type: 'compositionend', text, status: hasStarted ? 'running' : 'pre', idx: currentWordIndex, typedWord: inputWords[currentWordIndex] ?? '' }); } catch {}
     if (!text) return;
     // Ensure run starts if composition commits before keydown path
     if (!hasStarted) {
+      try { trace('START_TEST_CALLED', { callsite: 'compositionend', statusBefore: hasStarted ? 'running' : 'pre' }); } catch {}
       setHasStarted(true);
       setStartTime(Date.now());
+      try { trace('STATUS_RUNNING', { startedAt: Date.now() }); } catch {}
       if (focusEnabled && !overlayOpen) { try { setFocus(true); } catch {} }
       if (mode === 'time') endAtRef.current = Date.now() + durationSec * 1000;
     }
@@ -822,6 +861,16 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   /* ───────── Keyboard handler ───────── */
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      try {
+        trace('KEY', {
+          type: 'down',
+          key: (e as any).key,
+          code: (e as any).code,
+          status: hasStarted ? 'running' : 'pre',
+          idx: currentWordIndex,
+          typedWord: inputWords[currentWordIndex] ?? ''
+        });
+      } catch {}
       // ignore IME composition and OS key-repeat for character/control keys
       if ((e as any).isComposing) return;
       if (e.repeat && (e.key.length === 1 || e.key === ' ' || e.key === 'Backspace')) return;
@@ -830,8 +879,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       if (!hasStarted && e.key.length === 1) {
         try { tl('first key', { key: e.key, runId: 'n/a' }); } catch {}
         try { devLog('first keydown', e.key); } catch {}
+        try { trace('START_TEST_CALLED', { callsite: 'keydown', statusBefore: 'pre' }); } catch {}
         setHasStarted(true);
         setStartTime(Date.now());
+        try { trace('STATUS_RUNNING', { startedAt: Date.now() }); } catch {}
         // Enter focus mode if enabled and no overlay is open
         if (focusEnabled && !overlayOpen) { try { setFocus(true); } catch {} }
         if (mode === 'time') {
@@ -846,6 +897,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           const token = (e.key === 'Backspace') ? 'Backspace' : normalizeInputChar(e.key);
           if (token) bufferRef.current.push(token);
           if (e.key === ' ') e.preventDefault(); // avoid page scroll while buffering space
+          try { trace('KEY_BUFFERED', { key: e.key, token, reason: externalLoading ? 'externalLoading' : (!readyRef.current ? 'notReady' : 'isLoading') }); } catch {}
         }
         return; // swallow until ready; we'll flush in rAF
       }
