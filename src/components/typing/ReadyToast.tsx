@@ -9,6 +9,8 @@ type Props = {
   subtext?: string;
   anchorSelector?: string;
   timeoutMs?: number;
+  /** Extra pixels below the anchor before we place the coachmark (default 28). */
+  offsetY?: number;
 };
 
 function useAnchorRect(selector: string) {
@@ -38,6 +40,7 @@ export default function ReadyToast({
   subtext = "Focus the typing area and start typing. Your speed and accuracy update in real time.",
   anchorSelector = "[data-lang-pill]",
   timeoutMs = 10000,
+  offsetY = 44,
 }: Props) {
   const [show, setShow] = useState(true);
   const dismissedRef = useRef(false);
@@ -61,10 +64,25 @@ export default function ReadyToast({
 
   if (typeof document === "undefined") return null;
 
+  // Read header height CSS variable so the toast always clears the header area.
+  const headerH = (() => {
+    try {
+      const raw = getComputedStyle(document.documentElement)
+        .getPropertyValue("--bk-header-h")
+        .trim();
+      const n = parseFloat(raw);
+      return Number.isFinite(n) ? n : 72; // sensible fallback if var missing
+    } catch {
+      return 72;
+    }
+  })();
+  const minTop = headerH + 12; // slight breathing room below header
+
   const style: React.CSSProperties | undefined = rect
     ? {
         position: "fixed",
-        top: Math.max(12, rect.bottom + 8),
+        // Place below anchor with larger default gap, but never above header clamp.
+        top: Math.max(minTop, rect.bottom + offsetY),
         // Horizontal positioning handled by className (right + safe area)
       }
     : undefined;
