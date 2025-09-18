@@ -140,43 +140,53 @@ export default function ResultsStatsBar({
         )}
 
         <div className={cn("flex flex-wrap items-center self-start", gapCls)}>
-          {items.map((it, i) => (
-            <div key={i} className={cn("group flex items-center gap-2", pillBase, eqCls)}>
-              <span
-                className={cn("inline-flex shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10 group-hover:ring-white/20", iconBox)}
-                aria-hidden
+          {items.map((it, i) => {
+            const isPrimary = /^(WPM|Accuracy)$/i.test(it.label);
+            const priority: "primary" | "secondary" = isPrimary ? "primary" : "secondary";
+            return (
+              <div
+                key={i}
+                data-priority={priority}
+                className={cn("group stats-pill flex items-center gap-2", pillBase, eqCls)}
               >
-                <span className="text-white/80">{it.icon}</span>
-              </span>
-              <div className="leading-tight">
-                <div className={labelCls}>{it.label}</div>
-                {(() => {
-                  // Primary = all key KPIs (WPM, Accuracy, Time, Consistency)
-                  // Secondary = Coach WPM (EMA), Keystrokes, etc.
-                  const isPrimary = !/^(Coach WPM|Keystrokes)/i.test(it.label);
-                  return (
-                    <div className={cn(isPrimary ? valuePrimary : valueSecondary, "font-semibold bk-fire-text")}>
-                      {it.value}
-                    </div>
-                  );
-                })()}
-                {it.sub && <div className="text-[11px] text-white/60">{it.sub}</div>}
-                {it.label === "Accuracy" && (() => {
-                  const toks = computeTopErrorTokens(errorEvents as any, errorFallback as any, 3);
-                  if (!toks || toks.length === 0) return null;
-                  return (
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {toks.map((t) => (
-                        <span key={t} className="px-2 py-0.5 text-xs rounded-full bg-white/6 border border-white/12" title={t === " " ? "space" : t}>
-                          {t === " " ? "␣" : t}
-                        </span>
-                      ))}
-                    </div>
-                  );
-                })()}
+                <span
+                  className={cn(
+                    "stat-icon inline-flex shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10 group-hover:ring-white/20",
+                    iconBox
+                  )}
+                  aria-hidden
+                >
+                  <span className="text-white/80">{it.icon}</span>
+                </span>
+                <div className="leading-tight">
+                  <div className={labelCls}>{it.label}</div>
+                  <div
+                    className={cn(
+                      isPrimary ? valuePrimary : valueSecondary,
+                      "stat-value font-semibold",
+                      isPrimary ? "bk-fire-text" : "text-white/85"
+                    )}
+                  >
+                    {it.value}
+                  </div>
+                  {it.sub && <div className="text-[11px] text-white/60">{it.sub}</div>}
+                  {it.label === "Accuracy" && (() => {
+                    const toks = computeTopErrorTokens(errorEvents as any, errorFallback as any, 3);
+                    if (!toks || toks.length === 0) return null;
+                    return (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {toks.map((t) => (
+                          <span key={t} className="px-2 py-0.5 text-xs rounded-full bg-white/6 border border-white/12" title={t === " " ? "space" : t}>
+                            {t === " " ? "␣" : t}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -206,38 +216,53 @@ export default function ResultsStatsBar({
         )}
 
         <div className={cn("flex flex-wrap items-stretch self-start", gapCls)}>
-          {items.map((it, i) => (
-            <div key={i} className={cn("group flex items-center gap-3", pillBase, eqCls)}>
-              <span className={cn("inline-flex shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10 group-hover:ring-white/20", iconBox)} aria-hidden>
-                <span className="text-white/80">{it.icon}</span>
-              </span>
-              <div className="leading-tight">
-                <div className={labelCls}>{it.label}</div>
-                {(() => {
-                  const isPrimary = !/^(Coach WPM|Keystrokes)/i.test(it.label);
-                  return (
-                    <div className={cn(isPrimary ? valuePrimary : valueSecondary, "font-semibold bk-fire-text")}>
-                      {it.value}
-                    </div>
-                  );
-                })()}
-                {it.sub && <div className="text-[11px] text-white/60">{it.sub}</div>}
-                {it.label === "Accuracy" && (() => {
-                  const toks = computeTopErrorTokens(errorEvents as any, errorFallback as any, 3);
-                  if (!toks || toks.length === 0) return null;
-                  return (
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {toks.map((t) => (
-                        <span key={t} className="px-2 py-0.5 text-xs rounded-full bg-white/6 border border-white/12" title={t === " " ? "space" : t}>
-                          {t === " " ? "␣" : t}
-                        </span>
-                      ))}
-                    </div>
-                  );
-                })()}
+          {items.map((it, i) => {
+            const isPrimary = /^(WPM|Accuracy)$/i.test(it.label);
+            const priority: "primary" | "secondary" = isPrimary ? "primary" : "secondary";
+            return (
+              <div
+                key={i}
+                data-priority={priority}
+                className={cn("group stats-pill flex items-center gap-3", pillBase, eqCls)}
+              >
+                <span
+                  className={cn(
+                    "stat-icon inline-flex shrink-0 items-center justify-center rounded-lg bg-white/5 ring-1 ring-white/10 group-hover:ring-white/20",
+                    iconBox
+                  )}
+                  aria-hidden
+                >
+                  <span className="text-white/80">{it.icon}</span>
+                </span>
+                <div className="leading-tight">
+                  <div className={labelCls}>{it.label}</div>
+                  <div
+                    className={cn(
+                      isPrimary ? valuePrimary : valueSecondary,
+                      "stat-value font-semibold",
+                      isPrimary ? "bk-fire-text" : "text-white/85"
+                    )}
+                  >
+                    {it.value}
+                  </div>
+                  {it.sub && <div className="text-[11px] text-white/60">{it.sub}</div>}
+                  {it.label === "Accuracy" && (() => {
+                    const toks = computeTopErrorTokens(errorEvents as any, errorFallback as any, 3);
+                    if (!toks || toks.length === 0) return null;
+                    return (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {toks.map((t) => (
+                          <span key={t} className="px-2 py-0.5 text-xs rounded-full bg-white/6 border border-white/12" title={t === " " ? "space" : t}>
+                            {t === " " ? "␣" : t}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </CardContent>
     </Card>

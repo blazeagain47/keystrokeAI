@@ -1554,3 +1554,49 @@ body.bk-lock {
 --------------------------------------------------------------------------- */
 :root { --bk-ui-zoom: 0.8; }         /* Single source of truth for default UI scale */
 body  { zoom: var(--bk-ui-zoom, .8); }
+
+/* --- Results stats pill priority (subtle, motion-safe) ------------------ */
+.stats-pill {
+  transition: box-shadow .18s ease, border-color .18s ease, transform .12s ease;
+}
+
+/* Primary = WPM + Accuracy */
+.stats-pill[data-priority="primary"] {
+  /* soft outer aura + inner warmth; no layout shift */
+  box-shadow:
+    0 0 0 1px rgba(255,106,0,.18) inset,
+    0 0 26px rgba(255,106,0,.20);
+}
+.stats-pill[data-priority="primary"]:hover {
+  box-shadow:
+    0 0 0 1px rgba(255,106,0,.22) inset,
+    0 0 34px rgba(255,106,0,.28);
+}
+/* Icon gets a warmer core on primary */
+.stats-pill[data-priority="primary"] .stat-icon {
+  background: radial-gradient(120% 120% at 50% 0%, rgba(255,120,40,.38), rgba(239,68,68,.22));
+  box-shadow: inset 0 0 18px rgba(255,90,0,.35), 0 0 14px rgba(255,90,0,.16);
+}
+
+/* Secondary = Time, Consistency, Coach WPM */
+.stats-pill[data-priority="secondary"] {
+  border-color: rgba(255,255,255,.08);
+  /* quiet down saturation/contrast a touch */
+  filter: saturate(.94) contrast(.98);
+}
+.stats-pill[data-priority="secondary"]:hover {
+  border-color: rgba(255,255,255,.12);
+}
+.stats-pill[data-priority="secondary"] .stat-icon {
+  background: rgba(255,255,255,.06);
+  box-shadow: inset 0 0 10px rgba(255,255,255,.06);
+}
+/* secondary values: plain text, no glow gradient */
+.stats-pill[data-priority="secondary"] .stat-value {
+  text-shadow: none;
+}
+
+/* Motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .stats-pill { transition: none; }
+}
