@@ -1,6 +1,6 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getApps, getApp, initializeApp } from "firebase/app";
+import { getAuth, setPersistence, indexedDBLocalPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 // NOTE: Do not import firebase/analytics at module scope (breaks SSR/prerender).
 // We'll lazy-load it in the browser only (see ensureClientAnalytics below).
@@ -16,11 +16,14 @@ const firebaseConfig = {
   measurementId: "G-XGYT4PBXRM"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase (guarded)
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Firebase Authentication and get a reference to the service
+// Initialize Firebase Authentication and set persistence
 export const auth = getAuth(app);
+try {
+  setPersistence(auth, indexedDBLocalPersistence).catch(() => setPersistence(auth, browserLocalPersistence));
+} catch {}
 
 // Initialize Cloud Firestore and get a reference to the service
 export const db = getFirestore(app);

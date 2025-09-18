@@ -917,11 +917,11 @@ const TypingTest: React.FC = () => {
         }
       })();
 
-      const { getIdTokenEnsured } = await import("@/lib/idToken");
+      const { getIdTokenOptional } = await import("@/lib/idToken");
       let authHeader: Record<string, string> = {};
       try {
-        const token = await getIdTokenEnsured();
-        authHeader = { Authorization: `Bearer ${token}` };
+        const token = await getIdTokenOptional();
+        if (token) authHeader = { Authorization: `Bearer ${token}` };
       } catch {
         // proceed without token; server will treat as guest
       }

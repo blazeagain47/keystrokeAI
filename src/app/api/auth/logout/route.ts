@@ -21,9 +21,10 @@ export async function POST() {
   } catch {}
 
   // Clear session cookie on common paths and return 200.
+  const cookieName = process.env.JWT_COOKIE_NAME || "ks_session";
   const res = NextResponse.json({ ok: true }, { status: 200 });
-  res.headers.append("Set-Cookie", expireCookie("ks_session", "/"));
-  res.headers.append("Set-Cookie", expireCookie("ks_session", "/api"));
+  res.headers.append("Set-Cookie", expireCookie(cookieName, "/"));
+  res.headers.append("Set-Cookie", expireCookie(cookieName, "/api"));
   return res;
 }
 

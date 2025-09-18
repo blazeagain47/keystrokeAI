@@ -40,9 +40,12 @@ export default function LoginPage() {
     };
   }, []);
 
+  const [submitting, setSubmitting] = useState(false);
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setErr(null);
+    setSubmitting(true);
     try {
       if (tab === "login") {
         await login(username, password);
@@ -52,7 +55,7 @@ export default function LoginPage() {
       router.replace("/account");
     } catch (error: any) {
       setErr(error?.message || "Authentication failed");
-    }
+    } finally { setSubmitting(false); }
   };
 
   if (!mounted) return null;
@@ -78,8 +81,9 @@ export default function LoginPage() {
 
         <form onSubmit={onSubmit} className="space-y-4" data-lpignore="true" autoComplete="off">
           <div>
-            <label className="block text-sm mb-1">Username</label>
+            <label htmlFor="bk-username" className="block text-sm mb-1">Username</label>
             <input
+              id="bk-username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-white/20"
@@ -92,8 +96,9 @@ export default function LoginPage() {
 
           {tab === "register" && (
             <div>
-              <label className="block text-sm mb-1">Email (optional)</label>
+              <label htmlFor="bk-email" className="block text-sm mb-1">Email (optional)</label>
               <input
+                id="bk-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -105,8 +110,9 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label className="block text-sm mb-1">Password</label>
+            <label htmlFor="bk-password" className="block text-sm mb-1">Password</label>
             <input
+              id="bk-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -120,10 +126,10 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || submitting}
             className="w-full py-2 rounded-xl bg-white/90 text-black font-medium hover:bg-white"
           >
-            {tab === "login" ? "Sign in" : "Create account"}
+            {submitting ? (tab === "login" ? "Signing in..." : "Creating...") : (tab === "login" ? "Sign in" : "Create account")}
           </button>
           {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
         </form>

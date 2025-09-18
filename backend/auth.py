@@ -41,9 +41,21 @@ def register(req: RegisterRequest, resp: Response, db: Session = Depends(get_db)
     db.commit()
     db.refresh(u)
     token = make_jwt(u.id)
+    # Configure persistent, secure cookie (env-driven)
+    import os
+    cookie_name = os.getenv("JWT_COOKIE_NAME", COOKIE_NAME)
+    ttl_days = int(os.getenv("JWT_COOKIE_TTL_DAYS", "7"))
+    max_age = ttl_days * 24 * 60 * 60
+    is_prod = os.getenv("NODE_ENV", "development") == "production"
     resp.set_cookie(
-        key=COOKIE_NAME, value=token, httponly=True, samesite="lax",
-        secure=False  # set True behind HTTPS
+        key=cookie_name,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=is_prod,
+        max_age=max_age,
+        expires=max_age,
+        path="/",
     )
     return to_profile(u)
 
@@ -54,22 +66,38 @@ def login(req: LoginRequest, resp: Response, db: Session = Depends(get_db)):
     if not u or not verify_password(req.password, u.password_hash):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     token = make_jwt(u.id)
+    import os
+    cookie_name = os.getenv("JWT_COOKIE_NAME", COOKIE_NAME)
+    ttl_days = int(os.getenv("JWT_COOKIE_TTL_DAYS", "7"))
+    max_age = ttl_days * 24 * 60 * 60
+    is_prod = os.getenv("NODE_ENV", "development") == "production"
     resp.set_cookie(
-        key=COOKIE_NAME, value=token, httponly=True, samesite="lax",
-        secure=False
+        key=cookie_name,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=is_prod,
+        max_age=max_age,
+        expires=max_age,
+        path="/",
     )
     return to_profile(u)
 
 
 @router.post("/logout")
 def logout(resp: Response):
-    resp.delete_cookie(COOKIE_NAME, samesite="lax")
+    import os
+    cookie_name = os.getenv("JWT_COOKIE_NAME", COOKIE_NAME)
+    # Clear cookie on root path
+    resp.delete_cookie(key=cookie_name, samesite="lax", path="/")
     return {"ok": True}
 
 
 @router.get("/me", response_model=UserProfile)
 def me(req: Request, db: Session = Depends(get_db)):
-    token = req.cookies.get(COOKIE_NAME)
+    import os
+    cookie_name = os.getenv("JWT_COOKIE_NAME", COOKIE_NAME)
+    token = req.cookies.get(cookie_name)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     user_id = parse_jwt(token)

@@ -12,6 +12,7 @@ export async function GET(req: Request) {
     const limit = Math.min(Number(searchParams.get("limit") || "50"), 100);
     const q = (searchParams.get("q") || "").trim().toLowerCase();
     const meUsername = (searchParams.get("meUsername") || "").trim().toLowerCase();
+    const windowParam = (searchParams.get("window") || "all").trim().toLowerCase();
 
     // Base query: top by xpTotal desc, then recent updates
     let query = db
@@ -73,7 +74,31 @@ export async function GET(req: Request) {
       }
     }
 
-    return NextResponse.json({ rows, me });
+    // Weekly window aggregation: compute from recent runs (robust Timestamp handling)
+    if (windowParam === "week") {
+      const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const cutoff = (await import("firebase-admin")).firestore.Timestamp.fromMillis(since);
+      const runsSnap = await db
+        .collection("runs_v1")
+        .where("createdAt", ">=", cutoff)
+        .get();
+      const agg = new Map<string, number>();
+      for (const d of runsSnap.docs) {
+        const r = d.data() as any;
+        const u = (r.usernameLower || "").toString().trim();
+        const xRaw = r.xp ?? r.xpDelta ?? 0;
+        const x = Number.isFinite(Number(xRaw)) ? Number(xRaw) : 0;
+        if (!u || !Number.isFinite(x)) continue;
+        agg.set(u, (agg.get(u) || 0) + x);
+      }
+      const weekRows = Array.from(agg.entries())
+        .map(([usernameLower, xpTotal]) => ({ usernameLower, xpTotal }))
+        .sort((a, b) => b.xpTotal - a.xpTotal)
+        .slice(0, limit);
+      return NextResponse.json({ rows: weekRows, me, window: "week" });
+    }
+
+    return NextResponse.json({ rows, me, window: "all" });
   } catch (err: any) {
     console.error("[leaderboard] error", err);
     // Always return JSON so the client's j.json() doesn't blow up.

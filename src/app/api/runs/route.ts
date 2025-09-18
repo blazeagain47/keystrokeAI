@@ -36,29 +36,27 @@ async function getCurrentAppUser(req: NextRequest): Promise<{ username: string }
 
 export async function POST(req: NextRequest) {
   try {
-    // Try Firebase auth first (for existing users)
+    // Resolve identities from headers and cookies
     const authHeader = req.headers.get("authorization");
     const decoded = await verifyIdTokenFromAuthHeader(authHeader);
     const firebaseUid = decoded?.uid ?? null;
-    
-    // Try app auth if Firebase auth failed
-    const appUser = !firebaseUid ? await getCurrentAppUser(req) : null;
-    
-    // Determine user identity
+    const signInProvider = (decoded as any)?.firebase?.sign_in_provider || null;
+    const isAnonymous = signInProvider === "anonymous";
+
+    const appUser = await getCurrentAppUser(req);
+
+    // Prefer app session username when available; otherwise use non-anonymous Firebase uid
     let userDocId: string | null = null;
     let username: string | null = null;
-    
-    if (firebaseUid) {
+    if (appUser?.username) {
+      username = String(appUser.username).trim();
+      try { userDocId = leaderboardDocId({ uid: null, username }); } catch { userDocId = username.toLowerCase(); }
+      if (process.env.NODE_ENV !== "production") console.log("[/api/runs] Using app session:", username, "->", userDocId);
+    } else if (firebaseUid && !isAnonymous) {
       userDocId = firebaseUid;
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[/api/runs] Firebase uid", firebaseUid);
-      }
-    } else if (appUser?.username) {
-      username = appUser.username;
-      userDocId = leaderboardDocId({ uid: null, username });
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[/api/runs] App user", username, "-> docId", userDocId);
-      }
+      if (process.env.NODE_ENV !== "production") console.log("[/api/runs] Using Firebase uid:", firebaseUid);
+    } else {
+      if (process.env.NODE_ENV !== "production") console.log("[/api/runs] Guest run (no session)");
     }
     
     if (process.env.NODE_ENV !== "production") {
@@ -77,7 +75,7 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({ error: "invalid_json" }, { status: 400 });
     }
-    const { mode, durationSec, wordsCount, wpm, accuracy, guestId, clientRunId } = body || {};
+    const { mode, durationSec, wordsCount, wpm, accuracy, guestId } = body || {};
 
     if (!Number.isFinite(wpm) || !Number.isFinite(accuracy) || !Number.isFinite(durationSec)) {
       return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
@@ -91,43 +89,53 @@ export async function POST(req: NextRequest) {
     if (Number(accuracy) < 0 || Number(accuracy) > 100) return NextResponse.json({ error: "accuracy_out_of_range" }, { status: 422 });
     if (Number(durationSec) < MIN_DURATION || Number(durationSec) > MAX_DURATION) return NextResponse.json({ error: "duration_out_of_range" }, { status: 422 });
 
+    // Compute xp safely
+    let xpCalc = (Number(wpm) * (Number(accuracy) / 100)) / 5;
+    if (!Number.isFinite(xpCalc) || xpCalc <= 0) xpCalc = 10;
+    const xpDelta = Math.max(10, Math.round(xpCalc));
+
+    // Resolve exact user doc by usernameLower when available
+    let userRef: FirebaseFirestore.DocumentReference | null = null;
+    const usernameLower = username ? String(username).toLowerCase() : null;
+    if (usernameLower) {
+      const q = await getAdminDb().collection("users").where("usernameLower", "==", usernameLower).limit(1).get();
+      userRef = q.empty ? getAdminDb().collection("users").doc(usernameLower) : q.docs[0].ref;
+    } else if (userDocId) {
+      userRef = getAdminDb().collection("users").doc(userDocId);
+    }
+
     const runData: Record<string, any> = {
       uid: firebaseUid ?? null,
-      userId: userDocId ?? null,
+      userId: userRef ? userRef.id : null,
       username: username ?? null,
-      guestId: userDocId ? null : (guestId ?? null),
+      usernameLower: usernameLower ?? null,
+      guestId: userRef ? null : (guestId ?? null),
       createdAt: serverTs(),
       mode: String(mode ?? "unknown"),
       durationSec: Number(durationSec ?? 0),
       wordsCount: Number.isFinite(Number(wordsCount)) ? Number(wordsCount) : null,
       wpm: Number(wpm),
       accuracy: Number(accuracy),
+      xpDelta,
+      xp: xpDelta,
     };
 
     // Idempotent write by deterministic run id
     const db = getAdminDb();
-    let runRef = db.collection("runs_v1").doc(
-      createHash("sha256")
-        .update([userDocId || "guest", String(mode || "unknown"), Math.round(Number(durationSec) || 0), Math.round(Number(wpm) || 0), Math.round(Number(accuracy) || 0), String(clientRunId || "")].join("|"))
-        .digest("hex")
-        .slice(0, 24)
-    );
+    const runRef = db.collection("runs_v1").doc();
     try {
-      const exists = (await runRef.get()).exists;
-      if (!exists) await runRef.set(runData, { merge: false });
+      await runRef.set(runData, { merge: false });
     } catch (e: any) {
       console.error("[/api/runs] run write failed", { name: e?.name, code: e?.code, message: e?.message });
       return NextResponse.json({ error: "run_write_failed", detail: e?.message || String(e) }, { status: 500 });
     }
 
-    if (userDocId) {
+    if (userRef) {
       try {
-        const totalsRef = db.collection("user_totals_v1").doc(userDocId);
-        const userRef = db.collection("users").doc(userDocId);
+        const totalsRef = db.collection("user_totals_v1").doc(userRef.id);
         await db.runTransaction(async (tx) => {
           const snap = await tx.get(totalsRef);
           const now = Date.now();
-          const xpDelta = Math.max(10, Math.round(Number(wpm) * (Number(accuracy) / 100) / 5));
           
           // Update user_totals_v1 (existing logic)
           if (!snap.exists) {
@@ -168,10 +176,7 @@ export async function POST(req: NextRequest) {
             xpToday: admin.firestore.FieldValue.increment(xpDelta),
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
             // Keep username authoritative in case user renamed
-            ...(username && { 
-              username: username, 
-              usernameLower: username.toLowerCase() 
-            }),
+            ...(usernameLower ? { username: username ?? usernameLower, usernameLower } : {}),
           }, { merge: true });
         });
       } catch (e: any) {
@@ -179,7 +184,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, id: runRef.id }, { status: 200 });
+    return NextResponse.json({ ok: true, id: runRef.id, xpDelta, username, usernameLower }, { status: 200 });
   } catch (err: any) {
     console.error("[/api/runs] fatal", { name: err?.name, code: err?.code, message: err?.message, stack: err?.stack });
     const msg = err?.message || "Server error";
