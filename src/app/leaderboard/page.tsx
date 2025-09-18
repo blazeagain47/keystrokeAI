@@ -159,7 +159,10 @@ export default function LeaderboardPage() {
               {(searchRows ?? filtered).map((r, idx) => {
                 const isMe = !!youId && String(r.id) === String(youId);
                 return (
-                  <li key={r.id} className={`flex items-center justify-between px-4 py-3 ${isMe ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"}`}>
+                  <li
+                    key={r.id}
+                    className={`flex items-center justify-between px-4 py-3 transition-colors duration-150 ${isMe ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"}`}
+                  >
                     <div className="flex items-center gap-3">
                       <RankBadge rank={idx+1} />
                       <AvatarDot name={r.username} photoURL={r.photoURL} />
@@ -251,22 +254,74 @@ function AvatarDot({ name, photoURL }: { name: string; photoURL?: string | null 
 }
 
 function Podium({ rows, meId }: { rows: Row[]; meId: string | null }) {
-  const [a,b,c] = rows;
+  const [a, b, c] = rows;
   if (!rows?.length) return null;
+
   return (
-    <div className="grid grid-cols-3 gap-3">
-      {[b,a,c].map((r, i) => r ? (
-        <div key={r.id} className={`rounded-2xl border border-white/10 p-4 ${i===1 ? "bg-gradient-to-b from-white/[0.08] to-transparent" : "bg-white/5"}`}>
-          <div className="flex items-center gap-2 mb-2">{i===1 ? <Crown className="h-4 w-4 text-yellow-300"/> : <Trophy className="h-4 w-4 text-amber-300" />}<span className="text-white/80 text-sm">{i===1?"Champion":"Top"}</span></div>
-          <div className="flex items-center gap-3">
-            <AvatarDot name={r.username} photoURL={r.photoURL}/>
-            <div className="leading-tight">
-              <div className="text-white font-semibold">{r.username} {meId && String(r.id)===meId && <span className="text-xs text-white/70 bg-white/10 px-2 py-0.5 rounded-full ml-1">you</span>}</div>
-              <div className="text-white/70 text-sm"><span className="text-white/90 font-semibold tabular-nums">{r.xpTotal}</span> XP</div>
+    <div className="grid grid-cols-3 items-stretch gap-3">
+      {[b, a, c].map((r, i) =>
+        r ? (
+          <article
+            key={r.id}
+            className={[
+              "group relative rounded-2xl border border-white/10 p-4",
+              "transition-all duration-300 ease-out will-change-transform",
+              // shared hover treatment for all 3 cards
+              "hover:-translate-y-0.5 hover:ring-2 hover:ring-white/15",
+              "hover:shadow-[0_10px_28px_-16px_rgba(0,0,0,.35)]",
+              // champion (center) gets a raised baseline + gold aura
+              i === 1
+                ? [
+                    "bg-gradient-to-b from-white/[0.10] to-transparent",
+                    "ring-1 ring-amber-300/20",
+                    "shadow-[0_8px_24px_-14px_rgba(255,193,7,.20)]",
+                    "motion-safe:-translate-y-1 md:motion-safe:-translate-y-1.5",
+                    "motion-safe:animate-bk-glow-slow",
+                  ].join(" ")
+                : "bg-white/5",
+            ].join(" ")}
+          >
+            {/* Champion hover aura — a soft radial glow that fades in on hover */}
+            {i === 1 && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-300
+                           group-hover:opacity-100
+                           [mask-image:radial-gradient(60%_60%_at_50%_0%,#000_40%,transparent_100%)]
+                           bg-[radial-gradient(120%_80%_at_50%_-10%,rgba(255,200,0,.18),rgba(255,200,0,0)_60%)]"
+              />
+            )}
+
+            <div className="relative z-10">
+              <div className="mb-2 flex items-center gap-2">
+                {i === 1 ? (
+                  <Crown className="h-4 w-4 text-yellow-300" />
+                ) : (
+                  <Trophy className="h-4 w-4 text-amber-300" />
+                )}
+                <span className="text-sm text-white/80">{i === 1 ? "Champion" : "Top"}</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <AvatarDot name={r.username} photoURL={r.photoURL} />
+                <div className="leading-tight">
+                  <div className="text-white font-semibold">
+                    {r.username}{" "}
+                    {meId && String(r.id) === meId && (
+                      <span className="ml-1 rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70">you</span>
+                    )}
+                  </div>
+                  <div className="text-sm text-white/70">
+                    <span className="tabular-nums font-semibold text-white/90">{r.xpTotal}</span> XP
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      ) : <div key={i} />)}
+          </article>
+        ) : (
+          <div key={i} />
+        )
+      )}
     </div>
   );
 }
