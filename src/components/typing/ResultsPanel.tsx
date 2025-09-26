@@ -25,6 +25,7 @@ import AICoachCard from "@/components/ai/AICoachCard";
 import { useAICoach } from "@/store/aiCoach";
 import { ChartProbe } from "@/components/dev/ChartProbe";
 import ResultsChart from "./ResultsChart";
+import { safeCopy } from "@/utils/safeCopy";
 import { Switch } from "@/components/ui/switch";
 import * as Tooltip from "@/components/ui/tooltip";
 import { useSettingsStore } from "@/store/settings";
@@ -79,7 +80,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
 
   const copyResults = React.useCallback(async () => {
     const text = `WPM: ${Math.round(Number(props.wpm ?? 0))}, Acc: ${Math.round(Number(props.accuracy ?? 0))}% — Time: ${Math.round(Number(props.time ?? 0))}s`;
-    try { await navigator.clipboard.writeText(text); } catch {}
+    try { await safeCopy(text); } catch {}
   }, [props.wpm, props.accuracy, props.time]);
 
   React.useEffect(() => {

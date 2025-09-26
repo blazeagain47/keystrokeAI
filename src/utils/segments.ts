@@ -1,10 +1,19 @@
 export function segmentGraphemes(text: string): string[] {
-  if (typeof Intl !== "undefined" && (Intl as any).Segmenter) {
-    // @ts-ignore
-    const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+  const AnyIntl: any = typeof Intl !== "undefined" ? Intl : {};
+  if (AnyIntl.Segmenter) {
+    const seg = new AnyIntl.Segmenter("en", { granularity: "grapheme" });
     return Array.from(seg.segment(text), (s: any) => s.segment);
   }
   return Array.from(text);
+}
+
+export function splitGraphemes(input: string): string[] {
+  const AnyIntl: any = typeof Intl !== "undefined" ? Intl : {};
+  if (AnyIntl.Segmenter) {
+    const seg = new AnyIntl.Segmenter("en", { granularity: "grapheme" });
+    return Array.from(seg.segment(input), (s: any) => s.segment);
+  }
+  return Array.from(input);
 }
 
 export function normalizeInputChar(ch: string): string {

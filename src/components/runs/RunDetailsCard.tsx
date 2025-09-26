@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { safeCopy } from "@/utils/safeCopy";
 import { BlazeRun } from "@/lib/historyLocal";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -26,7 +27,7 @@ export default function RunDetailsCard({ run, onClose, showClose = false, showOp
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(`${location.origin}/run/${run.id}`);
+      await safeCopy(`${location.origin}/run/${run.id}`);
     } catch {}
   };
 

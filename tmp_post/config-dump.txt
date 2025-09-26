@@ -1,0 +1,590 @@
+----- .browserslistrc -----
+>0.2%
+not dead
+not op_mini all
+last 2 Chrome versions
+last 2 Firefox versions
+last 2 Edge versions
+last 2 Safari major versions
+iOS >= 15.5
+ChromeAndroid >= 114
+
+----- package.json -----
+{
+  "name": "keystroke-ai",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "firebase:emulators": "firebase emulators:start",
+    "firebase:deploy": "firebase deploy",
+    "inspect-firestore": "tsx scripts/inspect-firestore.ts",
+    "analyze-dataset": "tsx scripts/analyze-dataset.ts",
+    "extract-dataset": "tsx scripts/extract_firestorm.ts",
+    "train-lora": "python train_lora.py",
+    "setup-python": "python setup_python_env.py",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:e2e": "playwright test",
+    "compat:css": "doiuse \"last 2 Chrome versions, last 2 Firefox versions, last 2 Edge versions, last 2 Safari major versions, iOS >= 15.5\" .next/static/css/*.css || true",
+    "compat:test": "playwright test",
+    "icons": "node scripts/generate-icons.js"
+  },
+  "dependencies": {
+    "@radix-ui/react-avatar": "^1.0.4",
+    "@radix-ui/react-dialog": "^1.0.5",
+    "@radix-ui/react-dropdown-menu": "^2.0.6",
+    "@radix-ui/react-label": "^2.0.2",
+    "@radix-ui/react-select": "^2.0.0",
+    "@radix-ui/react-separator": "^1.0.3",
+    "@radix-ui/react-slot": "^1.0.2",
+    "@radix-ui/react-switch": "^1.0.3",
+    "@radix-ui/react-tabs": "^1.0.4",
+    "@radix-ui/react-toast": "^1.1.5",
+    "@radix-ui/react-tooltip": "^1.0.7",
+    "@tailwindcss/postcss": "^4.1.11",
+    "@tanstack/react-query": "^5.0.0",
+    "@types/node": "^20.8.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vercel/analytics": "^1.5.0",
+    "@vercel/speed-insights": "^1.2.0",
+    "autoprefixer": "^10.4.16",
+    "chart.js": "^4.5.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "date-fns": "^2.30.0",
+    "firebase": "^10.5.0",
+    "firebase-admin": "^12.7.0",
+    "framer-motion": "^10.16.4",
+    "idb-keyval": "^6.2.2",
+    "lucide-react": "^0.290.0",
+    "nanoid": "^4.0.2",
+    "next": "15.0.0",
+    "next-themes": "^0.2.1",
+    "postcss": "^8.4.31",
+    "react": "^18.2.0",
+    "react-chartjs-2": "^5.3.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.8.0",
+    "swr": "^2.3.6",
+    "tailwind-merge": "^1.14.0",
+    "tailwindcss": "^3.3.5",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.2.2",
+    "zod": "^3.25.76",
+    "zustand": "^4.5.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.1",
+    "@testing-library/jest-dom": "^6.1.4",
+    "@testing-library/react": "^13.4.0",
+    "@types/jest": "^29.5.5",
+    "@typescript-eslint/eslint-plugin": "^6.7.4",
+    "@typescript-eslint/parser": "^6.7.4",
+    "doiuse": "^6.0.5",
+    "eslint": "^8.51.0",
+    "eslint-config-next": "15.0.0",
+    "eslint-plugin-compat": "^6.0.2",
+    "firebase-tools": "^12.7.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "playwright": "^1.55.1",
+    "png-to-ico": "^2.1.8",
+    "prettier": "^3.0.3",
+    "prettier-plugin-tailwindcss": "^0.5.6",
+    "sharp": "^0.33.4",
+    "tsx": "^4.20.3"
+  }
+}
+
+----- postcss.config.js -----
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+
+
+
+----- tailwind.config.ts -----
+import type { Config } from "tailwindcss"
+
+const config: Config = {
+  darkMode: ["class"],
+  content: [
+    "./pages/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./app/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
+    "./src/app/**/*.{ts,tsx}",
+    "./src/components/**/*.{ts,tsx}",
+    "./src/pages/**/*.{ts,tsx}",
+    "./src/**/*.{md,mdx}",
+  ],
+  theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: { "2xl": "1400px" }
+    },
+    extend: {
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+      },
+      borderRadius: {
+        xl: "1rem",
+        "2xl": "1.25rem",
+        "3xl": "1.5rem",
+      },
+      keyframes: {
+        "fade-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+        "slide-up": { from: { transform: "translateY(12px)" }, to: { transform: "translateY(0)" } },
+        float: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+        glow: {
+          "0%": { boxShadow: "0 0 5px #ffa726, 0 0 10px #ffa726, 0 0 15px #ffa726" },
+          "100%": { boxShadow: "0 0 10px #ffa726, 0 0 20px #ffa726, 0 0 30px #ffa726" },
+        },
+        'bk-glow': {
+          '0%': { filter: 'drop-shadow(0 0 0 rgba(255,170,0,.0))' },
+          '100%': { filter: 'drop-shadow(0 0 12px rgba(255,170,0,.35))' }
+        },
+        'bg-pan': {
+          '0%': { backgroundPosition: '0% 0%, 0% 0%, 100% 100%' },
+          '50%': { backgroundPosition: '100% 50%, 50% 0%, 0% 100%' },
+          '100%': { backgroundPosition: '0% 0%, 0% 0%, 100% 100%' },
+        },
+      },
+      animation: {
+        "fade-in": "fade-in .4s ease-out both",
+        "slide-up": "slide-up .4s ease-out both",
+        "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        float: "float 6s ease-in-out infinite",
+        glow: "glow 2s ease-in-out infinite alternate",
+        'bk-glow-slow': 'bk-glow 2.8s ease-in-out infinite alternate',
+        'bg-pan': 'bg-pan 18s linear infinite',
+      },
+    },
+  },
+  plugins: [],
+}
+export default config
+
+----- next.config.ts -----
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
+  reactStrictMode: true,
+  async rewrites() {
+    return [
+      // Keep API rewrites only if needed; do NOT touch Next static assets
+      // Example:
+      // { source: "/api/:path*", destination: "http://127.0.0.1:8000/:path*" },
+    ];
+  },
+};
+
+export default nextConfig;
+
+----- eslint.config.mjs -----
+import { dirname } from "path";
+import { fileURLToPath } from "url";
+import { FlatCompat } from "@eslint/eslintrc";
+import compatPlugin from "eslint-plugin-compat";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const compat = new FlatCompat({
+  baseDirectory: __dirname,
+});
+
+const eslintConfig = [
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  {
+    plugins: { compat: compatPlugin },
+    rules: { "compat/compat": "warn" },
+    settings: {},
+  },
+];
+
+export default eslintConfig;
+
+----- playwright.config.ts -----
+import { defineConfig, devices } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./tests/e2e",
+  timeout: 30000,
+  use: {
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000",
+    trace: "on-first-retry",
+  },
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+  ],
+  webServer: {
+    command: "npm run dev",
+    port: 3000,
+    reuseExistingServer: !process.env.CI,
+  },
+});
+
+
+
+----- .github/workflows/cross-compat.yml -----
+name: Cross-compat
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright (with WebKit)
+        run: npx playwright install --with-deps
+      - name: Run e2e (Chromium, Firefox, WebKit)
+        run: npm run test:e2e -- --project=chromium --project=firefox --project=webkit
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          if-no-files-found: ignore
+
+  css-compat:
+    runs-on: ubuntu-latest
+    needs: e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: CSS support scan (doiuse)
+        run: npm run compat:css
+
+
+
+----- src/app/layout.tsx -----
+// src/app/layout.tsx
+import type { Metadata } from "next";
+import React, { Suspense } from "react";
+import AuthGate from "@/components/auth/AuthGate";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { ThemeProvider } from "@/components/theme-provider";
+import Header from "@/components/Header";
+import GlobalFireBackdrop from "@/components/brand/GlobalFireBackdrop";
+import AppBoot from "@/components/AppBoot";
+import SettingsModal from "@/components/settings/SettingsModal";
+import HotkeysGlobal from "@/components/system/HotkeysGlobal";
+import PerfBootMarker from "@/components/PerfBootMarker";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import Polyfills from "@/app/polyfills";
+
+const inter = Inter({ subsets: ["latin"], display: "swap", preload: true });
+
+export const metadata: Metadata = {
+  title: "blazeKey",
+  applicationName: "blazeKey",
+  description: "AI-powered typing practice platform",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/favicon-48x48-bk1.png", sizes: "48x48", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" }
+    ],
+    shortcut: ["/favicon.ico"],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+    other: [
+      {
+        rel: "icon",
+        url: "/android-chrome-192x192.png",
+        sizes: "192x192",
+        type: "image/png",
+      },
+      {
+        rel: "icon",
+        url: "/android-chrome-512x512.png",
+        sizes: "512x512",
+        type: "image/png",
+      },
+    ],
+  },
+  manifest: "/site.webmanifest",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <head>
+      </head>
+      <body
+        className={`${inter.className} page-bg bk-flame-bg min-h-screen min-h-dvh antialiased overflow-x-clip`}
+      >
+        <Polyfills />
+        <Suspense fallback={null}>
+          {/* Client bootstrap for auth + appearance */}
+          <AppBoot />
+          <PerfBootMarker />
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <GlobalFireBackdrop />
+            <Header />
+            <HotkeysGlobal />
+            {children}
+            {/* Global auth modal gate */}
+            <AuthGate />
+            <SettingsModal />
+          </ThemeProvider>
+        </Suspense>
+        <Analytics />
+        <SpeedInsights />
+      </body>
+    </html>
+  );
+}
+
+----- src/app/polyfills.tsx -----
+"use client";
+
+declare global {
+  interface Window {
+    requestIdleCallback?: (
+      cb: (d: { didTimeout: boolean; timeRemaining: () => number }) => void
+    ) => any;
+    cancelIdleCallback?: (id: any) => void;
+  }
+}
+
+if (typeof window !== "undefined") {
+  // requestIdleCallback polyfill
+  if (!("requestIdleCallback" in window)) {
+    window.requestIdleCallback = (cb) => {
+      const start = Date.now();
+      return setTimeout(
+        () =>
+          cb({
+            didTimeout: false,
+            timeRemaining: () => Math.max(0, 50 - (Date.now() - start)),
+          }),
+        1
+      );
+    };
+    window.cancelIdleCallback = (id) => clearTimeout(id as any);
+  }
+
+  // IntersectionObserver no-op fallback
+  if (typeof (globalThis as any).IntersectionObserver === "undefined") {
+    (globalThis as any).IntersectionObserver = class {
+      constructor() {}
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [] as any[];
+      }
+    } as any;
+  }
+
+  // ResizeObserver no-op fallback
+  if (typeof (globalThis as any).ResizeObserver === "undefined") {
+    (globalThis as any).ResizeObserver = class {
+      constructor(_cb?: any) {}
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as any;
+  }
+
+  // iOS viewport unit helper: keep --vh in sync for older Safari
+  const setVhVar = () => {
+    const vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty("--vh", `${vh}px`);
+  };
+  setVhVar();
+  window.addEventListener("resize", setVhVar);
+}
+
+export default function Polyfills() {
+  return null;
+}
+
+
+
+----- src/utils/safeCopy.ts -----
+export async function safeCopy(text: string): Promise<boolean> {
+  try {
+    if (
+      typeof navigator !== "undefined" &&
+      (navigator as any).clipboard &&
+      (globalThis as any).isSecureContext
+    ) {
+      await (navigator as any).clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  // Fallback: textarea trick
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "0";
+    ta.style.left = "0";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+
+
+----- src/utils/segments.ts -----
+export function segmentGraphemes(text: string): string[] {
+  const AnyIntl: any = typeof Intl !== "undefined" ? Intl : {};
+  if (AnyIntl.Segmenter) {
+    const seg = new AnyIntl.Segmenter("en", { granularity: "grapheme" });
+    return Array.from(seg.segment(text), (s: any) => s.segment);
+  }
+  return Array.from(text);
+}
+
+export function splitGraphemes(input: string): string[] {
+  const AnyIntl: any = typeof Intl !== "undefined" ? Intl : {};
+  if (AnyIntl.Segmenter) {
+    const seg = new AnyIntl.Segmenter("en", { granularity: "grapheme" });
+    return Array.from(seg.segment(input), (s: any) => s.segment);
+  }
+  return Array.from(input);
+}
+
+export function normalizeInputChar(ch: string): string {
+  // Map non-breaking space to normal space
+  if (ch === "\u00A0") return " ";
+  // Normalize to NFKC and unify common variants to mirror compare.ts
+  try { ch = ch.normalize("NFKC"); } catch {}
+  ch = ch
+    // strip zero-width/BOM
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+    // unify quotes
+    .replace(/[\u2018\u2019\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u2033]/g, '"')
+    // unify hyphen/minus
+    .replace(/[\u2010-\u2015\u2212]/g, "-");
+  return ch;
+}
+
+export function displayChar(grapheme: string): string {
+  return grapheme === " " ? "\u00A0" : grapheme;
+}
+
+
+
+----- tests/e2e/smoke.spec.ts -----
+import { test, expect } from "@playwright/test";
+
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/**", async (route) => {
+    const url = route.request().url();
+
+    if (url.includes("/api/auth/me")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ user: null }),
+      });
+    }
+
+    if (url.includes("/api/generate-proxy")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      });
+    }
+
+    // Add more light stubs here if logs show other endpoints during page load.
+    return route.continue();
+  });
+});
+
+test("home renders without errors", async ({ page }) => {
+  const resp = await page.goto("/");
+  expect(resp?.ok()).toBeTruthy();
+  await expect(page.locator("body")).toBeVisible();
+
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await page.waitForTimeout(500);
+  expect(errors).toHaveLength(0);
+});
+
+
+

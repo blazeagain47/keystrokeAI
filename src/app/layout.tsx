@@ -13,6 +13,7 @@ import HotkeysGlobal from "@/components/system/HotkeysGlobal";
 import PerfBootMarker from "@/components/PerfBootMarker";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import Polyfills from "@/app/polyfills";
 
 const inter = Inter({ subsets: ["latin"], display: "swap", preload: true });
 
@@ -54,15 +55,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
       </head>
       <body
-        className={`${inter.className} page-bg bk-flame-bg min-h-dvh antialiased overflow-x-clip`}
+        className={`${inter.className} page-bg bk-flame-bg min-h-screen min-h-dvh antialiased overflow-x-clip`}
       >
+        <Polyfills />
         <Suspense fallback={null}>
           {/* Client bootstrap for auth + appearance */}
           <AppBoot />
