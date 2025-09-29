@@ -73,7 +73,7 @@ export default function BlazeInterlude({
           className="fixed inset-x-0"
           style={{
             top: "var(--bk-header-h, 64px)",
-            height: "calc(100dvh - var(--bk-header-h, 64px))",
+            bottom: 0,
             zIndex: 95,
           }}
         >

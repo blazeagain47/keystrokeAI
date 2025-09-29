@@ -80,19 +80,24 @@
   }
 }
 
-/* === Blaze overlay helpers === */
+/* === Blaze overlay helpers — seamless full-height fade (no hard edge) === */
 .bk-bottom-fade{
-  position:absolute; left:0; right:0; bottom:0; height:38%;
-  pointer-events:none;
+  position: absolute;
+  /* overscan by 2px to avoid dvh+zoom rounding gaps on some GPUs */
+  inset: -2px 0 -2px 0;
+  pointer-events: none;
   background:
     linear-gradient(
       to bottom,
-      rgba(0,0,0,0) 0%,
-      hsl(var(--background) / .12) 45%,
-      hsl(var(--background) / .28) 75%,
-      hsl(var(--background) / .38) 100%
+      rgba(0,0,0,0) 58%,
+      rgba(0,0,0,0.18) 74%,
+      rgba(0,0,0,0.34) 88%,
+      rgba(0,0,0,0.52) 100%
     );
 }
+
+/* remove any previous edge-seal bar */
+.bk-bottom-fade::after { content: none !important; }
 
 /* ShadCN design tokens */
 @layer base {
