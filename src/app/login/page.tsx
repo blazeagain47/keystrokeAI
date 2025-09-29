@@ -46,6 +46,16 @@ export default function LoginPage() {
     if (submitting) return;
     setErr(null);
     setSubmitting(true);
+    // ==== TEMP LOGS: remove after diagnosis ====
+    try {
+      console.log('[auth] submit:start', {
+        method: 'POST',
+        url: '/api/auth/login',
+        credentialsMode: 'include',
+        headersSent: { 'content-type': 'application/json', authorization: 'absent' },
+        bodyKeys: ['username','password'],
+      });
+    } catch {}
     try {
       if (tab === "login") {
         await login(username, password);
@@ -54,6 +64,8 @@ export default function LoginPage() {
       }
       router.replace("/account");
     } catch (error: any) {
+      // ==== TEMP LOGS: remove after diagnosis ====
+      try { console.error('[auth] submit:error', error?.message, error); } catch {}
       setErr(error?.message || "Authentication failed");
     } finally { setSubmitting(false); }
   };

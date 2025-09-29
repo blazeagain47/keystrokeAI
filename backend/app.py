@@ -14,6 +14,14 @@ app = FastAPI()
 # Create tables on startup (SQLite, simple MVP)
 Base.metadata.create_all(bind=engine)
 
+# Optional: log passlib/bcrypt versions once at startup for diagnostics
+try:
+    import passlib, bcrypt as _bcrypt  # type: ignore
+    _ver = getattr(_bcrypt, "__version__", getattr(getattr(_bcrypt, "__about__", object()), "__version__", "unknown"))
+    print(f"[bk] passlib={passlib.__version__} bcrypt={_ver}")
+except Exception as _e:
+    print("[bk] version check failed:", _e)
+
 # CORS: single origin, credentials enabled
 app.add_middleware(
     CORSMiddleware,

@@ -1,5 +1,5 @@
 import os, time, jwt
-from passlib.hash import bcrypt
+from passlib.hash import bcrypt as bcrypt_hash
 from typing import Optional
 
 JWT_SECRET = os.environ.get("KS_JWT_SECRET", "dev_only_change_me")
@@ -7,12 +7,27 @@ JWT_TTL_SECONDS = int(os.environ.get("KS_JWT_TTL_SECONDS", "604800"))  # 7d
 COOKIE_NAME = "ks_session"
 
 
+MAX_BCRYPT_BYTES = 72
+
+def _bcrypt_bytes(p: str) -> bytes:
+    return p.encode("utf-8")[:MAX_BCRYPT_BYTES]
+
 def hash_password(plain: str) -> str:
-    return bcrypt.hash(plain)
+    try:
+        return bcrypt_hash.hash(plain)
+    except ValueError as e:
+        if "longer than 72" in str(e):
+            return bcrypt_hash.hash(_bcrypt_bytes(plain))
+        raise
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.verify(plain, hashed)
+    try:
+        return bcrypt_hash.verify(plain, hashed)
+    except ValueError as e:
+        if "longer than 72" in str(e):
+            return bcrypt_hash.verify(_bcrypt_bytes(plain), hashed)
+        raise
 
 
 def make_jwt(user_id: int) -> str:
