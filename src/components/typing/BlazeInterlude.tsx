@@ -1,17 +1,20 @@
 "use client";
-import React from "react";
+import * as React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 
+type Context = "toggle" | "post";
 type Props = {
   show: boolean;
+  context?: Context;
   title?: string;
   lines?: string[];
 };
 
 export default function BlazeInterlude({
   show,
-  title = "Blaze mode",
+  context = "toggle",
+  title = "Blaze mode (AI)",
   lines = [
     "AI is analyzing your last test…",
     "Training a harder set for you…",
@@ -19,200 +22,118 @@ export default function BlazeInterlude({
   ],
 }: Props) {
   const [mounted, setMounted] = React.useState(false);
+  const [step, setStep] = React.useState(0);
 
-  // Ensure header height CSS var exists so we can offset correctly
-  React.useEffect(() => {
-    setMounted(true);
-    try {
-      const root = document.documentElement;
-      const existing = getComputedStyle(root)
-        .getPropertyValue("--bk-header-h")
-        .trim();
-      if (!existing || existing === "0" || existing === "0px") {
-        const h =
-          (document.querySelector("[data-app-header]") as HTMLElement)
-            ?.getBoundingClientRect().height ?? 64;
-        root.style.setProperty("--bk-header-h", `${Math.round(h)}px`);
-      }
-    } catch {}
-  }, []);
+  React.useEffect(() => setMounted(true), []);
 
-  // Block scroll while visible
+  // Cycle through status lines while visible
   React.useEffect(() => {
     if (!show) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    setStep(0);
+    const id = window.setInterval(() => {
+      setStep((s) => (s + 1) % Math.max(1, lines.length));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [show, lines.length]);
+
+  // Lock page scroll using global classes (mobile-friendly)
+  React.useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    if (show) {
+      html.classList.add("bk-lock");
+      body.classList.add("bk-lock");
+    } else {
+      html.classList.remove("bk-lock");
+      body.classList.remove("bk-lock");
+    }
     return () => {
-      document.body.style.overflow = prev;
+      html.classList.remove("bk-lock");
+      body.classList.remove("bk-lock");
     };
   }, [show]);
 
   if (!mounted) return null;
 
-  const overlay = (
-    <AnimatePresence>
+  const heading =
+    context === "post" ? "Analyzing & adapting your results…" : "Adapting your next test…";
+
+  return createPortal(
+    <AnimatePresence initial={false}>
       {show && (
         <motion.div
-          key="bk-blaze-interlude"
+          key="bk-blaze-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Preparing your adaptive test"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          // Tailwind for layout (bullet-proof against scoping)
+          transition={{ duration: 0.22 }}
+          className="fixed inset-x-0"
           style={{
-            // Keep header visible
             top: "var(--bk-header-h, 64px)",
-            // Explicit viewport height to avoid any parent clipping
             height: "calc(100dvh - var(--bk-header-h, 64px))",
-            position: "fixed",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 90,
-            display: "grid",
-            placeItems: "center",
-            backgroundColor: "rgba(0, 0, 0, 0.4)",
-            backdropFilter: "blur(12px)",
+            zIndex: 95,
           }}
         >
-          {/* Uiverse-inspired loader card */}
-          <div className="bk-blaze-card">
-            <div className="bk-loader">
-              <p>loading</p>
-              <div className="bk-words" aria-hidden="true">
-                <span className="bk-word">analyzing</span>
-                <span className="bk-word">training</span>
-                <span className="bk-word">adapting</span>
-                <span className="bk-word">generating</span>
-                <span className="bk-word">analyzing</span>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-md" />
+          <div className="bk-bottom-fade" aria-hidden />
+
+          <div className="relative h-full w-full grid place-items-center p-4">
+            <motion.div
+              initial={{ y: 8, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -8, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 24 }}
+              className="w-full max-w-md rounded-2xl border border-white/10 bg-black/55 backdrop-blur-xl shadow-2xl ring-1 ring-white/10 p-6"
+            >
+              <div className="text-[10px] uppercase tracking-[0.16em] text-white/70 mb-2">
+                {title}
               </div>
-            </div>
-            <div className="bk-copy">
-              <div className="bk-eyebrow">{title}</div>
-              {lines.map((t, i) => (
-                <div className="bk-line" key={i}>
-                  {t}
+
+              <div className="flex items-center gap-5">
+                <div className="relative h-20 w-20">
+                  <div className="absolute inset-0 rounded-full opacity-70 animate-spin [animation-duration:2.8s] bg-[conic-gradient(from_0deg,rgba(255,145,0,0),rgba(255,145,0,.65),rgba(255,145,0,0))]" />
+                  <div className="absolute inset-2 rounded-full opacity-60 animate-spin [animation-duration:5s] bg-[conic-gradient(from_180deg,rgba(255,90,0,0),rgba(255,90,0,.5),rgba(255,90,0,0))]" />
+                  <div className="absolute inset-0 grid place-items-center">
+                    <div className="h-10 w-10 rounded-full bg-white/5 border border_white/10 shadow-inner" />
+                  </div>
                 </div>
-              ))}
-            </div>
+
+                <div className="min-w-0">
+                  <div className="text-base font-medium text-white/95">{heading}</div>
+                  <ul className="mt-2 space-y-1 text-sm" aria-live="polite">
+                    {lines.map((t, i) => (
+                      <li key={i} className={i === step ? "text-white" : "text-white/60"}>
+                        <span
+                          className={[
+                            "mr-2 inline-block h-1.5 w-1.5 rounded-full align-middle",
+                            i <= step ? "bg-amber-400" : "bg-white/30",
+                          ].join(" ")}
+                        />
+                        {t}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="mt-4 h-1 w-full rounded-full bg-white/10 overflow-hidden">
+                <motion.div
+                  key={step}
+                  initial={{ width: "0%" }}
+                  animate={{ width: ["0%", "35%", "70%", "100%"] }}
+                  transition={{ duration: 1.6, ease: "easeInOut", repeat: Infinity }}
+                  className="h-full bg-gradient-to-r from-amber-400/70 via-orange-500/70 to-amber-300/70"
+                />
+              </div>
+            </motion.div>
           </div>
-
-          <style jsx>{`
-            /* Card container */
-            .bk-blaze-card {
-              --bg-color: #111;
-              --accent: var(--bk-accent, #FF6A00);
-              background-color: var(--bg-color);
-              padding: 1.25rem 2rem 1.6rem;
-              border-radius: 1.25rem;
-              box-shadow: 0 20px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.06) inset;
-              max-width: clamp(720px, 64vw, 1040px);  /* a touch wider so nothing crops */
-              width: 100%;
-              color: #eaeaea;
-              pointer-events: auto;
-              display: flex;
-              flex-direction: column;
-              align-items: center;   /* center all content */
-              gap: 12px;
-              overflow: visible;     /* never clip the animated row */
-            }
-
-            .bk-loader {
-              color: rgb(180,180,180);
-              font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-              font-weight: 600;
-              font-size: 28px;
-              height: 44px;
-              padding: 8px 12px;
-              display: flex;
-              align-items: center;
-              justify-content: center;     /* center the pair */
-              gap: 14px;                   /* keep your current visual spacing */
-              border-radius: 10px;
-              width: 100%;                 /* make the row span the card */
-              margin: 0;                   /* no side bias */
-              /* nudge the whole row slightly to the right; paint-only (no layout) */
-              transform: translateX(var(--bk-loader-nudge-x, 8px));
-            }
-            /* REMOVE any earlier nudges we added to the static word */
-            .bk-loader p { margin: 0; transform: none; }
-
-            /* keep children from stretching oddly (no side bias) */
-            .bk-loader > p,
-            .bk-loader > .bk-words {
-              flex: 0 0 auto;
-            }
-
-            .bk-words {
-              overflow: hidden;
-              position: relative;
-              height: 36px;               /* taller viewport for vertical loop */
-              line-height: 36px;
-              min-width: 14ch;            /* "generating" fits with room */
-              white-space: nowrap;
-            }
-            .bk-words::after {
-              content: "";
-              position: absolute;
-              inset: 0;
-              background: linear-gradient(
-                var(--bg-color) 6%,
-                transparent 24%,
-                transparent 76%,
-                var(--bg-color) 94%
-              );                          /* softer fade to avoid "cut off" look */
-              z-index: 2;
-              pointer-events: none;
-            }
-            .bk-word {
-              display: block;
-              height: 100%;
-              line-height: 36px;
-              padding-left: 6px;
-              color: var(--accent);       /* use brand accent (orange) */
-              animation: spin_4991 4s infinite;
-              will-change: transform;
-              text-shadow: 0 0 8px color-mix(in oklab, var(--accent), transparent 70%);
-            }
-            /* Exact step offsets to eliminate fractional clipping on some GPUs */
-            @keyframes spin_4991 {
-              10%  { transform: translateY(-100%); }
-              25%  { transform: translateY(-100%); }
-              35%  { transform: translateY(-200%); }
-              50%  { transform: translateY(-200%); }
-              60%  { transform: translateY(-300%); }
-              75%  { transform: translateY(-300%); }
-              85%  { transform: translateY(-400%); }
-              100% { transform: translateY(-400%); }
-            }
-
-            .bk-copy { margin-top: .25rem; width: 100%; text-align: center; }
-            .bk-eyebrow {
-              text-transform: uppercase;
-              letter-spacing: .08em;
-              font-size: 11px;
-              opacity: .75;
-              margin-bottom: 4px;
-              color: #f6b27a;             /* keep as-is; pairs well with accent */
-            }
-            .bk-line { font-size: 14px; line-height: 1.35; color: #d7d7d7; }
-
-            /* Responsive */
-            @media (max-width: 640px) {
-              .bk-blaze-card { max-width: calc(100vw - 1.5rem); padding: .9rem 1rem 1.1rem; border-radius: 1rem; }
-              .bk-loader     {
-                font-size: 22px; height: 38px; gap: 10px;
-                transform: translateX(var(--bk-loader-nudge-mobile-x, 4px));
-              }
-              .bk-words      { height: 30px; line-height: 30px; min-width: 12ch; }
-              .bk-word       { line-height: 30px; }
-            }
-          `}</style>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
-
-  // Render OUTSIDE any local stacking context
-  return createPortal(overlay, document.body);
 }
 

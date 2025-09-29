@@ -80,6 +80,20 @@
   }
 }
 
+/* === Blaze overlay helpers === */
+.bk-bottom-fade{
+  position:absolute; left:0; right:0; bottom:0; height:38%;
+  pointer-events:none;
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0%,
+      hsl(var(--background) / .12) 45%,
+      hsl(var(--background) / .28) 75%,
+      hsl(var(--background) / .38) 100%
+    );
+}
+
 /* ShadCN design tokens */
 @layer base {
   :root {

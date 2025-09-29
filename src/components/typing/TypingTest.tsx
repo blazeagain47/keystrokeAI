@@ -1335,7 +1335,10 @@ const TypingTest: React.FC = () => {
         {/* Single, centered logo loader */}
         <LogoLoader show={promptLoad === 'loading' && !currentPrompt} />
         {/* AI interlude overlay (toggle-on & post-run) */}
-        <BlazeInterlude show={blazeUi !== 'off'} />
+        <BlazeInterlude
+          show={blazeUi !== 'off'}
+          context={blazeUi === 'post' ? 'post' : 'toggle'}
+        />
         {view === 'results' && (
           <div className="mt-6 md:mt-10">
             <ResultsPanel
