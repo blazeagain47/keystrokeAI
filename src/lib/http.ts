@@ -85,6 +85,19 @@ export async function fetchJSON<T = any>(
       body: bodyToSend,
     });
 
+    // Optional guard: avoid surfacing raw HTML error pages to UI for auth login
+    try {
+      const asString = typeof url === "string" ? url : (url as Request).toString();
+      const isAuthLogin = typeof input === "string" && (input === "/api/auth/login" || String(input).endsWith("/api/auth/login"));
+      const ctHeader = (res as any)?.headers?.get?.("content-type") ?? (res as any)?.headers?.["content-type"] ?? "";
+      const looksHtml = String(ctHeader).toLowerCase().startsWith("text/html");
+      if (isAuthLogin && ((res as any)?.status >= 500 || looksHtml)) {
+        // eslint-disable-next-line no-console
+        console.error("[auth] submit:guard", { status: (res as any)?.status, contentType: ctHeader });
+        throw new Error("Login service is temporarily unavailable. Please try again.");
+      }
+    } catch {}
+
     const text = await res.text().catch(() => "");
 
     // ==== TEMP LOGS: remove after diagnosis ====

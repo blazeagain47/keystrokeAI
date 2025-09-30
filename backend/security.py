@@ -9,24 +9,34 @@ COOKIE_NAME = "ks_session"
 
 MAX_BCRYPT_BYTES = 72
 
-def _bcrypt_bytes(p: str) -> bytes:
-    return p.encode("utf-8")[:MAX_BCRYPT_BYTES]
-
-def hash_password(plain: str) -> str:
-    try:
-        return bcrypt_hash.hash(plain)
-    except ValueError as e:
-        if "longer than 72" in str(e):
-            return bcrypt_hash.hash(_bcrypt_bytes(plain))
-        raise
-
+def _bcrypt_bytes(s: str) -> bytes:
+    # truncate to 72 bytes for bcrypt; bcrypt operates on bytes
+    return s.encode("utf-8")[:MAX_BCRYPT_BYTES]
 
 def verify_password(plain: str, hashed: str) -> bool:
+    """
+    Verify a plaintext password against a bcrypt hash.
+    If bcrypt raises 'password cannot be longer than 72 bytes',
+    retry with the UTF-8 bytes truncated to 72.
+    """
     try:
         return bcrypt_hash.verify(plain, hashed)
     except ValueError as e:
         if "longer than 72" in str(e):
             return bcrypt_hash.verify(_bcrypt_bytes(plain), hashed)
+        raise
+
+def hash_password(plain: str) -> str:
+    """
+    Hash a plaintext password with bcrypt.
+    If bcrypt raises 'password cannot be longer than 72 bytes',
+    hash the UTF-8 bytes truncated to 72.
+    """
+    try:
+        return bcrypt_hash.hash(plain)
+    except ValueError as e:
+        if "longer than 72" in str(e):
+            return bcrypt_hash.hash(_bcrypt_bytes(plain))
         raise
 
 
