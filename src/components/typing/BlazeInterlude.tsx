@@ -93,12 +93,19 @@ export default function BlazeInterlude({
               </div>
 
               <div className="flex items-center gap-5">
-                <div className="relative h-20 w-20">
-                  <div className="absolute inset-0 rounded-full opacity-70 animate-spin [animation-duration:2.8s] bg-[conic-gradient(from_0deg,rgba(255,145,0,0),rgba(255,145,0,.65),rgba(255,145,0,0))]" />
-                  <div className="absolute inset-2 rounded-full opacity-60 animate-spin [animation-duration:5s] bg-[conic-gradient(from_180deg,rgba(255,90,0,0),rgba(255,90,0,.5),rgba(255,90,0,0))]" />
-                  <div className="absolute inset-0 grid place-items-center">
-                    <div className="h-10 w-10 rounded-full bg-white/5 border border_white/10 shadow-inner" />
-                  </div>
+                <div className="relative h-20 w-20" role="status" aria-live="polite">
+                  {/* Soft halo for subtle depth; pulses opacity only */}
+                  <div className="pointer-events-none absolute -inset-3 rounded-full opacity-70 blur-md bg-[radial-gradient(closest-side,rgba(255,120,0,.18),rgba(255,120,0,0))] motion-safe:animate-pulse motion-reduce:opacity-60" />
+
+                  {/* Original rings (unchanged visually), now motion-aware */}
+                  <div className="absolute inset-0 rounded-full opacity-70 motion-safe:animate-spin motion-reduce:animate-none [animation-duration:2.8s] bg-[conic-gradient(from_0deg,rgba(255,145,0,0),rgba(255,145,0,.65),rgba(255,145,0,0))]" />
+                  <div className="absolute inset-2 rounded-full opacity-60 motion-safe:animate-spin motion-reduce:animate-none [animation-duration:5s] bg-[conic-gradient(from_180deg,rgba(255,90,0,0),rgba(255,90,0,.5),rgba(255,90,0,0))]" />
+
+                  {/* Subtle third ring for layered motion */}
+                  <div className="absolute inset-3 rounded-full opacity-30 motion-safe:animate-spin motion-reduce:animate-none [animation-duration:9s] bg-[conic-gradient(from_270deg,rgba(255,170,0,0),rgba(255,170,0,.35),rgba(255,170,0,0))]" />
+
+                  {/* Center dot intentionally removed to smooth the spinner visual; rings remain unchanged */}
+                  <div className="absolute inset-0 grid place-items-center" />
                 </div>
 
                 <div className="min-w-0">

@@ -288,7 +288,8 @@ export default function ResultsPanel(props: ResultsPanelProps) {
       <div className="grid grid-cols-12 gap-4 lg:gap-6 auto-rows-auto">
         {/* Top row: Blaze toggle + simple label */}
         <div className="col-span-12 -mb-2 flex items-center justify-between">
-          <div className="text-sm font-medium opacity-80">Results</div>
+          {/* Keep element to preserve spacing; hide visually only */}
+          <div className="invisible select-none text-sm font-medium opacity-80" aria-hidden="true">Results</div>
           {isHydrated && (
             <Tooltip.TooltipProvider delayDuration={150}>
               <Tooltip.Tooltip>
