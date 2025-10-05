@@ -1394,7 +1394,7 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
   --bk-caret-w: 2px;
 }
 
-/* Overlay bar caret (glides) */
+/* Overlay bar caret (motion handled in JS via rAF) */
 .bk-caret-bar{
   position: absolute;
   top: 0; left: 0;
@@ -1405,14 +1405,25 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
   pointer-events: none;
   transform: translate3d(0,0,0);
   transform-origin: left top;
-  will-change: transform;
-  transition: transform var(--bk-caret-dur) cubic-bezier(.2,.7,.2,1), opacity 120ms;
+  will-change: transform, width;
+  transition: none !important;   /* keep this: no CSS tween on transform */
   animation: caretBlink var(--bk-caret-blink) steps(1,end) infinite;
 }
 .bk-caret-hidden { opacity: 0; }
 
 /* During motion, pause blink to avoid strobe */
 .bk-caret-moving { animation: none; opacity: .95; }
+
+/* Shape hints for block/outline/underline styles (width set dynamically in JS) */
+.bk-caret-bar.block,
+.bk-caret-bar.outline {
+  /* width set dynamically in JS to active letter width */
+}
+
+.bk-caret-bar.underline {
+  /* height stays small; JS will set width, JS aligns Y at baseline */
+  height: 2px;
+}
 
 /* Zero-width end-of-word anchor (overlay follows it) */
 .bk-caret-slot{
@@ -1424,24 +1435,8 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
   contain: paint;
 }
 
-/* --- Overlay bar caret (gliding) ---------------------------------------- */
+/* --- Overlay bar caret anchor (gliding handled above via rAF) ---------- */
 .bk-prompt-rel { position: relative; }             /* anchor for absolute overlay */
-.bk-caret-bar {
-  position: absolute;
-  top: 0; left: 0;
-  width: var(--bk-caret-w, 2px);
-  height: 1em;                                     /* track current line height */
-  background: color-mix(in oklab, var(--bk-caret-color, #fbbf24), black 25%);
-  border-radius: 1px;
-  pointer-events: none;
-  transform: translate3d(0,0,0);
-  transition: transform 70ms cubic-bezier(.2,.7,.2,1); /* smooth “glide” */
-  animation: caretBlink var(--bk-caret-blink, 700ms) steps(1,end) infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .bk-caret-bar { transition: none; }
-}
-.bk-caret-hidden { opacity: 0; }
 
 /* --- Neutralize old inline block-caret classes (keep DOM but no paint) -- */
 .bk-caret-on,

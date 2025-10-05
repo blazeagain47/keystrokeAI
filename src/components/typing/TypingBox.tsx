@@ -183,6 +183,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     if (contentRef.current) {
       contentRef.current.style.transform = "translateY(0px)";
     }
+    
+    // Reset caret mover on test restart
+    if (caretMoverRef.current) {
+      caretMoverRef.current.reset();
+    }
   }, []);
 
   // Settings flags
@@ -200,6 +205,9 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const promptWrapRef = useRef<HTMLDivElement | null>(null);
   const caretRef = useRef<HTMLDivElement | null>(null);
   const caretMoveTimer = useRef<number | null>(null);
+  
+  // Smooth caret mover
+  const caretMoverRef = useRef<ReturnType<typeof import("@/lib/caretMotion").createCaretMover> | null>(null);
 
   function calculateWPM(correct: number, timeInSeconds: number): number {
     if (timeInSeconds <= 0) return 0;
@@ -493,7 +501,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     emberRef.current?.spawn(px, py, n);
   }
 
-  // --- caret mover: glide to the active char
+  // --- Smooth caret mover: uses rAF-based tween, instant snap on backspace ---
   const moveCaret = useCallback(() => {
     const wrap = promptWrapRef.current;
     const caret = caretRef.current;
@@ -505,34 +513,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       return;
     }
 
-    const r = anchor.getBoundingClientRect();
-    const w = wrap.getBoundingClientRect();
-    // read the visual scale applied to this subtree (inherited CSS var)
-    const sVar = getComputedStyle(wrap).getPropertyValue('--bk-prompt-scale').trim();
-    const s = sVar ? parseFloat(sVar) : 1;
-    const scale = s || 1;
-    // --- NEW: compensate for global UI zoom (Chromium/Safari).
-    // Firefox ignores CSS zoom, so computed zoom will be "" → fallback to 1.
-    const readUiZoom = () => {
-      if (typeof window === 'undefined') return 1;
-      const body = document.body;
-      if (!body) return 1;
-      const z = parseFloat((getComputedStyle(body) as any).zoom || '1');
-      return Number.isFinite(z) && z > 0 ? z : 1;
-    };
-    const uiZoom = readUiZoom(); // e.g., 0.8 when body { zoom: .8 }
-    // device-pixel snapping for crispness
-    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
-    const snap = (px: number) => Math.round(px * dpr) / dpr;
-    // convert to the wrapper's local space, then de-zoom so the translated value,
-    // after the global zoom is applied, lands exactly under the glyph.
-    const x = snap((r.left - w.left) / (scale * uiZoom));
-    const y = snap((r.top  - w.top)  / (scale * uiZoom));
-    const h = snap(r.height / (scale * uiZoom));
-
-    caret.style.height = `${h}px`;
-    caret.style.transform = `translate3d(${x}px, ${y}px, 0)`;
     try { caret.classList.remove('bk-caret-hidden'); } catch {}
+    
+    // Use smooth motion system if initialized
+    if (caretMoverRef.current) {
+      caretMoverRef.current.toAnchor(anchor);
+    }
+    
     // mark as moving briefly to pause blink animation
     try {
       caret.classList.add('bk-caret-moving');
@@ -544,6 +531,45 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       }, 110) as any;
     } catch {}
   }, []);
+
+  // Initialize smooth caret mover
+  useEffect(() => {
+    const wrap = promptWrapRef.current;
+    const caret = caretRef.current;
+    if (!wrap || !caret) return;
+
+    const { createCaretMover } = require("@/lib/caretMotion");
+    
+    // Map smoothCaret setting to duration
+    const SMOOTH_MS: Record<string, number> = {
+      off: 0,
+      fast: 85,
+      medium: 110,
+      slow: 150,
+    };
+    
+    const getCaretStyle = (): "bar" | "block" | "outline" | "underline" => {
+      const style = useSettingsStore.getState().appearance.caret.style;
+      return style as "bar" | "block" | "outline" | "underline";
+    };
+    
+    const getSmoothMs = () => {
+      const setting = useSettingsStore.getState().appearance.caret.smoothCaret || "medium";
+      return SMOOTH_MS[setting] ?? 110;
+    };
+
+    caretMoverRef.current = createCaretMover({
+      wrap,
+      caret,
+      getStyle: getCaretStyle,
+      getSmoothMs,
+    });
+
+    return () => {
+      caretMoverRef.current?.reset();
+      caretMoverRef.current = null;
+    };
+  }, [runSeq]); // Re-init on test restart
 
   // Reposition caret on resize and on mount
   useEffect(() => {
@@ -1069,7 +1095,14 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
               className="px-4 leading-relaxed text-lg bk-prompt-scale bk-prompt-rel"
             >
             {/* Overlay caret */}
-            <div ref={caretRef} className="bk-caret-bar bk-caret-hidden" aria-hidden="true" />
+            <div 
+              ref={caretRef} 
+              className={clsx(
+                "bk-caret-bar bk-caret-hidden",
+                useSettingsStore.getState().appearance.caret.style
+              )} 
+              aria-hidden="true" 
+            />
             {evals.map((we, wi) => {
               const active = wi === currentWordIndex;
               const expected = we.expected;

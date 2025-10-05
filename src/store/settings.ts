@@ -15,7 +15,7 @@ export type AppearanceSettings = {
   cards: { radius: 12|16|20|24; glow: "off"|"soft"|"strong" };
   density: "comfortable"|"compact";
   type: { scale: 0.9|1|1.05|1.1; family: "system"|"inter"|"jetbrains"|"monaspace" };
-  caret: { style: "bar"|"underline"|"block"; blinkMs: number; color: "accent"|"white" };
+  caret: { style: "bar"|"underline"|"block"; blinkMs: number; color: "accent"|"white"; smoothCaret: "off"|"fast"|"medium"|"slow" };
   motion: { reduce: boolean };
   contrast: { high: boolean };
   charts: { glow: "off"|"ember" };
@@ -106,7 +106,7 @@ const DEFAULTS: SettingsState = {
     cards: { radius: 20, glow: "soft" },
     density: "comfortable",
     type: { scale: 1, family: "inter" },
-    caret: { style: "bar", blinkMs: 750, color: "accent" },
+    caret: { style: "bar", blinkMs: 750, color: "accent", smoothCaret: "medium" },
     motion: { reduce: false },
     contrast: { high: false },
     charts: { glow: "ember" },
