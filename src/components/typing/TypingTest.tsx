@@ -32,6 +32,8 @@ import * as Tooltip from "@/components/ui/tooltip";
 import { applyEasyFilter } from "@/lib/prompt/easyFilter";
 import { getEasyPool, getEasyPoolSync } from "@/lib/wordbanks/easyPool";
 import { toLowerLettersOnly, ensureExactWordCount, ensureExactNoRepeat } from '@/lib/prompt/normalize';
+import { buildCoderPrompt, type CoderLanguage } from "@/lib/coder-snippets";
+import { CoderLanguageChips } from "./CoderLanguageChips";
 import { enforceNoRepeat } from "@/lib/prompt/noRepeatLimiter";
 import { normalizePromptWords } from '@/lib/text';
 import ReadyToast from '@/components/typing/ReadyToast';
@@ -51,6 +53,7 @@ import { useSettingsStore } from "@/store/settings";
 import { weakspot } from "@/ai/weakspot";
 import { useAICoach } from "@/store/aiCoach";
 import { useHydrated } from "@/lib/useHydrated";
+import { flushSync } from 'react-dom';
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -110,13 +113,35 @@ const TypingTest: React.FC = () => {
   const [offsetPx, setOffsetPx] = React.useState(0);
 
   // Test configuration state
-  const [testMode, setTestMode] = useState<'time' | 'words' | 'quote' | 'zen' | 'custom'>('words');
+  const [testMode, setTestMode] = useState<'time' | 'words' | 'coder' | 'zen' | 'custom'>('words');
   // functional mode + duration (time mode)
   const [mode, setMode] = useState<'words' | 'time'>('words');
   const [durationSec, setDurationSec] = useState<number>(15);
   const [wordCount, setWordCount] = useState<number>(15);
   const [showPunctuation, setShowPunctuation] = useState(false);
   const [showNumbers, setShowNumbers] = useState(false);
+  // Defaults (reuse your settings default where available)
+  const DEFAULT_WORDS =
+    (typeof (useSettingsStore as any)?.getState === 'function'
+      ? (useSettingsStore as any).getState().test?.defaultLength
+      : undefined) ?? 15;
+
+  const DEFAULT_TIME_SEC = 15; // keep current behavior
+
+  // Track first entry into a mode within this component lifecycle
+  const enteredRef = React.useRef<{ time: boolean; words: boolean; coder: boolean }>({
+    time: false,
+    words: false,
+    coder: false,
+  });
+  const [coderLang, setCoderLang] = React.useState<CoderLanguage>(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? window.localStorage.getItem("bk:coder:lang") : null;
+      if (saved === "javascript" || saved === "python" || saved === "html" || saved === "css" || saved === "java") return saved as CoderLanguage;
+    } catch {}
+    return "javascript";
+  });
+  useEffect(() => { try { window.localStorage.setItem("bk:coder:lang", coderLang); } catch {} }, [coderLang]);
   
   // Gate to ensure we apply last-used config before first prompt loads
   const [bootConfigured, setBootConfigured] = useState(false);
@@ -313,7 +338,8 @@ const TypingTest: React.FC = () => {
     try {
       let promptText: string | null = null;
 
-      if (!opts?.useFallback) {
+      const isCoder = testMode === 'coder';
+      if (!opts?.useFallback && !isCoder) {
         const hist = readHist();
         const avg = movingAvg(hist);
         const useTime = mode === 'time';
@@ -354,15 +380,19 @@ const TypingTest: React.FC = () => {
       }
 
       if (!promptText) {
+        const isCoder = testMode === 'coder';
         const useTime = mode === 'time';
         const effectiveCount = useTime ? undefined : (opts?.overrides?.count ?? wordCount ?? 15);
         const wc = useTime ? 200 : Number(effectiveCount ?? 15);
-        
-        if (!useTime) {
+
+        if (isCoder) {
+          // Build coder prompt locally, preserve punctuation/case, fixed 25 tokens
+          promptText = buildCoderPrompt(coderLang, 25);
+        } else if (!useTime) {
           // Use fresh normal sampler for words mode
           const settings = useSettingsStore.getState();
           const bank = getWordset(settings.test.wordSet ?? "core5000");
-          
+
           // restore LRU
           let lruSeed: string[] = [];
           try { lruSeed = JSON.parse(localStorage.getItem("bk-recent-words") || "[]"); } catch {}
@@ -379,7 +409,7 @@ const TypingTest: React.FC = () => {
 
           try { localStorage.setItem("bk-recent-words", JSON.stringify(lru.snapshot())); } catch {}
           promptText = picks.join(" ");
-          
+
           if (process.env.NODE_ENV !== "production") {
             console.debug("[prompt] normal", { set: settings.test.wordSet, count: wc });
           }
@@ -392,13 +422,14 @@ const TypingTest: React.FC = () => {
       let finalPrompt = String(promptText);
       {
         const useTime = mode === 'time';
+        const isCoder = testMode === 'coder';
         const effectiveCount = useTime ? undefined : (opts?.overrides?.count ?? wordCount ?? 15);
 
         const usedCfg = {
           mode: useTime ? 'time' : 'words',
-          wordCount: useTime ? null : (typeof effectiveCount === 'number' ? effectiveCount : null),
+          wordCount: useTime ? null : (isCoder ? 25 : (typeof effectiveCount === 'number' ? effectiveCount : null)),
           durationSec: useTime ? durationSec : null,
-          language: 'english',
+          language: isCoder ? coderLang : 'english',
           include_punctuation: showPunctuation,
           include_numbers: showNumbers,
         } as const;
@@ -411,32 +442,45 @@ const TypingTest: React.FC = () => {
           include_punctuation: usedCfg.include_punctuation,
         }); } catch {}
 
-        if (!useTime) {
+        if (!useTime && !isCoder) {
           const n = Number(effectiveCount ?? 15);
           if (Number.isFinite(n) && n > 0) {
             finalPrompt = ensureExactNoRepeat(finalPrompt, n);
           }
         }
       }
-      finalPrompt = toLowerLettersOnly(finalPrompt, 'en-US');
-      finalPrompt = normalizePromptWords(finalPrompt);
+      {
+        const isCoder = testMode === 'coder';
+        if (!isCoder) {
+          finalPrompt = toLowerLettersOnly(finalPrompt, 'en-US');
+          finalPrompt = normalizePromptWords(finalPrompt);
+        } else {
+          // coder: ensure exact token count only
+          const tok = finalPrompt.split(/\s+/).filter(Boolean);
+          finalPrompt = (tok.length > 25 ? tok.slice(0, 25) : tok).join(" ");
+        }
+      }
 
       // --- Default Easy Words pass (≤8 letters; letters-only; avoid adjacent duplicates)
-      try {
-        const poolSync = getEasyPoolSync(8);
-        finalPrompt = applyEasyFilter(finalPrompt, poolSync, { maxLen: 8, maxRepeat: 2 });
-        // Opportunistic client-side enrichment if optional Monkeytype file exists
-        getEasyPool().then(extra => {
-          if (extra.length > poolSync.length) {
-            finalPrompt = applyEasyFilter(finalPrompt, extra, { maxLen: 8, maxRepeat: 2 });
-          }
-        }).catch(() => {});
-      } catch {}
+      if (testMode !== 'coder') {
+        try {
+          const poolSync = getEasyPoolSync(8);
+          finalPrompt = applyEasyFilter(finalPrompt, poolSync, { maxLen: 8, maxRepeat: 2 });
+          // Opportunistic client-side enrichment if optional Monkeytype file exists
+          getEasyPool().then(extra => {
+            if (extra.length > poolSync.length) {
+              finalPrompt = applyEasyFilter(finalPrompt, extra, { maxLen: 8, maxRepeat: 2 });
+            }
+          }).catch(() => {});
+        } catch {}
+      }
       if (myToken !== loadTokenRef.current) { try { devLog('prompt:drop-stale', { token: myToken }); } catch {}; return; }
       {
-        const allowPunctuation = useSettingsStore.getState().test.include_punctuation === true;
-        const allowNumbers = useSettingsStore.getState().test.include_numbers === true;
-        finalPrompt = sanitizePrompt(finalPrompt, { allowPunctuation, allowNumbers });
+        if (testMode !== 'coder') {
+          const allowPunctuation = useSettingsStore.getState().test.include_punctuation === true;
+          const allowNumbers = useSettingsStore.getState().test.include_numbers === true;
+          finalPrompt = sanitizePrompt(finalPrompt, { allowPunctuation, allowNumbers });
+        }
       }
 
       if ((opts as any)?.__prefetch) {
@@ -463,7 +507,7 @@ const TypingTest: React.FC = () => {
       bootLockRef.current = false;
       return;
     }
-  }, [mode, durationSec, wordCount, showPunctuation, showNumbers]);
+  }, [mode, durationSec, wordCount, showPunctuation, showNumbers, testMode, coderLang]);
 
   const busyRef = useRef(false);
   const lastRestartRef = useRef<number>(0);
@@ -496,17 +540,23 @@ const TypingTest: React.FC = () => {
       include_numbers: flagOverrides?.include_numbers,
     };
     try { tl('restartTest()', { reason: 'handleRestart', prevRunId: 'n/a' }); } catch {}
-    const pf = prefetchedRef.current;
-    if (pf?.text) {
+    // Skip prefetch fast-path for coder mode to avoid stale non-code prompts
+    if (testMode !== 'coder') {
+      const pf = prefetchedRef.current;
+      if (pf?.text) {
+        prefetchedRef.current = null;
+        React.startTransition(() => {
+          setCurrentPrompt(pf.text);
+          setPromptLoad('ready');
+        });
+        return;
+      }
+    } else {
+      // entering coder: ensure no prefetch leaks in
       prefetchedRef.current = null;
-      React.startTransition(() => {
-        setCurrentPrompt(pf.text);
-        setPromptLoad('ready');
-      });
-      return;
     }
     await loadPromptOnce({ overrides });
-  }, [loadPromptOnce]);
+  }, [loadPromptOnce, testMode]);
 
   const safeRestart = useCallback(async (
     desiredCount?: number,
@@ -560,6 +610,17 @@ const TypingTest: React.FC = () => {
       } catch {}
     }
   }, [handleRestart, recalcOffsets]);
+
+  // Holds the latest restart function so click handlers don't use a stale closure
+  const restartRef = React.useRef<typeof safeRestart | null>(null);
+
+  // Update the ref as soon as a new render commits (layout phase)
+  useLayoutEffect(() => {
+    restartRef.current = safeRestart;
+  }, [safeRestart]);
+
+  // Small helper to defer to the next macrotask, guaranteeing the ref is set
+  const nextTick = React.useCallback(() => new Promise<void>(resolve => setTimeout(resolve, 0)), []);
 
   // Unified path: enqueue a new test from any trigger
   const enqueueNewTest = useCallback((reason: string) => {
@@ -1054,7 +1115,21 @@ const TypingTest: React.FC = () => {
                     : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
                 )}
                 aria-pressed={testMode === 'time'}
-                onClick={async () => { setTestMode('time'); setMode('time'); setView('typing'); await safeRestart(); }}
+                onClick={async () => {
+                  // clear prefetch when switching modes
+                  prefetchedRef.current = null;
+                  flushSync(() => {
+                    setTestMode('time');
+                    setMode('time');
+                    if (!enteredRef.current.time) {
+                      setDurationSec(DEFAULT_TIME_SEC);
+                      enteredRef.current.time = true;
+                    }
+                    setView('typing');
+                  });
+                  await nextTick();
+                  await restartRef.current?.();
+                }}
               >
                 <Clock className="h-4 w-4" />
                 time
@@ -1069,7 +1144,20 @@ const TypingTest: React.FC = () => {
                     : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
                 )}
                 aria-pressed={testMode === 'words'}
-                onClick={async () => { setTestMode('words'); setMode('words'); setView('typing'); await safeRestart(); }}
+                onClick={async () => {
+                  prefetchedRef.current = null;
+                  flushSync(() => {
+                    setTestMode('words');
+                    setMode('words');
+                    if (!enteredRef.current.words) {
+                      setWordCount(DEFAULT_WORDS);
+                      enteredRef.current.words = true;
+                    }
+                    setView('typing');
+                  });
+                  await nextTick();
+                  await restartRef.current?.(DEFAULT_WORDS);
+                }}
               >
                 <span className="text-lg font-bold">A</span>
                 words
@@ -1079,12 +1167,26 @@ const TypingTest: React.FC = () => {
                 className={clsx(
                   "group relative px-5 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2 shadow-lg",
                   "bk-segment__item bk-focus",
-                  testMode === 'quote' 
+                  testMode === 'coder' 
                     ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-emerald-500/25 hover:shadow-emerald-500/40' 
                     : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/60 border border-gray-700/30 hover:border-gray-600/50 backdrop-blur-sm'
                 )}
-                aria-pressed={testMode === 'quote'}
-                onClick={() => setTestMode('quote')}
+                aria-pressed={testMode === 'coder'}
+                onClick={async () => {
+                  // prevent prefetch fast-path from injecting a non-code prompt
+                  prefetchedRef.current = null;
+                  flushSync(() => {
+                    setTestMode('coder');
+                    setMode('words');
+                    setWordCount(25);
+                    if (!enteredRef.current.coder) {
+                      enteredRef.current.coder = true;
+                    }
+                    setView('typing');
+                  });
+                  await nextTick();
+                  await restartRef.current?.(25);
+                }}
               >
                 {"<> coder"}
               </button>
@@ -1171,6 +1273,20 @@ const TypingTest: React.FC = () => {
                     </button>
                   ))}
                 </div>
+              )}
+
+              {testMode === 'coder' && (
+                <CoderLanguageChips
+                  className="ml-2"
+                  value={coderLang}
+                  onChange={async (v) => {
+                    setCoderLang(v);
+                    setMode('words');
+                    setWordCount(25);
+                    setView('typing');
+                    await safeRestart(25);
+                  }}
+                />
               )}
             </div>
 

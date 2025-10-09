@@ -6,7 +6,7 @@ import { WordSetKey } from "@/lib/wordbanks";
 
 export type CmdMode = "hidden" | "peek" | "full";
 export type CmdDock = "br" | "bl" | "tr" | "tl";
-export type TestMode = "words" | "time" | "quote" | "custom";
+export type TestMode = "words" | "time" | "quote" | "custom" | "coder";
 export type AppearanceSettings = {
   theme?: "system"|"light"|"dark";
   accent: { preset: "blaze"|"ember"|"magma"|"plasma"|"aurora"|"custom"; h: number; s: number; l: number };
@@ -126,7 +126,7 @@ const DEFAULTS: SettingsState = {
 
 function isCmdMode(x: any): x is CmdMode { return x === "hidden" || x === "peek" || x === "full"; }
 function isDock(x: any): x is CmdDock { return x === "br" || x === "bl" || x === "tr" || x === "tl"; }
-function isTestMode(x: any): x is TestMode { return x === "words" || x === "time" || x === "quote" || x === "custom"; }
+function isTestMode(x: any): x is TestMode { return x === "words" || x === "time" || x === "quote" || x === "custom" || x === "coder"; }
 
 export const useSettingsStore = create<SettingsState>()(persist((set, get) => ({
   ...DEFAULTS,
