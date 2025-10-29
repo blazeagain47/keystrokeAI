@@ -36,6 +36,7 @@ import { devLog } from "@/lib/devLog";
 import { useQueueCount } from "@/hooks/useQueueCount";
 import { officialWpm, accuracy as accFn, ema, dropFirstN, normalizePerSecond, stdev } from "@/lib/statsMath";
 import useSyncing from "@/hooks/useSyncing";
+import AdSlot from "@/components/ads/AdSlot";
 
 export interface ResultsPanelProps {
   wpm: number;
@@ -358,6 +359,14 @@ export default function ResultsPanel(props: ResultsPanelProps) {
             })()}
           </div>
         )}
+
+        {/* Ad: Results (below top summary) */}
+        <div className="col-span-12">
+          <AdSlot
+            slot={process.env.NEXT_PUBLIC_ADSENSE_SLOT_RESULTS}
+            pageKey="results"
+          />
+        </div>
 
         {/* Middle row: Insights left, Coach right */}
         <div className="col-span-12 lg:col-span-6">

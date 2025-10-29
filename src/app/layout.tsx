@@ -15,6 +15,7 @@ import PerfBootMarker from "@/components/PerfBootMarker";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import Polyfills from "@/app/polyfills";
+import Footer from "@/components/Footer";
 
 const inter = Inter({ subsets: ["latin"], display: "swap", preload: true });
 
@@ -82,6 +83,7 @@ export default function RootLayout({
             <Header />
             <HotkeysGlobal />
             {children}
+            <Footer />
             {/* Global auth modal gate */}
             <AuthGate />
             <SettingsModal />

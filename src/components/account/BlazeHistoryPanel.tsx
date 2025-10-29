@@ -8,6 +8,7 @@ import BlazeHistoryChart from "./BlazeHistoryChart";
 import { toDailySeries } from "@/lib/historyLocal";
 import { useTotalsStore } from "@/stores/useTotalsStore";
 import { useOnVisible } from "@/lib/useOnVisible";
+import AdSlot from "@/components/ads/AdSlot";
 
 export default function BlazeHistoryPanel() {
   const ready = useStatsStore(s => s.ready);
@@ -45,6 +46,12 @@ export default function BlazeHistoryPanel() {
         <Tile label="Current Streak" value={streakFromTotals} suffix="days" />
         <Tile label="Range average" value={sessions ? `${avgWpm} WPM · ${avgAcc}% acc` : "— WPM · —% acc"} helper={`${sessions} session${sessions===1? "": "s"}`} />
       </div>
+
+      {/* Ad: Stats/History mid-content */}
+      <AdSlot
+        slot={process.env.NEXT_PUBLIC_ADSENSE_SLOT_STATS}
+        pageKey="stats"
+      />
 
       {series.length >= 1 ? (
         <div ref={ref} className="cv-auto cv-480">
