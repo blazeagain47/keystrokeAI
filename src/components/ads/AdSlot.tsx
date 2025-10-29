@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 declare global { interface Window { adsbygoogle: any[] | undefined; } }
 
@@ -10,6 +10,8 @@ type AdSlotProps = {
   reserveHMobile?: number;
   className?: string;
   pageKey?: string;
+  /** collapse the container until Google marks it filled */
+  collapseUntilFilled?: boolean;
 };
 
 export default function AdSlot({
@@ -19,14 +21,18 @@ export default function AdSlot({
   reserveHMobile = 280,
   className = "",
   pageKey,
+  collapseUntilFilled = true,
 }: AdSlotProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const insRef  = useRef<HTMLModElement | null>(null);
+  const [filled, setFilled] = useState(false);
 
   if (!slot || !process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID) return null;
 
   useEffect(() => {
-    if (!hostRef.current || !insRef.current) return;
+    if (typeof window === "undefined") return;
+    const root = hostRef.current;
+    if (!root) return;
 
     const push = () => {
       try {
@@ -35,25 +41,31 @@ export default function AdSlot({
       } catch {}
     };
 
-    let io: IntersectionObserver | null = null;
-    if ("IntersectionObserver" in window) {
-      io = new IntersectionObserver((entries) => {
-        const vis = entries.some((e) => e.isIntersecting);
-        if (vis) { push(); io?.disconnect(); }
-      }, { rootMargin: "200px 0px" });
-      io.observe(hostRef.current);
-    } else {
-      push();
-    }
-    return () => { io?.disconnect(); };
-  }, []);
+    // Request an ad immediately (don’t rely on IO when height is 0)
+    push();
 
+    // Poll for fill state on the <ins> Google mutates
+    const poll = window.setInterval(() => {
+      const st = (root.querySelector("ins.adsbygoogle") as HTMLInsElement | null)?.getAttribute("data-ad-status");
+      if (st === "filled") {
+        setFilled(true);
+        window.clearInterval(poll);
+      } else if (st === "unfilled") {
+        setFilled(false);
+      }
+    }, 250);
+
+    return () => { window.clearInterval(poll); };
+  }, [slot]);
+
+  const collapsed = collapseUntilFilled && !filled;
   return (
     <div
       ref={hostRef}
-      className={`bk-ad-container mx-auto ${widthClass} ${className} grid place-items-center`}
-      style={{ minHeight: `clamp(${reserveHMobile}px, 35vh, ${reserveHDesktop}px)` }}
+      className={`bk-ad-container mx-auto ${widthClass} ${className} grid place-items-center ${collapsed ? "h-0 overflow-hidden" : ""}`}
+      style={{ minHeight: collapsed ? 0 : `clamp(${reserveHMobile}px, 35vh, ${reserveHDesktop}px)` }}
       aria-label={`ad-slot${pageKey ? `-${pageKey}` : ""}`}
+      aria-hidden={collapsed ? true : undefined}
     >
       <ins
         ref={insRef as any}
