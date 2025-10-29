@@ -51,14 +51,14 @@ export default function AdSlot({
   return (
     <div
       ref={hostRef}
-      className={`bk-ad-container mx-auto ${widthClass} ${className}`}
+      className={`bk-ad-container mx-auto ${widthClass} ${className} grid place-items-center`}
       style={{ minHeight: `clamp(${reserveHMobile}px, 35vh, ${reserveHDesktop}px)` }}
       aria-label={`ad-slot${pageKey ? `-${pageKey}` : ""}`}
     >
       <ins
         ref={insRef as any}
         className="adsbygoogle block"
-        style={{ display: "block" }}
+        style={{ display: "block", margin: "0 auto" }}
         data-ad-client={process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID}
         data-ad-slot={slot}
         data-ad-format="auto"
