@@ -1,6 +1,7 @@
 // src/app/layout.tsx
 import type { Metadata } from "next";
 import React, { Suspense } from "react";
+import Script from "next/script";
 import AuthGate from "@/components/auth/AuthGate";
 import { Inter } from "next/font/google";
 import "./globals.css";
@@ -55,6 +56,13 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <Script
+          id="adsense-verify"
+          async
+          strategy="afterInteractive"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7952887767155151"
+          crossOrigin="anonymous"
+        />
       </head>
       <body
         className={`${inter.className} page-bg bk-flame-bg min-h-screen min-h-dvh antialiased overflow-x-clip`}
