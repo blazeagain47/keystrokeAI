@@ -286,7 +286,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   return (
     <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6 bk-page-content results-scroll-root" aria-label="Results">
 
-      <div className="grid grid-cols-12 gap-4 lg:gap-6 auto-rows-auto">
+      <div className="grid grid-cols-12 gap-3 lg:gap-4 auto-rows-auto">
         {/* Top row: Blaze toggle + simple label */}
         <div className="col-span-12 -mb-2 flex items-center justify-between">
           {/* Keep element to preserve spacing; hide visually only */}
@@ -402,7 +402,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
 
         {/* Bottom: Trend full-width */}
         <div className="col-span-12 cv-auto cv-480">
-          <Card className="bk-fire-card relative overflow-hidden isolate rounded-2xl h-full min-h-[432px]">
+          <Card className="bk-fire-card relative isolate rounded-2xl h-full min-h-[432px]">
             <div aria-hidden className="bk-card-vignette pointer-events-none absolute inset-0" />
             <CardHeader className="pb-2 relative z-10">
               <div className="bk-chart-title mb-2">

@@ -1418,11 +1418,10 @@ const TypingTest: React.FC = () => {
 
         {view === 'typing' && (
           <>
-            {/* Loader + error UI driven by promptLoad */}
-            {/* centralized loader; inline spinner removed */}
+            {/* Loader skeleton - ABSOLUTE positioned to not affect TypingBox layout */}
             {promptLoad === 'loading' && !currentPrompt && (
-              <div className="px-6 py-8">
-                <div className="animate-pulse space-y-3">
+              <div className="absolute inset-x-0 top-[260px] px-6 py-8 pointer-events-none z-10">
+                <div className="animate-pulse space-y-3 max-w-7xl mx-auto">
                   {Array.from({ length: 7 }).map((_, i) => (
                     <div key={i} className="h-5 rounded-md bg-white/10" />
                   ))}
@@ -1431,9 +1430,10 @@ const TypingTest: React.FC = () => {
             )}
             {promptLoad === 'error' && !currentPrompt && null}
 
+            {/* TypingBox - always rendered at fixed position regardless of loading state */}
             <div
               className="typing-offsetter"
-              style={{ paddingTop: `${offsetPx}px` }}
+              style={{ paddingTop: 0 }}
             >
             <TypingBox 
               mode={mode}

@@ -1052,7 +1052,7 @@ html, body { overflow-x: hidden }
   --bk-stats-h: 56px; /* measured at runtime */
 }
 
-html { font-size: calc(16px * var(--bk-type-scale)); }
+html { font-size: calc(16px * var(--bk-type-scale) * var(--bk-ui-scale, 0.8)); }
 .bk-card { border-radius: var(--bk-radius); backdrop-filter: blur(var(--bk-glass-blur)); background: color-mix(in oklab, rgb(10 10 12) 84%, var(--bk-accent) calc(var(--bk-glass-alpha)*10%)); box-shadow: 0 0 0 transparent, 0 0 calc(50px * var(--bk-card-glow)) 0 color-mix(in oklab, var(--bk-accent), transparent 70%); }
 
 /* Background flames */
@@ -1446,14 +1446,14 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
   transform: none !important;
 }
 
-/* --- Lock typing area vertical position using measured top UI height --- */
+/* --- Lock typing area vertical position - NO transitions for consistency --- */
 .typing-offsetter {
-  /* padding-top now set via inline style in React */
+  /* padding-top set to 0 in React - TypingBox handles its own fixed positioning */
 }
 
-/* Smooth but subtle */
+/* Remove transition to prevent any vertical shifts */
 [data-view="typing"] .typing-offsetter {
-  transition: padding-top 120ms ease;
+  /* transition removed for layout consistency */
 }
 
 /* When the typing page is active (after first keystroke), hide marked UI */
@@ -1562,12 +1562,13 @@ body.bk-lock {
   .bk-title--glow { animation: none; }
 }
 
-/* === Global UI zoom (Chromium/Safari only) ================================
-   Scales the entire interface to ~80% to match the preferred localhost view.
-   Firefox ignores `zoom` — acceptable per requirements.
+/* === Global UI scale (standards-based) =====================================
+   Replaced non-standard `zoom` with html font-size scaling for cross-monitor
+   and cross-browser consistency. Firefox ignored `zoom`, causing size drift.
+   Now uses `--bk-ui-scale` multiplied into the root font-size calculation.
 --------------------------------------------------------------------------- */
-:root { --bk-ui-zoom: 0.8; }         /* Single source of truth for default UI scale */
-body  { zoom: var(--bk-ui-zoom, .8); }
+:root { --bk-ui-scale: 0.8; }        /* Single source of truth for default UI scale */
+/* body { zoom: ... } removed — see html font-size rule for standards-based scaling */
 
 /* --- Results stats pill priority (subtle, motion-safe) ------------------ */
 .stats-pill {

@@ -11,9 +11,15 @@ declare global {
 
 function getAdminApp(): App {
   if (!global.__FIREBASE_ADMIN_APP__) {
-    const projectId = process.env.FIREBASE_PROJECT_ID!;
-    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL!;
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
     const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+
+    // Guard: skip initialization if credentials missing (dev mode without Firebase)
+    if (!projectId || !clientEmail || !privateKey) {
+      console.warn("[firebaseAdmin] Missing Firebase credentials - Firebase features disabled");
+      throw new Error("Firebase credentials not configured");
+    }
 
     global.__FIREBASE_ADMIN_APP__ = initializeApp({
       credential: cert({ projectId, clientEmail, privateKey } as ServiceAccount),
@@ -37,8 +43,16 @@ export function getAdminDb(): Firestore {
   return global.__FIREBASE_ADMIN_DB__!;
 }
 
-// Legacy exports for compatibility
-export const adminDb = getAdminDb();
+// Legacy exports for compatibility - lazy getter to avoid errors on module load
+let _adminDbCache: Firestore | null = null;
+export const adminDb = new Proxy({} as Firestore, {
+  get(_, prop) {
+    if (!_adminDbCache) {
+      _adminDbCache = getAdminDb();
+    }
+    return (_adminDbCache as any)[prop];
+  }
+});
 
 // Helper functions that may be used elsewhere
 export async function verifyIdTokenFromAuthHeader(authHeader: string | null) {

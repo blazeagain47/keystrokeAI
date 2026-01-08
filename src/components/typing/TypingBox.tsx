@@ -48,9 +48,11 @@ type KeyEvent = { k: string; __ts?: number };
 
 const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt, isLoading: externalLoading = false }) => {
   // Fallback; will be replaced by measured DOM line-height
-  const LINE_H = 38;
+  // Increased from 38 to 44 to accommodate clamp() font sizing
+  const LINE_H = 44;
   // Scale used for all typing prompts (visual-only; no layout reflow)
-  const PROMPT_SCALE = 1.3; // ≈ +30%
+  // Changed from 1.3 to 1 for cross-monitor consistency (avoids DPI-dependent transform scaling)
+  const PROMPT_SCALE = 1;
 
   const searchParams = useSearchParams();
   const debug = searchParams.get('debug') === '1';
@@ -138,7 +140,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const appendingRef = useRef(false);
 
   // Safe spacing so filters/header never overlap the typing viewport
-  const SAFE_TOP_PX = 140;   // top spacer (tune if your header/filters grow)
+  // Increased from 140 to 200 after removing body zoom (header/filter now render at full size)
+  const SAFE_TOP_PX = 200;   // top spacer (tune if your header/filters grow)
   const SAFE_BOTTOM_PX = 48; // bottom breathing room to avoid clipping
 
   // Gates centering/transform until after we have real measurements
@@ -461,8 +464,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       setVisibleStartLine(desiredTop);
       const el = contentRef.current;
       if (el) {
-        const lh = lineHeightRef.current || LINE_H;
-        const px = Math.round(desiredTop * lh * PROMPT_SCALE);
+        // Use fixed LINE_H for consistent scroll positioning
+        const px = Math.round(desiredTop * LINE_H * PROMPT_SCALE);
         requestAnimationFrame(() => { el.style.transform = `translateY(-${px}px)`; });
       }
     }
@@ -1049,6 +1052,13 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     );
   }
 
+  // Fixed viewport height - use constant LINE_H to avoid measurement-based shifts
+  const VIEWPORT_HEIGHT = Math.round(TOTAL_LINES * LINE_H) + 4;
+
+  // Fixed positioning constants for consistent layout
+  // Header: 64px, Filter bar: ~180px (with padding), total top offset: ~260px
+  const FIXED_TOP_OFFSET = 260; // px - typing text always starts here from viewport top
+
   return (
     <div
       ref={containerRef}
@@ -1057,19 +1067,23 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       style={{
         minHeight: "100svh",
         contain: "layout style paint",
+        // Fixed pixel positioning - typing area ALWAYS at the same viewport position
+        paddingTop: `${FIXED_TOP_OFFSET}px`,
+        paddingBottom: "80px",
+        boxSizing: "border-box",
       }}
     >
-      {/* Top spacer so filters/header never overlap the typing viewport */}
-      <div aria-hidden className="pointer-events-none" style={{ height: SAFE_TOP_PX }} />
 
-      {/* Fixed 3-line window; +2px buffer avoids bottom clipping on fractional line-heights */}
+      {/* Fixed 3-line window with consistent height */}
       <div
         data-bk-viewport
-        className="overflow-hidden rounded-xl select-none"
+        className="rounded-xl select-none"
         style={{
-          height: `${Math.round((TOTAL_LINES * (lineHeightRef.current || LINE_H)) * PROMPT_SCALE) + 2}px`,
+          height: `${VIEWPORT_HEIGHT}px`,
           overscrollBehavior: scrollLocked ? "none" : "auto",
-          ["--bk-viewport-mask" as any]: PROMPT_SCALE > 1 ? '0px' : '4px',
+          // Use overflow-y hidden but allow text to be fully visible horizontally
+          overflowY: "hidden",
+          overflowX: "visible",
         }}
         onWheelCapture={scrollLocked ? (e) => e.preventDefault() : undefined}
         onTouchMoveCapture={scrollLocked ? (e) => e.preventDefault() : undefined}
@@ -1079,8 +1093,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           data-bk-content
           className="relative transition-transform duration-200 ease-out"
           style={{
-            lineHeight: `${lineHeightRef.current || LINE_H}px`,
-            fontSize: "1.1rem",
+            lineHeight: `${LINE_H}px`, // Use fixed LINE_H for consistency
+            fontSize: "clamp(1.35rem, 1.1rem + 0.6vw, 1.7rem)",
             fontFamily:
               'JetBrains Mono, Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
             paddingBottom: SAFE_BOTTOM_PX,
@@ -1088,11 +1102,25 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
             ["--bk-prompt-scale" as any]: PROMPT_SCALE,
           }}
         >
+          {/* Width constraint wrapper - ensures proper text wrapping without cutoff */}
+          <div 
+            className="mx-auto"
+            style={{
+              maxWidth: "min(1000px, 88vw)", // Slightly smaller to prevent edge cutoff
+              width: "100%",
+            }}
+          >
           <div className="bk-prompt-scale-wrap">
             <div
               ref={promptWrapRef}
               data-testid="prompt-root"
-              className="px-4 leading-relaxed text-lg bk-prompt-scale bk-prompt-rel"
+              className="px-2 leading-relaxed bk-prompt-scale bk-prompt-rel"
+              style={{
+                wordWrap: "break-word",
+                overflowWrap: "break-word",
+                whiteSpace: "pre-wrap", // Allow wrapping while preserving spaces
+                wordBreak: "normal", // Don't break words in middle
+              }}
             >
             {/* Overlay caret */}
             <div 
@@ -1170,6 +1198,7 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
             })}
             </div>
           </div>
+          </div>{/* end width constraint wrapper */}
         </div>
       </div>
 
