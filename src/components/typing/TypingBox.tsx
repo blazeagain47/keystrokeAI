@@ -32,6 +32,25 @@ import { weakspot } from "@/ai/weakspot";
 
 /* ─────────────────────────────────────────────────────────── */
 
+// Dev-only layout shift instrumentation
+const DEBUG_LAYOUT = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_DEBUG_LAYOUT === '1';
+
+function captureViewportRect(viewportEl: HTMLElement | null): DOMRect | null {
+  if (!viewportEl) return null;
+  return viewportEl.getBoundingClientRect();
+}
+
+function logLayoutShift(before: DOMRect | null, after: DOMRect | null, context: string) {
+  if (!DEBUG_LAYOUT || !before || !after) return;
+  const dx = Math.round(after.left - before.left);
+  const dy = Math.round(after.top - before.top);
+  if (dx !== 0 || dy !== 0) {
+    console.warn(`[LAYOUT_SHIFT] ${context}: dx=${dx}px, dy=${dy}px`, { before, after });
+  } else {
+    console.log(`[LAYOUT_STABLE] ${context}: no shift detected`);
+  }
+}
+
 export interface TypingBoxProps {
   mode: 'time' | 'words';
   durationSec?: number;
@@ -283,6 +302,10 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
 
   /* ───────── Load prompt from prop ───────── */
   const resetFromPrompt = useCallback((text: string) => {
+    // Dev-only: capture viewport position before reset
+    const viewportEl = containerRef.current?.querySelector('[data-bk-viewport]') as HTMLElement | null;
+    const beforeRect = DEBUG_LAYOUT ? captureViewportRect(viewportEl) : null;
+    
     readyRef.current = false; // block input until prompt is fully applied
     try { trace('PROMPT_APPLY', { length: text?.length ?? 0 }); } catch {}
     resetViewport();
@@ -345,6 +368,12 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
         const pending = bufferRef.current.splice(0);
         try { trace('BUFFER_FLUSH', { count: pending.length, reason: 'ready' }); } catch {}
         for (const k of pending) enqueueKey(k);
+      }
+      
+      // Dev-only: check for layout shift after reset
+      if (DEBUG_LAYOUT && beforeRect) {
+        const afterRect = captureViewportRect(viewportEl);
+        logLayoutShift(beforeRect, afterRect, 'resetFromPrompt');
       }
     });
   }, []);
@@ -1045,9 +1074,12 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   useEffect(() => { setCursorVisible(true); }, []);
 
   if (externalLoading || isLoading) {
+    // Use same container class for consistent positioning even during loading
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-300"></div>
+      <div className="bk-typing-container mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-300"></div>
+        </div>
       </div>
     );
   }
@@ -1055,22 +1087,24 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   // Fixed viewport height - use constant LINE_H to avoid measurement-based shifts
   const VIEWPORT_HEIGHT = Math.round(TOTAL_LINES * LINE_H) + 4;
 
-  // Fixed positioning constants for consistent layout
-  // Header: 64px, Filter bar: ~180px (with padding), total top offset: ~260px
-  const FIXED_TOP_OFFSET = 260; // px - typing text always starts here from viewport top
+  // CRITICAL: Fixed positioning for typing text
+  // 220px = header(64px) + filter bar(~130px) + gap(26px)
+  // This value ensures text is ALWAYS below the filter bar
+  const TYPING_TOP_OFFSET = 220;
 
   return (
     <div
       ref={containerRef}
-      className="mx-auto max-w-7xl px-4 sm:px-6 outline-none"
+      className="bk-typing-container mx-auto max-w-7xl px-4 sm:px-6 outline-none"
       tabIndex={-1}
       style={{
         minHeight: "100svh",
         contain: "layout style paint",
-        // Fixed pixel positioning - typing area ALWAYS at the same viewport position
-        paddingTop: `${FIXED_TOP_OFFSET}px`,
-        paddingBottom: "80px",
         boxSizing: "border-box",
+        // Inline styles for maximum specificity - cannot be overridden
+        paddingTop: TYPING_TOP_OFFSET,
+        paddingBottom: 80,
+        marginTop: 0,
       }}
     >
 

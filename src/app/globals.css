@@ -301,9 +301,22 @@
 }
 
 /* =================== Focus Mode (typing) =================== */
-html[data-focus="1"] [data-app-header] { display: none !important; }
-html[data-focus="1"] aside[aria-label="Keyboard commands"] { display: none !important; }
-html[data-focus="1"] .hide-on-test { display: none !important; }
+/* Use visibility/opacity instead of display:none to preserve layout space */
+html[data-focus="1"] [data-app-header] {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+html[data-focus="1"] aside[aria-label="Keyboard commands"] {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+html[data-focus="1"] .hide-on-test {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
 /* soften backdrop FX while focused, without touching typing viewport transform */
 html[data-focus="1"] .bk-flame-bg::before { animation: none !important; opacity: .35 !important; }
 html[data-focus="1"] .bk-flame-bg::after  { animation: none !important; opacity: .25 !important; }
@@ -1211,10 +1224,7 @@ html[data-zen="1"] .bk-fire-halo { animation: none !important; }
   margin-bottom: var(--bk-content-gap);
 }
 
-/* During the run we already flatten the bar chrome; keep a smaller gap */
-[data-view="typing"][data-run="true"] .bk-stats-bar {
-  margin-bottom: var(--bk-content-gap-compact);
-}
+/* During the run, stats bar is fixed position (see rule below) - no margin needed */
 
 /* Safety: ensure first section doesn’t collapse margins with the sticky bar */
 .bk-page-content {
@@ -1222,11 +1232,14 @@ html[data-zen="1"] .bk-fire-halo { animation: none !important; }
   padding-top: 0.5px;
 }
 
-/* === During test: show only stats pills, remove bar chrome ============== */
+/* === During test: stats bar uses fixed positioning to avoid layout shift ============== */
+/* Stats bar appears conditionally during run - must be fixed to not affect flow */
 [data-view="typing"][data-run="true"] .bk-stats-bar {
   position: fixed !important;
-  left: 0; right: 0;
-  margin-bottom: 0 !important;     /* fixed -> no flow space */
+  top: var(--bk-header-h, 64px);
+  left: 0;
+  right: 0;
+  margin-bottom: 0 !important;
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
@@ -1456,12 +1469,31 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
   /* transition removed for layout consistency */
 }
 
+/* =============================================================================
+   TYPING CONTAINER FIXED POSITIONING
+   - This ensures the typing text ALWAYS appears at the same viewport position
+   - 220px = header(64px) + filter bar(~130px) + gap(26px)
+   - Uses !important to prevent any CSS from overriding this critical layout
+   - Multiple selectors for maximum specificity
+   ============================================================================= */
+.bk-typing-container,
+[data-view] .bk-typing-container,
+[data-view="typing"] .bk-typing-container,
+[data-view="typing"][data-run="true"] .bk-typing-container,
+[data-view="typing"][data-run="false"] .bk-typing-container {
+  padding-top: 220px !important;
+  padding-bottom: 80px !important;
+  margin-top: 0 !important;
+  position: relative !important;
+}
+
 /* When the typing page is active (after first keystroke), hide marked UI */
+/* Use visibility/opacity instead of display:none to preserve layout space */
 [data-view="typing"][data-run="true"] .hide-on-test {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
-  display: none !important;
+  /* display: none removed - keeps layout space reserved */
   transition: opacity 120ms ease-in;
 }
 
@@ -1471,7 +1503,7 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
-  display: none !important;
+  /* display: none removed - keeps layout space reserved */
 }
 
 /* --- Visibility contract for minimalist typing mode --- */
@@ -1507,12 +1539,22 @@ html[data-bk-generating="true"] .bk-inline-spinner { display: none !important; }
 @supports not (content-visibility: auto) { .cv-auto { contain: content; } }
 
 /* Global page scroll lock for typing screen */
+/* scrollbar-gutter: stable prevents horizontal shifts when overflow toggles */
+html {
+  scrollbar-gutter: stable;
+}
+
 html.bk-lock,
 body.bk-lock {
   overflow: hidden !important;
   overscroll-behavior: none;
   height: 100%;
   touch-action: none;
+}
+
+/* Compensate for scrollbar width when locked (set by useLockScroll.ts) */
+body.bk-lock {
+  padding-right: var(--bk-scrollbar-w, 0px);
 }
 
 /* --- Blaze stats tagline effects --- */

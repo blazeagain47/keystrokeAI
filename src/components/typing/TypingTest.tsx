@@ -214,6 +214,9 @@ const TypingTest: React.FC = () => {
 
   const isRunning = view === 'typing' && !isTestComplete && time > 0;
 
+  // Track last known filter height to preserve across visibility changes
+  const lastFilterHRef = React.useRef<number>(140); // default fallback
+  
   // Consolidated measurement and CSS var writer
   const recalcOffsets = React.useCallback(() => {
     const root = rootRef.current;
@@ -224,8 +227,15 @@ const TypingTest: React.FC = () => {
       null;
     
     const headerH = headerEl?.getBoundingClientRect().height ?? 64;
-    const filterH = filterRef.current?.getBoundingClientRect().height ?? 0;
+    const rawFilterH = filterRef.current?.getBoundingClientRect().height ?? 0;
     const statsH  = statsRef.current?.getBoundingClientRect().height ?? 0;
+    
+    // Preserve last known filter height when filter is hidden (rawFilterH = 0)
+    // This ensures --bk-filter-h is never 0 and typing text position stays stable
+    const filterH = rawFilterH > 0 ? rawFilterH : lastFilterHRef.current;
+    if (rawFilterH > 0) {
+      lastFilterHRef.current = rawFilterH;
+    }
     
     // Write globals for other components (header, filter, stats)
     const writeVars = (el: HTMLElement | null) => {
@@ -605,7 +615,8 @@ const TypingTest: React.FC = () => {
       try {
         requestAnimationFrame(() => {
           try { recalcOffsets(); } catch {}
-          try { rootRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' }); } catch {}
+          // scrollIntoView removed - typing viewport uses fixed positioning (FIXED_TOP_OFFSET)
+          // and should not shift on restart; scrolling would cause layout jumps
         });
       } catch {}
     }

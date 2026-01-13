@@ -13,6 +13,14 @@ export default function useLockScroll(active = true) {
     const body = document.body;
 
     const add = () => {
+      // Compute scrollbar width before hiding it
+      const scrollbarWidth = window.innerWidth - html.clientWidth;
+      
+      // Set CSS variable for scrollbar compensation (used by body.bk-lock padding-right)
+      if (scrollbarWidth > 0) {
+        html.style.setProperty("--bk-scrollbar-w", `${scrollbarWidth}px`);
+      }
+      
       html.classList.add("bk-lock");
       body.classList.add("bk-lock");
       // Avoid smooth scroll hiccups during lock/unlock
@@ -25,6 +33,8 @@ export default function useLockScroll(active = true) {
     const remove = () => {
       html.classList.remove("bk-lock");
       body.classList.remove("bk-lock");
+      // Clear scrollbar compensation
+      html.style.removeProperty("--bk-scrollbar-w");
       const prev = (html as any).__bk_prevScrollBehavior ?? "";
       html.style.scrollBehavior = prev;
     };
