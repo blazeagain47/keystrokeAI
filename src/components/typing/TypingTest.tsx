@@ -203,6 +203,24 @@ const TypingTest: React.FC = () => {
     }
   }, [view]);
 
+  // Reset page scroll to top whenever we enter the typing view.
+  // Why: the results page is the full document scroll; if the user scrolled down
+  // to view AI feedback and then pressed Tab+Enter, the page is still scrolled
+  // when TypingBox mounts. The fixed filter bar sits at viewport-top, but the
+  // typing column is position:relative inside the document, so a non-zero
+  // scrollY made the test text render too high — visually overlapping the
+  // filter bar. useLayoutEffect runs synchronously after DOM commit (before
+  // paint) and before TypingBox's useLockScroll engages, so the lock then
+  // freezes the page at scrollY=0 — guaranteeing identical positioning across
+  // every path that enters typing (initial load, Tab+Enter pre-test,
+  // Tab+Enter from results, mode/length button clicks, AI Coach drills).
+  useLayoutEffect(() => {
+    if (view !== 'typing') return;
+    try { window.scrollTo(0, 0); } catch {}
+    try { document.documentElement.scrollTop = 0; } catch {}
+    try { document.body.scrollTop = 0; } catch {}
+  }, [view]);
+
   // Refs used for measurement and layout offsets
   const filterRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -530,6 +548,13 @@ const TypingTest: React.FC = () => {
 
   const handleRestart = useCallback(async (desiredCount?: number, flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }) => {
     try { devLog('restartTest()', { desiredCount, flags: flagOverrides }); } catch {}
+    // Force the page to the top BEFORE any state change so the typing column
+    // (position:relative) renders below the fixed filter bar — regardless of
+    // how far the user had scrolled the results page. Synchronous so it
+    // happens before React processes the upcoming view transition.
+    try { window.scrollTo(0, 0); } catch {}
+    try { document.documentElement.scrollTop = 0; } catch {}
+    try { document.body.scrollTop = 0; } catch {}
     // Clear prompt immediately to prevent typing on stale content
     setCurrentPrompt("");
 
@@ -572,6 +597,11 @@ const TypingTest: React.FC = () => {
     desiredCount?: number,
     flagOverrides?: { include_punctuation?: boolean; include_numbers?: boolean }
   ) => {
+    // Snap to top synchronously on every restart entry path (including throttled ones)
+    // before any work is queued. Cheap, idempotent, and bulletproofs the position.
+    try { window.scrollTo(0, 0); } catch {}
+    try { document.documentElement.scrollTop = 0; } catch {}
+    try { document.body.scrollTop = 0; } catch {}
     const now = Date.now();
     const elapsed = now - lastRestartRef.current;
 

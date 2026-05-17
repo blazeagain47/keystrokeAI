@@ -26,13 +26,14 @@ export default function BlazeInterlude({
 
   React.useEffect(() => setMounted(true), []);
 
-  // Cycle through status lines while visible
+  // Cycle through status lines while visible. ~1.8s per word feels readable
+  // without dragging on short waits.
   React.useEffect(() => {
     if (!show) return;
     setStep(0);
     const id = window.setInterval(() => {
       setStep((s) => (s + 1) % Math.max(1, lines.length));
-    }, 1000);
+    }, 1800);
     return () => window.clearInterval(id);
   }, [show, lines.length]);
 
@@ -57,6 +58,7 @@ export default function BlazeInterlude({
 
   const heading =
     context === "post" ? "Analyzing & adapting your results…" : "Adapting your next test…";
+  const activeLine = lines[step] ?? "";
 
   return createPortal(
     <AnimatePresence initial={false}>
@@ -66,76 +68,94 @@ export default function BlazeInterlude({
           role="dialog"
           aria-modal="true"
           aria-label="Preparing your adaptive test"
-          initial={{ opacity: 0 }}
+          // Snap the cover layer in instantly so backdrop-filter applies on
+          // the very first frame and masks any prompt/scroll changes happening
+          // underneath as the test transitions. Only the exit fades.
+          initial={{ opacity: 1 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.22 }}
-          className="fixed inset-x-0"
+          transition={{ duration: 0.30, ease: [0.22, 1, 0.36, 1] }}
+          className="fixed inset-x-0 overflow-hidden"
           style={{
             top: "var(--bk-header-h, 64px)",
             bottom: 0,
             zIndex: 95,
           }}
         >
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-md" />
-          <div className="bk-bottom-fade" aria-hidden />
+          {/* Static frosted-glass backdrop — no fade-in, blur applies
+              immediately on mount so the live typing UI is covered the
+              moment the loader appears (no shutter from underlying
+              prompt swap / scroll reset / view transition). */}
+          <div aria-hidden className="bk-interlude-backdrop" />
 
-          <div className="relative h-full w-full grid place-items-center p-4">
-            <motion.div
-              initial={{ y: 8, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -8, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 260, damping: 24 }}
-              className="w-full max-w-md rounded-2xl border border-white/10 bg-black/55 backdrop-blur-xl shadow-2xl ring-1 ring-white/10 p-6"
-            >
-              <div className="text-[10px] uppercase tracking-[0.16em] text-white/70 mb-2">
-                {title}
-              </div>
+          {/* Two slow-breathing warm auras layered above the blur and below
+              the content stack. Different periods + screen blend = a
+              non-repeating shimmer that keeps the loader feeling alive. */}
+          <div className="bk-interlude-aura" aria-hidden />
+          <div className="bk-interlude-aura bk-interlude-aura--drift" aria-hidden />
 
-              <div className="flex items-center gap-5">
-                <div className="relative h-20 w-20" role="status" aria-live="polite">
-                  {/* Soft halo for subtle depth; pulses opacity only */}
-                  <div className="pointer-events-none absolute -inset-3 rounded-full opacity-70 blur-md bg-[radial-gradient(closest-side,rgba(255,120,0,.18),rgba(255,120,0,0))] motion-safe:animate-pulse motion-reduce:opacity-60" />
-
-                  {/* Original rings (unchanged visually), now motion-aware */}
-                  <div className="absolute inset-0 rounded-full opacity-70 motion-safe:animate-spin motion-reduce:animate-none [animation-duration:2.8s] bg-[conic-gradient(from_0deg,rgba(255,145,0,0),rgba(255,145,0,.65),rgba(255,145,0,0))]" />
-                  <div className="absolute inset-2 rounded-full opacity-60 motion-safe:animate-spin motion-reduce:animate-none [animation-duration:5s] bg-[conic-gradient(from_180deg,rgba(255,90,0,0),rgba(255,90,0,.5),rgba(255,90,0,0))]" />
-
-                  {/* Subtle third ring for layered motion */}
-                  <div className="absolute inset-3 rounded-full opacity-30 motion-safe:animate-spin motion-reduce:animate-none [animation-duration:9s] bg-[conic-gradient(from_270deg,rgba(255,170,0,0),rgba(255,170,0,.35),rgba(255,170,0,0))]" />
-
-                  {/* Center dot intentionally removed to smooth the spinner visual; rings remain unchanged */}
-                  <div className="absolute inset-0 grid place-items-center" />
+          {/* Centered minimal stack: pulsing brain logo, heading, rolodex line. */}
+          <div className="relative h-full w-full grid place-items-center px-6">
+            <div className="flex flex-col items-center text-center max-w-2xl -mt-[3vh]">
+              {/* Pulsing brain — blazeKey logo with the colour pulse layered
+                  directly onto the artwork (no rings). */}
+              <motion.div
+                initial={{ scale: 0.90, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.62, delay: 0.10, ease: [0.22, 1, 0.36, 1] }}
+                aria-hidden
+              >
+                <div className="bk-pulse-brain">
+                  <img
+                    src="/blazeKey-tp-bg.png"
+                    alt=""
+                    className="bk-pulse-brain__img"
+                    draggable={false}
+                  />
+                  <span className="bk-pulse-brain__shine" aria-hidden />
                 </div>
+              </motion.div>
 
-                <div className="min-w-0">
-                  <div className="text-base font-medium text-white/95">{heading}</div>
-                  <ul className="mt-2 space-y-1 text-sm" aria-live="polite">
-                    {lines.map((t, i) => (
-                      <li key={i} className={i === step ? "text-white" : "text-white/60"}>
-                        <span
-                          className={[
-                            "mr-2 inline-block h-1.5 w-1.5 rounded-full align-middle",
-                            i <= step ? "bg-amber-400" : "bg-white/30",
-                          ].join(" ")}
-                        />
-                        {t}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
+              {/* Heading — red-leaning gradient (matches brain-loader-preview.html)
+                  + Inter stylistic alternates for a sharper editorial look. */}
+              <motion.div
+                initial={{ y: 8, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.55, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                className="bk-loader-heading bk-modern-display mt-8 font-semibold"
+                style={{ fontSize: "clamp(1.35rem, 1.05rem + 0.9vw, 2.15rem)" }}
+              >
+                {heading}
+              </motion.div>
 
-              <div className="mt-4 h-1 w-full rounded-full bg-white/10 overflow-hidden">
-                <motion.div
-                  key={step}
-                  initial={{ width: "0%" }}
-                  animate={{ width: ["0%", "35%", "70%", "100%"] }}
-                  transition={{ duration: 1.6, ease: "easeInOut", repeat: Infinity }}
-                  className="h-full bg-gradient-to-r from-amber-400/70 via-orange-500/70 to-amber-300/70"
-                />
-              </div>
-            </motion.div>
+              {/* Rolodex line — vertical slide-up flip between status words.
+                  Warm peach tint matches the heading gradient's body tone. */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.45, delay: 0.42, ease: [0.22, 1, 0.36, 1] }}
+                className="mt-3 relative h-9 w-full overflow-hidden"
+                role="status"
+                aria-live="polite"
+              >
+                <AnimatePresence initial={false} mode="wait">
+                  <motion.div
+                    key={step}
+                    initial={{ y: 28, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -28, opacity: 0 }}
+                    transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                    className="bk-modern-display absolute inset-0 flex items-center justify-center text-base sm:text-lg font-medium"
+                    style={{
+                      color: "rgba(255, 220, 190, 0.82)",
+                      textShadow: "0 0 14px rgba(255,160,80,0.22)",
+                    }}
+                  >
+                    {activeLine}
+                  </motion.div>
+                </AnimatePresence>
+              </motion.div>
+            </div>
           </div>
         </motion.div>
       )}
@@ -143,4 +163,3 @@ export default function BlazeInterlude({
     document.body
   );
 }
-

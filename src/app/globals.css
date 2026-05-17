@@ -1481,8 +1481,8 @@ html[data-chartGlow="ember"] .recharts-line { filter: drop-shadow(0 0 6px color-
 [data-view="typing"] .bk-typing-container,
 [data-view="typing"][data-run="true"] .bk-typing-container,
 [data-view="typing"][data-run="false"] .bk-typing-container {
-  padding-top: 220px !important;
-  padding-bottom: 80px !important;
+  padding-top: 13.75rem !important;
+  padding-bottom: 5rem !important;
   margin-top: 0 !important;
   position: relative !important;
 }
@@ -1604,13 +1604,55 @@ body.bk-lock {
   .bk-title--glow { animation: none; }
 }
 
-/* === Global UI scale (standards-based) =====================================
+/* === Global UI scale (standards-based, viewport-tiered) ====================
    Replaced non-standard `zoom` with html font-size scaling for cross-monitor
    and cross-browser consistency. Firefox ignored `zoom`, causing size drift.
    Now uses `--bk-ui-scale` multiplied into the root font-size calculation.
+
+   Tiered scale: discrete media-query breakpoints give deterministic, identical
+   renders across Chromium / Firefox / WebKit at any given viewport width.
+   1280–1439px (typical laptop) lands at 1.0 — the baseline the components
+   were originally designed for. Bigger monitors get a proportional bump,
+   smaller ones a slight trim.
 --------------------------------------------------------------------------- */
-:root { --bk-ui-scale: 0.8; }        /* Single source of truth for default UI scale */
+:root { --bk-ui-scale: 1.0; }
+@media (max-width: 1023px) { :root { --bk-ui-scale: 0.92; } }
+@media (min-width: 1024px) and (max-width: 1439px) { :root { --bk-ui-scale: 1.0; } }
+@media (min-width: 1440px) and (max-width: 1919px) { :root { --bk-ui-scale: 1.05; } }
+@media (min-width: 1920px) and (max-width: 2559px) { :root { --bk-ui-scale: 1.12; } }
+@media (min-width: 2560px) { :root { --bk-ui-scale: 1.25; } }
 /* body { zoom: ... } removed — see html font-size rule for standards-based scaling */
+
+/* === Filter bar legibility & width (proportional UI sweep) ==================
+   These rules tune the typing-screen filter chips to a slightly larger,
+   more legible size at all tiers and widen the filter container on large
+   monitors so chips don't bunch toward the right edge.
+--------------------------------------------------------------------------- */
+
+/* Slightly larger, more readable chip text across tiers */
+.bk-chip,
+.bk-segment__item,
+[data-lang-pill] {
+  font-size: 0.95rem;
+}
+
+/* On big monitors the PreTestOverlay's hardcoded max-w-6xl bunches the filter
+   row toward center. Widen it past 6xl on large displays. The selector is
+   scoped to the overlay's distinctive position/translate combo to avoid
+   touching unrelated max-w-6xl containers. */
+@media (min-width: 1920px) {
+  /* Match PreTestOverlay's outer wrapper without needing a JSX class change */
+  div.fixed.left-1\/2.-translate-x-1\/2.max-w-6xl,
+  div.absolute.left-1\/2.-translate-x-1\/2.max-w-6xl {
+    max-width: 88rem;
+  }
+}
+@media (min-width: 2560px) {
+  div.fixed.left-1\/2.-translate-x-1\/2.max-w-6xl,
+  div.absolute.left-1\/2.-translate-x-1\/2.max-w-6xl {
+    max-width: 96rem;
+  }
+}
 
 /* --- Results stats pill priority (subtle, motion-safe) ------------------ */
 .stats-pill {
@@ -1656,4 +1698,200 @@ body.bk-lock {
 /* Motion preferences */
 @media (prefers-reduced-motion: reduce) {
   .stats-pill { transition: none; }
+}
+
+/* =============================================================================
+   Blaze interlude — pulsing brain logo for BlazeInterlude.tsx
+   The blazeKey logo image with a colour pulse layered onto the artwork
+   itself (deep crimson -> light coral red and back) via filter chain.
+   No outer rings — the heartbeat lives on the brain.
+   GPU-only (transform + filter), reduced-motion safe.
+   Tuned to match brain-loader-preview.html in the reference asset pack. */
+.bk-pulse-brain {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  display: grid;
+  place-items: center;
+  /* Isolate so mix-blend-mode on the shine only blends with the brain
+     image and the local stacking context, not the rest of the page. */
+  isolation: isolate;
+}
+
+@keyframes bk-brain-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter:
+      brightness(0.86) saturate(1.45) hue-rotate(-8deg)
+      drop-shadow(0 0 10px rgba(255, 36, 36, 0.55))
+      drop-shadow(0 0 24px rgba(255, 20, 20, 0.25));
+  }
+  50% {
+    transform: scale(1.055);
+    filter:
+      brightness(1.22) saturate(1.05) hue-rotate(7deg)
+      drop-shadow(0 0 22px rgba(255, 86, 70, 0.86))
+      drop-shadow(0 0 48px rgba(255, 50, 36, 0.44));
+  }
+}
+.bk-pulse-brain__img {
+  width: 130px;
+  height: 130px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  animation: bk-brain-pulse 1.55s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform, filter;
+}
+
+/* Diagonal shine sweep across the brain — clearly reads as "loading".
+   Masked to the brain's silhouette using the same PNG as the source so
+   the highlight only appears inside the brain shape, never the surrounding
+   square. mix-blend-mode: screen brightens the warm pixels for a glossy
+   metallic feel. The keyframe pauses at each end so the shine reads as a
+   rhythmic "ping" rather than a constantly-moving glare. */
+.bk-pulse-brain__shine {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 130px;
+  height: 130px;
+  margin-top: -65px;
+  margin-left: -65px;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 38%,
+    rgba(255, 240, 210, 0) 44%,
+    rgba(255, 248, 220, 0.95) 50%,
+    rgba(255, 240, 210, 0) 56%,
+    transparent 62%
+  );
+  background-size: 250% 100%;
+  background-position: 220% 0;
+  -webkit-mask-image: url("/blazeKey-tp-bg.png");
+          mask-image: url("/blazeKey-tp-bg.png");
+  -webkit-mask-size: 130px 130px;
+          mask-size: 130px 130px;
+  -webkit-mask-position: center;
+          mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  mix-blend-mode: screen;
+  animation: bk-brain-shine 2.4s ease-in-out infinite;
+  will-change: background-position;
+}
+
+@keyframes bk-brain-shine {
+  0%, 30%   { background-position: 220% 0; }
+  60%, 100% { background-position: -120% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-pulse-brain__img,
+  .bk-pulse-brain__shine { animation: none; }
+  .bk-pulse-brain__shine { opacity: 0; }
+}
+
+/* Red-leaning gradient for the loader heading — matches the
+   ffd29a -> ff6b3d -> ff2f35 sweep in brain-loader-preview.html. */
+.bk-loader-heading {
+  background-image: linear-gradient(90deg, #ffd29a 0%, #ff6b3d 50%, #ff2f35 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+  letter-spacing: -0.026em;
+  text-shadow: 0 0 24px rgba(255, 80, 40, 0.18);
+}
+
+/* Red-leaning ember gradient — hotter than `.bk-fire-text` (which leans
+   amber/yellow). Used for the loader eyebrow so the small uppercase label
+   reads as glowing-hot rather than neutral. */
+.bk-ember-text {
+  background-image: linear-gradient(90deg, #ff3d2e 0%, #ff6a2a 35%, #ffb066 70%, #ff6a2a 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 14px rgba(255, 80, 30, 0.20);
+  animation: bk-fire-flicker 4.2s ease-in-out infinite;
+}
+
+/* Modernised display treatment for headings inside the loader — applies
+   Inter's stylistic alternates + tabular numerals + tightened tracking
+   for a sharper, editorial feel without loading a new font. */
+.bk-modern-display {
+  font-feature-settings: "ss01" on, "cv11" on, "cv05" on, "calt" on;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.022em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Frosted-glass backdrop for the loader — modern "live blur" treatment.
+   Heavier blur (22px) + a touch more dim than the reference so the loader
+   feels engaging without losing the live-screen-behind-glass effect. */
+.bk-interlude-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg,
+      rgba(0, 0, 0, 0.26) 0%,
+      rgba(0, 0, 0, 0.14) 46%,
+      rgba(0, 0, 0, 0.32) 100%),
+    rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(22px) saturate(1.32) brightness(0.78);
+  -webkit-backdrop-filter: blur(22px) saturate(1.32) brightness(0.78);
+}
+
+/* Fallback for browsers without backdrop-filter — bump the dark base
+   so the loader still reads as a clear modal layer. */
+@supports not ((backdrop-filter: blur(22px)) or (-webkit-backdrop-filter: blur(22px))) {
+  .bk-interlude-backdrop {
+    background: rgba(0, 0, 0, 0.78);
+  }
+}
+
+/* Slow-breathing warm aura that lives in front of the backdrop blur but
+   behind the content stack. Uses screen blend so it adds heat-light to
+   the dimmed scene rather than darkening it further. The gentle scale +
+   opacity oscillation gives the loader a "still alive" feel — never
+   static, never distracting. */
+@keyframes bk-aura-breathe {
+  0%, 100% { opacity: 0.55; transform: translateY(0)    scale(1);    }
+  50%      { opacity: 1.00; transform: translateY(-6px) scale(1.06); }
+}
+.bk-interlude-aura {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%,
+      rgba(255, 90, 40, 0.10) 0%,
+      rgba(255, 60, 30, 0.05) 35%,
+      transparent 70%);
+  mix-blend-mode: screen;
+  animation: bk-aura-breathe 6.5s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+/* Second, slower aura on a different period creates a non-repeating
+   shimmer so the warmth never falls into a uniform pulse. */
+@keyframes bk-aura-drift {
+  0%, 100% { opacity: 0.35; transform: translate(-3vw, 1vh)  scale(1.08); }
+  50%      { opacity: 0.70; transform: translate( 3vw, -1vh) scale(1.14); }
+}
+.bk-interlude-aura--drift {
+  background:
+    radial-gradient(ellipse 60% 45% at 50% 60%,
+      rgba(255, 120, 60, 0.07) 0%,
+      rgba(255, 90, 40, 0.03) 40%,
+      transparent 75%);
+  animation: bk-aura-drift 9.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-interlude-aura,
+  .bk-interlude-aura--drift { animation: none; opacity: 0.55; transform: none; }
 }

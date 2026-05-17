@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { saveTypingResult } from '@/lib/firebase/scores';
 import { computeXpAward } from '@/lib/xp';
@@ -66,12 +66,20 @@ export interface TypingBoxProps {
 type KeyEvent = { k: string; __ts?: number };
 
 const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt, isLoading: externalLoading = false }) => {
-  // Fallback; will be replaced by measured DOM line-height
-  // Increased from 38 to 44 to accommodate clamp() font sizing
+  // Fallback line-height in px; the measurement effect below replaces this with the
+  // computed line-height of the rendered prompt so scroll math tracks the actual font.
+  // 44 is a safe small-viewport fallback; on larger viewports the measured value will
+  // be used (line-height is unitless 1.5 in CSS, so it flows with the clamped font-size).
   const LINE_H = 44;
+  // Line-height ratio (unitless). Used both in CSS (scales with font-size) and to
+  // build the viewport height as ems so it tracks the prompt font on every viewport.
+  const LINE_RATIO = 1.5;
   // Scale used for all typing prompts (visual-only; no layout reflow)
   // Changed from 1.3 to 1 for cross-monitor consistency (avoids DPI-dependent transform scaling)
   const PROMPT_SCALE = 1;
+  // Shared font-size clamp string for the prompt — kept in one place so both the
+  // viewport height calc and the content font-size stay in lockstep.
+  const PROMPT_FONT_SIZE = "clamp(1.35rem, 1.05rem + 1.1vw, 2.25rem)";
 
   const searchParams = useSearchParams();
   const debug = searchParams.get('debug') === '1';
@@ -158,10 +166,8 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   const APPEND_CHUNK_DEFAULT = 120;   // how many words to append per fetch
   const appendingRef = useRef(false);
 
-  // Safe spacing so filters/header never overlap the typing viewport
-  // Increased from 140 to 200 after removing body zoom (header/filter now render at full size)
-  const SAFE_TOP_PX = 200;   // top spacer (tune if your header/filters grow)
-  const SAFE_BOTTOM_PX = 48; // bottom breathing room to avoid clipping
+  // Bottom breathing room (rem so it scales with the tiered --bk-ui-scale).
+  const SAFE_BOTTOM_REM = 3;
 
   // Gates centering/transform until after we have real measurements
   const [measured, setMeasured] = React.useState(false);
@@ -185,6 +191,19 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   // Active run -> locked
   // Post-test/results (isComplete) -> unlocked
   const scrollLocked = !isComplete;
+  // CRITICAL: snap the page to scrollY=0 BEFORE the lock engages.
+  // This useLayoutEffect runs synchronously after DOM commit (before paint)
+  // and BEFORE useLockScroll's useEffect fires. If the user just came from
+  // the results page (which uses normal document scroll), scrollY may be
+  // non-zero, which would visually push the position:relative typing column
+  // up — causing it to overlap the fixed filter bar. Resetting here, before
+  // the lock freezes the scroll position, guarantees consistent placement.
+  useLayoutEffect(() => {
+    try { window.scrollTo(0, 0); } catch {}
+    try { document.documentElement.scrollTop = 0; } catch {}
+    try { document.body.scrollTop = 0; } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useLockScroll(scrollLocked);
   const devProbe = process.env.NEXT_PUBLIC_DEV_PROBE === "1";
   useInputLatencyProbe(devProbe, [currentWordIndex, cursorCol]);
@@ -493,8 +512,11 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       setVisibleStartLine(desiredTop);
       const el = contentRef.current;
       if (el) {
-        // Use fixed LINE_H for consistent scroll positioning
-        const px = Math.round(desiredTop * LINE_H * PROMPT_SCALE);
+        // Use the measured line-height (set by the fonts-ready effect) so the
+        // scroll step always matches what's actually rendered. Falls back to
+        // LINE_H on the very first frame before measurement completes.
+        const lh = lineHeightRef.current || LINE_H;
+        const px = Math.round(desiredTop * lh * PROMPT_SCALE);
         requestAnimationFrame(() => { el.style.transform = `translateY(-${px}px)`; });
       }
     }
@@ -1084,36 +1106,39 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
     );
   }
 
-  // Fixed viewport height - use constant LINE_H to avoid measurement-based shifts
-  const VIEWPORT_HEIGHT = Math.round(TOTAL_LINES * LINE_H) + 4;
+  // Viewport height expressed via the same font clamp the content uses, so the
+  // 3-line window always frames exactly three lines regardless of viewport size.
+  // The +0.25rem is breathing room at the bottom of the visible window.
+  const VIEWPORT_HEIGHT_CSS = `calc(${TOTAL_LINES} * ${LINE_RATIO} * ${PROMPT_FONT_SIZE} + 0.25rem)`;
 
-  // CRITICAL: Fixed positioning for typing text
-  // 220px = header(64px) + filter bar(~130px) + gap(26px)
-  // This value ensures text is ALWAYS below the filter bar
-  const TYPING_TOP_OFFSET = 220;
+  // CRITICAL: Fixed positioning for typing text.
+  // 13.75rem = 220px at root=16px (laptop baseline). Tracks --bk-ui-scale tiers.
+  const TYPING_TOP_OFFSET_REM = 13.75;
 
   return (
     <div
       ref={containerRef}
-      className="bk-typing-container mx-auto max-w-7xl px-4 sm:px-6 outline-none"
+      className="bk-typing-container mx-auto max-w-[92rem] px-4 sm:px-6 outline-none"
       tabIndex={-1}
       style={{
         minHeight: "100svh",
         contain: "layout style paint",
         boxSizing: "border-box",
         // Inline styles for maximum specificity - cannot be overridden
-        paddingTop: TYPING_TOP_OFFSET,
-        paddingBottom: 80,
+        paddingTop: `${TYPING_TOP_OFFSET_REM}rem`,
+        paddingBottom: "5rem",
         marginTop: 0,
       }}
     >
 
-      {/* Fixed 3-line window with consistent height */}
+      {/* Fixed 3-line window with consistent height (em-based so it tracks font-size) */}
       <div
         data-bk-viewport
         className="rounded-xl select-none"
         style={{
-          height: `${VIEWPORT_HEIGHT}px`,
+          height: VIEWPORT_HEIGHT_CSS,
+          // Match content font-size so child em/line calcs resolve identically
+          fontSize: PROMPT_FONT_SIZE,
           overscrollBehavior: scrollLocked ? "none" : "auto",
           // Use overflow-y hidden but allow text to be fully visible horizontally
           overflowY: "hidden",
@@ -1127,20 +1152,24 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
           data-bk-content
           className="relative transition-transform duration-200 ease-out"
           style={{
-            lineHeight: `${LINE_H}px`, // Use fixed LINE_H for consistency
-            fontSize: "clamp(1.35rem, 1.1rem + 0.6vw, 1.7rem)",
+            lineHeight: LINE_RATIO, // unitless — scales with font-size for consistent rhythm
+            fontSize: PROMPT_FONT_SIZE,
             fontFamily:
               'JetBrains Mono, Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
-            paddingBottom: SAFE_BOTTOM_PX,
+            paddingBottom: `${SAFE_BOTTOM_REM}rem`,
             willChange: scrollLocked ? "transform" : "auto",
             ["--bk-prompt-scale" as any]: PROMPT_SCALE,
           }}
         >
-          {/* Width constraint wrapper - ensures proper text wrapping without cutoff */}
+          {/* Width constraint wrapper — rem-based so it tracks --bk-ui-scale tiers
+              and viewport-percentage clamped so it stays proportional on every screen.
+              At scale 1.0 (laptop): 85rem ≈ 1360px. At scale 1.12 (1080p): ≈ 1521px.
+              At scale 1.25 (1440p+): ≈ 1700px. The 92vw cap keeps mobile/narrow
+              widths from hitting the rem ceiling and gives sensible margins. */}
           <div 
             className="mx-auto"
             style={{
-              maxWidth: "min(1000px, 88vw)", // Slightly smaller to prevent edge cutoff
+              maxWidth: "min(85rem, 92vw)",
               width: "100%",
             }}
           >
