@@ -51,6 +51,26 @@ function logLayoutShift(before: DOMRect | null, after: DOMRect | null, context: 
   }
 }
 
+/**
+ * Optional, fully gated party-mode integration. When this prop is omitted
+ * (the default for solo typing), TypingBox behaves EXACTLY as before — no
+ * extra work happens in the keystroke path. When present, the engine calls
+ * `onProgress` once per stat-tick with a snapshot of the local cursor and
+ * stats. The hook is fire-and-forget: it MUST return synchronously and
+ * MUST NOT throw (TypingBox swallows errors defensively as well).
+ */
+export interface TypingBoxPartyHook {
+  onProgress?: (sample: {
+    /** Canonical char index into the *expected* prompt (not typed input). */
+    charIndex: number;
+    correctChars: number;
+    incorrectChars: number;
+    wpm: number;
+    accuracy: number;
+    elapsedMs: number;
+  }) => void;
+}
+
 export interface TypingBoxProps {
   mode: 'time' | 'words';
   durationSec?: number;
@@ -60,12 +80,18 @@ export interface TypingBoxProps {
   onRequestNewPrompt?: () => void;
   onRequestAppendPrompt?: () => void;
   isLoading?: boolean;
+  /** Optional party-mode hook. Absent = solo typing (default). */
+  party?: TypingBoxPartyHook;
 }
 
 // Timestamped key event for rAF-batched processing
 type KeyEvent = { k: string; __ts?: number };
 
-const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt, isLoading: externalLoading = false }) => {
+const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUpdate, onTestComplete, prompt, onRequestNewPrompt, onRequestAppendPrompt, isLoading: externalLoading = false, party }) => {
+  // Stable ref so we don't put `party` in any deps that would re-run on
+  // every parent render. Solo mode keeps this ref undefined and pays zero cost.
+  const partyRef = useRef<TypingBoxPartyHook | undefined>(party);
+  useEffect(() => { partyRef.current = party; }, [party]);
   // Fallback line-height in px; the measurement effect below replaces this with the
   // computed line-height of the rendered prompt so scroll math tracks the actual font.
   // 44 is a safe small-viewport fallback; on larger viewports the measured value will
@@ -313,6 +339,21 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
   }, [lineLayout.totalLines]);
 
   const targetStream = useMemo(() => words.join(' '), [words]);
+
+  // Ghost-cursor hook: precompute the global char offset of each word's first
+  // character in `words.join(' ')` so character spans can be stamped with a
+  // stable `data-bk-ci` attribute for DOM look-up by GhostCursor.
+  // ONLY computed when a party hook is present — zero cost in solo mode.
+  const wordStartIndices = useMemo<number[] | null>(() => {
+    if (!party) return null;
+    const indices: number[] = [];
+    let offset = 0;
+    for (const word of words) {
+      indices.push(offset);
+      offset += word.length + 1; // +1 for the inter-word space
+    }
+    return indices;
+  }, [party, words]);
 
   // Computed word evaluations (persistent per-char states)
   const evals = useMemo<WordEval[]>(() => {
@@ -853,6 +894,34 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
       setTotalChars(tally.correct + tally.incorrect + tally.extra);
       wpmSeries.current.push({ time: elapsed, wpm });
       onStatsUpdate(wpm, acc, elapsed);
+
+      // Optional party-mode emission. Fire-and-forget, fully gated, no
+      // network awaits. When `partyRef.current` is undefined (solo mode),
+      // this block is a single null check — zero added work.
+      const partyHook = partyRef.current;
+      if (partyHook?.onProgress) {
+        // Canonical cursor position in the *expected* prompt text. The
+        // expected stream uses `words.join(' ')`, so each prior word
+        // contributes its length + 1 space. Clamp the in-word offset to
+        // the word length so over-typed extras don't push charIndex past
+        // the word boundary.
+        let priorLen = 0;
+        for (let i = 0; i < wi; i++) priorLen += (words[i]?.length ?? 0) + 1;
+        const inWord = Math.min(col, words[wi]?.length ?? 0);
+        const charIndex = priorLen + inWord;
+        try {
+          partyHook.onProgress({
+            charIndex,
+            correctChars: tally.correct,
+            incorrectChars: tally.incorrect + tally.extra,
+            wpm,
+            accuracy: acc,
+            elapsedMs: Math.round(elapsed * 1000),
+          });
+        } catch {
+          // Defense in depth: typing must never break because of a party hook.
+        }
+      }
     }
 
     // words-mode completion when advancing from last word
@@ -1236,6 +1305,16 @@ const TypingBox: React.FC<TypingBoxProps> = ({ mode, durationSec = 15, onStatsUp
                           key={`${wi}-${ci}`}
                           data-caret={st === "cursor" ? (cursorVisible ? "on" : "off") : undefined}
                           data-status={st}
+                          // Ghost cursor anchor: only in party mode and only for
+                          // in-body characters (not extra-typed ones). The attribute
+                          // maps to the global position in words.join(' ') so the
+                          // GhostCursor component can querySelector by charIndex.
+                          // Absent in solo mode — zero DOM overhead.
+                          data-bk-ci={
+                            wordStartIndices && ci < expected.length
+                              ? wordStartIndices[wi] + ci
+                              : undefined
+                          }
                           className={clsx(
                             "relative transition-all duration-100 ease-out bk-char",
                             st === "correct" && "text-gray-200",

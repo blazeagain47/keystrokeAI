@@ -12,3 +12,7 @@ build/
 Thumbs.db
 .env
 .env.*
+.vercel
+.env*.local
+.partykit/
+.cursor/

@@ -53,5 +53,22 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow write: if false; // writes via Admin only
     }
+
+    // 1v1 party audit rows. The PartyKit room is the source of truth for
+    // live gameplay; this collection only stores creation + finish audit.
+    // All client reads/writes are denied — the Next.js API routes
+    // (/api/party/create, /api/party/join) use the Admin SDK and bypass
+    // these rules. This prevents enumeration of active party codes by
+    // unauthenticated clients.
+    match /parties_v1/{partyId} {
+      allow read, write: if false;
+    }
+
+    // Reserved placeholder for the per-player final result rows that
+    // Phase 6 will write from the server. Locked down today so accidental
+    // direct client writes during development are impossible.
+    match /party_results_v1/{resultId} {
+      allow read, write: if false;
+    }
   }
 }

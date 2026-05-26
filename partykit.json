@@ -1,0 +1,9 @@
+{
+  "$schema": "https://www.partykit.io/schema.json",
+  "name": "blazekey-party",
+  "main": "party/index.ts",
+  "compatibilityDate": "2024-09-01",
+  "vars": {
+    "PARTYKIT_ADMIN_TOKEN": ""
+  }
+}

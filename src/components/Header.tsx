@@ -3,7 +3,7 @@
 import Link from "next/link";
 import React, { useEffect } from "react";
 // ⬇️ Stable lucide icons only
-import { User, Settings as Gear, Keyboard, Trophy } from "lucide-react";
+import { User, Settings as Gear, Keyboard, Trophy, Users } from "lucide-react";
 import VersionBadge from "@/components/common/VersionBadge";
 import LogoMark from "@/components/brand/LogoMark";
 import { useAuthStore } from "@/store/auth";
@@ -64,6 +64,15 @@ export default function Header() {
             data-bk="kbd-newtest"
           >
             <Keyboard className="h-5 w-5" />
+          </Link>
+
+          <Link
+            href="/party"
+            aria-label="1v1 Party"
+            title="1v1 Party"
+            className="p-2 rounded-xl hover:bg-white/10 transition"
+          >
+            <Users className="h-5 w-5" />
           </Link>
 
           <Link
