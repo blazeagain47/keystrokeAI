@@ -1713,8 +1713,6 @@ body.bk-lock {
   height: 150px;
   display: grid;
   place-items: center;
-  /* Isolate so mix-blend-mode on the shine only blends with the brain
-     image and the local stacking context, not the rest of the page. */
   isolation: isolate;
 }
 
@@ -1745,53 +1743,8 @@ body.bk-lock {
   will-change: transform, filter;
 }
 
-/* Diagonal shine sweep across the brain — clearly reads as "loading".
-   Masked to the brain's silhouette using the same PNG as the source so
-   the highlight only appears inside the brain shape, never the surrounding
-   square. mix-blend-mode: screen brightens the warm pixels for a glossy
-   metallic feel. The keyframe pauses at each end so the shine reads as a
-   rhythmic "ping" rather than a constantly-moving glare. */
-.bk-pulse-brain__shine {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 130px;
-  height: 130px;
-  margin-top: -65px;
-  margin-left: -65px;
-  pointer-events: none;
-  background: linear-gradient(
-    115deg,
-    transparent 38%,
-    rgba(255, 240, 210, 0) 44%,
-    rgba(255, 248, 220, 0.95) 50%,
-    rgba(255, 240, 210, 0) 56%,
-    transparent 62%
-  );
-  background-size: 250% 100%;
-  background-position: 220% 0;
-  -webkit-mask-image: url("/blazeKey-tp-bg.png");
-          mask-image: url("/blazeKey-tp-bg.png");
-  -webkit-mask-size: 130px 130px;
-          mask-size: 130px 130px;
-  -webkit-mask-position: center;
-          mask-position: center;
-  -webkit-mask-repeat: no-repeat;
-          mask-repeat: no-repeat;
-  mix-blend-mode: screen;
-  animation: bk-brain-shine 2.4s ease-in-out infinite;
-  will-change: background-position;
-}
-
-@keyframes bk-brain-shine {
-  0%, 30%   { background-position: 220% 0; }
-  60%, 100% { background-position: -120% 0; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .bk-pulse-brain__img,
-  .bk-pulse-brain__shine { animation: none; }
-  .bk-pulse-brain__shine { opacity: 0; }
+  .bk-pulse-brain__img { animation: none; }
 }
 
 /* Red-leaning gradient for the loader heading — matches the

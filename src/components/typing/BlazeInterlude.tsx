@@ -112,7 +112,6 @@ export default function BlazeInterlude({
                     className="bk-pulse-brain__img"
                     draggable={false}
                   />
-                  <span className="bk-pulse-brain__shine" aria-hidden />
                 </div>
               </motion.div>
 
