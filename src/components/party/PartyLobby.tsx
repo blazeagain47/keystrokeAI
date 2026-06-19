@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Crown, User, Hourglass, Check, Wifi, WifiOff } from "lucide-react";
 import clsx from "clsx";
 
-import { joinParty, PartyApiError } from "@/lib/party/api";
+import { joinParty, requestRematch, PartyApiError } from "@/lib/party/api";
 import { connectToParty, type PartyClientHandle } from "@/lib/party/client";
 import { getOrCreatePlayerId } from "@/lib/party/playerId";
 import { usePartyStore } from "@/stores/usePartyStore";
@@ -14,6 +14,7 @@ import { usePartyStore } from "@/stores/usePartyStore";
 import CopyCodeButton from "./CopyCodeButton";
 import PartyCountdown from "./PartyCountdown";
 import PartyRace from "./PartyRace";
+import PartyResults from "./PartyResults";
 
 interface PartyLobbyProps {
   /** Public 6-digit code from the URL. */
@@ -48,8 +49,13 @@ export default function PartyLobby({ code }: PartyLobbyProps) {
   const applyCountdownStarted = usePartyStore((s) => s.applyCountdownStarted);
   const applyTestStarted = usePartyStore((s) => s.applyTestStarted);
   const setConnected = usePartyStore((s) => s.setConnected);
+  const setRoomAccepted = usePartyStore((s) => s.setRoomAccepted);
   const applyProgressRelay = usePartyStore((s) => s.applyProgressRelay);
   const setOpponentDisconnected = usePartyStore((s) => s.setOpponentDisconnected);
+  const applyPlayerFinished = usePartyStore((s) => s.applyPlayerFinished);
+  const applyPartyFinished = usePartyStore((s) => s.applyPartyFinished);
+  const applyRematchReadyChanged = usePartyStore((s) => s.applyRematchReadyChanged);
+  const applyNextTestStarted = usePartyStore((s) => s.applyNextTestStarted);
   const clear = usePartyStore((s) => s.clear);
 
   const [playerId, setPlayerId] = useState<string | null>(null);
@@ -146,22 +152,54 @@ export default function PartyLobby({ code }: PartyLobbyProps) {
         case "opponent_reconnected":
           if (msg.playerId !== playerId) setOpponentDisconnected(false);
           break;
+        case "player_finished":
+          applyPlayerFinished(msg.result);
+          break;
+        case "party_finished":
+          applyPartyFinished({
+            roundId: msg.roundId,
+            winnerId: msg.winnerId,
+            results: msg.results,
+          });
+          break;
+        case "rematch_ready_changed":
+          applyRematchReadyChanged(msg.playerId, msg.ready);
+          break;
+        case "next_test_started":
+          applyNextTestStarted({
+            roundId: msg.roundId,
+            testContent: msg.testContent,
+            testConfig: msg.testConfig,
+          });
+          break;
         case "error":
           // Treat fatal-ish errors as banner errors so the user knows.
           if (
             msg.code === "party_full" ||
+            msg.code === "player_already_connected" ||
+            msg.code === "party_not_joinable" ||
             msg.code === "party_expired" ||
             msg.code === "room_not_hydrated" ||
             msg.code === "missing_player_id" ||
             msg.code === "player_id_mismatch"
           ) {
             setError(friendlySocketError(msg.code));
+            // This socket was rejected — revoke any race/results access.
+            setRoomAccepted(false);
+            // For capacity/duplicate rejections, also stop the auto-reconnect
+            // loop so a rejected third browser doesn't hammer the room.
+            if (
+              msg.code === "party_full" ||
+              msg.code === "player_already_connected" ||
+              msg.code === "party_not_joinable"
+            ) {
+              try {
+                client.disconnect();
+              } catch {}
+              if (clientRef.current === client) clientRef.current = null;
+            }
           }
           break;
-        // Phase 6+ messages — results UI lands in a later phase. We still
-        // accept and ignore them here so the WS path stays clean.
-        case "player_finished":
-        case "party_finished":
         case "hello_ack":
         case "echo":
           break;
@@ -217,7 +255,12 @@ export default function PartyLobby({ code }: PartyLobbyProps) {
     setConnected,
     applyProgressRelay,
     setOpponentDisconnected,
+    applyPlayerFinished,
+    applyPartyFinished,
+    applyRematchReadyChanged,
+    applyNextTestStarted,
     setError,
+    setRoomAccepted,
   ]);
 
   // Derived helpers
@@ -249,6 +292,46 @@ export default function PartyLobby({ code }: PartyLobbyProps) {
     clear();
     router.push("/party");
   }, [clear, router, playerId]);
+
+  // Toggle local rematch readiness. Optimistic; server confirms via
+  // rematch_ready_changed.
+  const handlePlayAgain = useCallback(() => {
+    if (!playerId || !clientRef.current || !party) return;
+    const nextReady = !live.rematchReady[playerId];
+    try {
+      clientRef.current.send({
+        type: "rematch_ready",
+        playerId,
+        roundId: party.roundId,
+        ready: nextReady,
+        clientTs: Date.now(),
+      });
+    } catch {}
+    applyRematchReadyChanged(playerId, nextReady);
+  }, [playerId, party, live.rematchReady, applyRematchReadyChanged]);
+
+  // Host drives the actual round advance: once BOTH players are rematch-ready
+  // it calls the server route, which generates fresh content and pushes the
+  // next_round op to PartyKit. Guarded so it only fires once per finished
+  // round; resets when we leave the finished state.
+  const rematchTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (!party || !playerId) return;
+    if (party.status !== "finished") {
+      rematchTriggeredRef.current = false;
+      return;
+    }
+    if (party.role !== "host") return;
+    const hostReady = !!live.rematchReady[party.hostId];
+    const guestReady = !!(party.guestId && live.rematchReady[party.guestId]);
+    if (hostReady && guestReady && !rematchTriggeredRef.current) {
+      rematchTriggeredRef.current = true;
+      requestRematch({ partyId: party.partyId, playerId }).catch(() => {
+        // Allow the user to retry by toggling readiness again.
+        rematchTriggeredRef.current = false;
+      });
+    }
+  }, [party, playerId, live.rematchReady]);
 
   const testSummary = useMemo(() => {
     if (!party) return "";
@@ -319,28 +402,34 @@ export default function PartyLobby({ code }: PartyLobbyProps) {
     );
   }
 
-  // Race finished but the results UI is intentionally not implemented in
-  // this phase. Show a minimal placeholder so the user is never stuck on
-  // a blank screen if the server transitions to `finished` early.
-  if (party.status === "finished") {
-    return (
-      <LobbyShell>
-        <div className="flex flex-col items-center gap-4 py-12 text-center">
-          <p className="text-emerald-300/90 max-w-md">Race finished.</p>
-          <p className="text-xs text-gray-500 max-w-md">
-            The full results screen is coming in a follow-up update.
-          </p>
-          <Link
-            href="/party"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-800/60 hover:bg-gray-700/70 border border-gray-700/40 text-sm text-gray-200"
-            onClick={() => clear()}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to lobby entry
-          </Link>
-        </div>
-      </LobbyShell>
-    );
+  // Results / rematch screen. Shown when the round is finished OR when the
+  // local player has finished but the opponent is still typing (the server
+  // keeps status === "active" until both finish, so we use the optimistic
+  // self result to render a "waiting for opponent" results state early).
+  if (
+    playerId &&
+    (party.status === "finished" ||
+      (party.status === "active" && !!live.results[playerId]))
+  ) {
+    const isConfirmedParticipant =
+      (playerId === party.hostId || playerId === party.guestId) &&
+      live.roomAccepted;
+    if (isConfirmedParticipant) {
+      const resultsOpponentId =
+        party.role === "host"
+          ? party.guestId
+          : party.hostId !== playerId
+          ? party.hostId
+          : null;
+      return (
+        <PartyResults
+          selfPlayerId={playerId}
+          opponentPlayerId={resultsOpponentId}
+          onPlayAgain={handlePlayAgain}
+          onLeave={handleLeave}
+        />
+      );
+    }
   }
 
   // Defensive: the URL has a code but we somehow don't have a playerId yet.
@@ -356,15 +445,16 @@ export default function PartyLobby({ code }: PartyLobbyProps) {
     );
   }
 
-  // Active race. Only mount PartyRace for the confirmed host or guest.
-  // `party.hostId` is known from the join/create API response.
-  // `party.guestId` is populated by the first state_snapshot from PartyKit
-  // once the guest's socket is accepted — a third player's socket is
-  // rejected in PartyKit's onConnect before any snapshot arrives, so
-  // their `party.guestId` remains null and this guard blocks them.
+  // Active race. Only mount PartyRace for the confirmed host or guest whose
+  // socket PartyKit actually ACCEPTED. `live.roomAccepted` is set only after a
+  // state_snapshot confirms this socket holds a seat. A third browser sharing
+  // an existing playerId is closed in PartyKit's onConnect BEFORE any snapshot
+  // is broadcast, so it never flips `roomAccepted` true and is blocked here —
+  // even though its playerId may match the (shared) guest id.
   if (party.status === "active") {
     const isConfirmedParticipant =
-      playerId === party.hostId || playerId === party.guestId;
+      (playerId === party.hostId || playerId === party.guestId) &&
+      live.roomAccepted;
 
     if (!isConfirmedParticipant || !clientRef.current) {
       // Defense-in-depth: API should have blocked the third player already.
@@ -397,8 +487,10 @@ export default function PartyLobby({ code }: PartyLobbyProps) {
         : null;
     return (
       <PartyRace
+        key={`round-${party.roundId}`}
         testContent={party.testContent}
         testConfig={party.testConfig}
+        roundId={party.roundId}
         selfPlayerId={playerId}
         opponentPlayerId={opponentId}
         client={clientRef.current}
@@ -407,10 +499,20 @@ export default function PartyLobby({ code }: PartyLobbyProps) {
     );
   }
 
-  // Countdown screen.
-  if (party.status === "countdown" && typeof live.startsAt === "number") {
+  // Countdown screen. Gated on roomAccepted so a rejected third browser never
+  // sees the upcoming prompt preview.
+  if (
+    party.status === "countdown" &&
+    typeof live.startsAt === "number" &&
+    (playerId === party.hostId || playerId === party.guestId) &&
+    live.roomAccepted
+  ) {
     return (
-      <PartyCountdown startsAt={live.startsAt} preview={party.testContent} />
+      <PartyCountdown
+        key={`round-${party.roundId}`}
+        startsAt={live.startsAt}
+        preview={party.testContent}
+      />
     );
   }
 
@@ -601,6 +703,10 @@ function friendlySocketError(code: string): string {
   switch (code) {
     case "party_full":
       return "This party already has two players.";
+    case "player_already_connected":
+      return "This party is already open in another tab.";
+    case "party_not_joinable":
+      return "This party has already started or is no longer joinable.";
     case "party_expired":
       return "This party has expired.";
     case "room_not_hydrated":

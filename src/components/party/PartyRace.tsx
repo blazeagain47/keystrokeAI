@@ -10,7 +10,7 @@ import {
   createProgressSender,
   type ProgressSender,
 } from "@/lib/party/progressSender";
-import type { PartyTestConfig } from "@/lib/party/types";
+import type { FinalResult, PartyTestConfig } from "@/lib/party/types";
 import { usePartyStore } from "@/stores/usePartyStore";
 
 import GhostCursor from "./GhostCursor";
@@ -21,6 +21,8 @@ interface PartyRaceProps {
   testContent: string;
   /** Test config (mode, flags). MVP uses words mode only. */
   testConfig: PartyTestConfig;
+  /** Current round id; included in the finish event for stale-round guards. */
+  roundId: number;
   /** Local player id. */
   selfPlayerId: string;
   /** Opponent player id (host or guest depending on role); may be null mid-disconnect. */
@@ -29,6 +31,32 @@ interface PartyRaceProps {
   client: PartyClientHandle;
   /** Called when the user clicks "Leave race". */
   onLeave: () => void;
+}
+
+/**
+ * Whether the Phase 4 opponent debug overlay should render. Hidden for normal
+ * users: only shown in local development AND when an explicit developer flag is
+ * present (`?debug=1` in the URL or `localStorage.bk_party_debug = "1"`). This
+ * never touches the progress sender / relay / ghost cursor — purely a UI gate.
+ */
+function isDebugHudEnabled(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  if (typeof window === "undefined") return false;
+  try {
+    const qp = new URLSearchParams(window.location.search);
+    if (qp.get("debug") === "1") return true;
+    if (window.localStorage.getItem("bk_party_debug") === "1") return true;
+  } catch {}
+  return false;
+}
+
+interface LatestSample {
+  charIndex: number;
+  correctChars: number;
+  incorrectChars: number;
+  wpm: number;
+  accuracy: number;
+  elapsedMs: number;
 }
 
 /**
@@ -45,6 +73,7 @@ interface PartyRaceProps {
 export default function PartyRace({
   testContent,
   testConfig,
+  roundId,
   selfPlayerId,
   opponentPlayerId,
   client,
@@ -52,6 +81,21 @@ export default function PartyRace({
 }: PartyRaceProps) {
   const clearOpponentProgress = usePartyStore((s) => s.clearOpponentProgress);
   const setOpponentDisconnected = usePartyStore((s) => s.setOpponentDisconnected);
+  const markSelfFinished = usePartyStore((s) => s.markSelfFinished);
+
+  // Debug overlay visibility is resolved once on mount (dev-only + flag).
+  const [debugHudEnabled] = useState<boolean>(() => isDebugHudEnabled());
+
+  // Latest local stat sample, kept fresh on every onProgress tick so the
+  // finish event can report real correct/incorrect char counts.
+  const latestSampleRef = useRef<LatestSample>({
+    charIndex: 0,
+    correctChars: 0,
+    incorrectChars: 0,
+    wpm: 0,
+    accuracy: 100,
+    elapsedMs: 0,
+  });
   // Live presence/connection bits used for the in-race banners. These never
   // pause the typing engine — keystrokes stay local-first.
   const wsConnected = usePartyStore((s) => s.live.connected);
@@ -103,6 +147,8 @@ export default function PartyRace({
         accuracy: number;
         elapsedMs: number;
       }) => {
+        // Keep the latest real sample so finish reports accurate char counts.
+        latestSampleRef.current = sample;
         const sender = senderRef.current;
         if (!sender) return;
         // submit() is synchronous, internally throttled, and never throws.
@@ -126,25 +172,60 @@ export default function PartyRace({
 
   const handleTestComplete = useCallback(
     (wpm: number, accuracy: number, time: number, _typed: string) => {
-      // Force one final progress sample so the opponent HUD shows the
-      // final WPM/accuracy without waiting on the throttler's trailing emit.
+      const latest = latestSampleRef.current;
+      const finishTimeMs = Math.round(time * 1000);
+
+      // Force one final progress sample (real char counts) so the opponent's
+      // ghost cursor / HUD lands on the finished state immediately.
       const sender = senderRef.current;
       if (sender) {
         sender.submit(
           {
             charIndex: testContent.length,
-            correctChars: 0,
-            incorrectChars: 0,
+            correctChars: latest.correctChars,
+            incorrectChars: latest.incorrectChars,
             wpm,
             accuracy,
-            elapsedMs: Math.round(time * 1000),
+            elapsedMs: finishTimeMs,
           },
           { force: true },
         );
       }
-      // Finish/persistence handled in Phase 6.
+
+      // Emit the authoritative finish event. Fire-and-forget: client.send()
+      // never throws and never blocks the typing engine.
+      const result: FinalResult = {
+        playerId: selfPlayerId,
+        roundId,
+        finalWpm: Math.round(wpm),
+        finalAccuracy: Math.round(accuracy),
+        correctChars: latest.correctChars,
+        incorrectChars: latest.incorrectChars,
+        finishTimeMs,
+        completed: true,
+      };
+      try {
+        client.send({
+          type: "finish",
+          playerId: selfPlayerId,
+          roundId,
+          finalWpm: result.finalWpm,
+          finalAccuracy: result.finalAccuracy,
+          correctChars: result.correctChars,
+          incorrectChars: result.incorrectChars,
+          finishTimeMs: result.finishTimeMs,
+          completed: true,
+          clientTs: Date.now(),
+        });
+      } catch {}
+
+      // Optimistically record self so the parent can switch to the
+      // "waiting for opponent / results" screen without a round-trip.
+      try {
+        markSelfFinished(result);
+      } catch {}
     },
-    [testContent.length],
+    [testContent.length, client, selfPlayerId, roundId, markSelfFinished],
   );
 
   // Manual debug ping — proves the wire works even without typing. Useful
@@ -256,7 +337,8 @@ export default function PartyRace({
         </div>
       )}
 
-      {/* ── Fixed bottom-right: Phase 4 Debug overlay ─────────────────── */}
+      {/* ── Fixed bottom-right: Phase 4 Debug overlay (dev-only) ──────── */}
+      {debugHudEnabled && (
       <div
         className="fixed bottom-4 right-4 z-[9999] w-72 flex flex-col gap-0 rounded-2xl border border-cyan-400/30 bg-gray-950/90 backdrop-blur-md shadow-xl shadow-black/40 overflow-hidden"
       >
@@ -295,6 +377,7 @@ export default function PartyRace({
           />
         </div>
       </div>
+      )}
     </>
   );
 }

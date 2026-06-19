@@ -85,6 +85,39 @@ export async function hydratePartyRoom(state: PartyRoomState): Promise<void> {
 }
 
 /**
+ * Advance a finished room to a fresh rematch round. Sends the `next_round`
+ * admin op with freshly generated content. Throws on non-2xx so the calling
+ * route can surface a friendly error. Idempotent on the server via fromRoundId.
+ */
+export async function pushNextRound(
+  partyId: string,
+  input: { fromRoundId: number; testContent: string; contentSeed?: string | null },
+): Promise<{ ok: boolean; roundId?: number }> {
+  const url = getRoomHttpUrl(partyId);
+  const token = getAdminToken();
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+      "x-bk-party-op": "next_round",
+    },
+    body: JSON.stringify({ op: "next_round", ...input }),
+    signal: AbortSignal.timeout(5000),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`partykit_next_round_failed_${res.status}:${text.slice(0, 200)}`);
+  }
+  return (await res.json().catch(() => ({ ok: true }))) as {
+    ok: boolean;
+    roundId?: number;
+  };
+}
+
+/**
  * Optional: ask the room whether a given code is already in use. Phase 1
  * delegates uniqueness to Firestore, so this is a fast-path nice-to-have,
  * NOT the source of truth. Kept here for symmetry; create-route does not
@@ -109,7 +142,14 @@ export interface RoomSummary {
   status: PartyStatus;
   hostId: string;
   guestId: string | null;
+  roundId: number;
   expiresAt: number;
+  // Live active-connection info (added for the third-browser fix). Optional so
+  // an older room build that doesn't return them doesn't break parsing.
+  activePlayerIds?: string[];
+  activeConnectionCount?: number;
+  hostConnected?: boolean;
+  guestConnected?: boolean;
 }
 
 /**
@@ -147,7 +187,21 @@ export async function getRoomSummary(partyId: string): Promise<RoomSummary | nul
       status: ((data.status ?? "waiting") as PartyStatus),
       hostId: String(data.hostId ?? ""),
       guestId: data.guestId != null ? String(data.guestId) : null,
+      roundId: Number(data.roundId ?? 1),
       expiresAt: Number(data.expiresAt ?? 0),
+      activePlayerIds: Array.isArray(data.activePlayerIds)
+        ? (data.activePlayerIds as unknown[]).map((x) => String(x))
+        : undefined,
+      activeConnectionCount:
+        typeof data.activeConnectionCount === "number"
+          ? data.activeConnectionCount
+          : undefined,
+      hostConnected:
+        typeof data.hostConnected === "boolean" ? data.hostConnected : undefined,
+      guestConnected:
+        typeof data.guestConnected === "boolean"
+          ? data.guestConnected
+          : undefined,
     };
   } catch {
     return null;

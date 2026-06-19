@@ -55,6 +55,8 @@ function friendlyMessage(code: string, _detail: unknown): string {
       return "This party has expired. Ask your friend to create a new one.";
     case "party_full":
       return "This party already has two players.";
+    case "player_already_connected":
+      return "This party is already open in another tab.";
     case "party_not_joinable":
       return "This party has already started or is no longer joinable.";
     case "partykit_unavailable":
@@ -100,4 +102,24 @@ export async function joinParty(input: {
   });
   if (!res.ok) throw await parseError(res);
   return (await res.json()) as JoinPartyResponse;
+}
+
+/**
+ * Trigger a rematch (next round) for an existing party. The server route
+ * generates fresh content and pushes it to the PartyKit room using the
+ * server-only admin token — the browser never sees that token. Only a
+ * verified host/guest of the party may call this successfully.
+ */
+export async function requestRematch(input: {
+  partyId: string;
+  playerId: string;
+}): Promise<{ ok: boolean; roundId?: number }> {
+  const res = await fetch("/api/party/rematch", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseError(res);
+  return (await res.json()) as { ok: boolean; roundId?: number };
 }

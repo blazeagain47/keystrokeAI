@@ -127,7 +127,10 @@ export async function POST(req: NextRequest) {
     finishedAt: null,
     lastProgress: {},
     lastSeen: { [hostPlayerId]: now },
+    roundId: 1,
     results: {},
+    winnerId: null,
+    rematchReady: {},
     createdAt: now,
     expiresAt,
   };

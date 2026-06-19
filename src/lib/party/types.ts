@@ -54,12 +54,13 @@ export interface ProgressSample {
 
 export interface FinalResult {
   playerId: string;
+  roundId: number;            // which round this result belongs to
   finalWpm: number;
   finalAccuracy: number;
   correctChars: number;
   incorrectChars: number;
   completed: boolean;         // true if reached the end of testContent
-  finishTimeMs: number | null;
+  finishTimeMs: number | null; // elapsed ms when the player finished; null if DNF
 }
 
 // Authoritative room state held by the PartyKit server. The client receives
@@ -79,7 +80,15 @@ export interface PartyRoomState {
   finishedAt: number | null;
   lastProgress: Record<string, ProgressSample>;
   lastSeen: Record<string, number>;     // playerId -> last heartbeat ms
+  // ─── Round / results state (Phase 7) ──────────────────────────────────────
+  // `roundId` increments on every rematch. `results` holds the CURRENT round's
+  // final results only (reset on rematch). `winnerId` is computed once both
+  // results land (or on disconnect-finish). `rematchReady` tracks per-player
+  // "play again" readiness; cleared when a new round starts.
+  roundId: number;
   results: Record<string, FinalResult>;
+  winnerId: string | null;
+  rematchReady: Record<string, boolean>;
   createdAt: number;
   expiresAt: number;
 }
@@ -120,12 +129,20 @@ export type ClientToServer =
   | {
       type: "finish";
       playerId: string;
+      roundId: number;
       finalWpm: number;
       finalAccuracy: number;
       correctChars: number;
       incorrectChars: number;
       finishTimeMs: number | null;
       completed: boolean;
+      clientTs: number;
+    }
+  | {
+      type: "rematch_ready";
+      playerId: string;
+      roundId: number;           // round the player just finished; server validates
+      ready: boolean;
       clientTs: number;
     }
   | {
@@ -190,8 +207,22 @@ export type ServerToClient =
     }
   | {
       type: "party_finished";
+      roundId: number;
       winnerId: string | null;       // null on tie or both-disconnected
       results: FinalResult[];
+      serverTs: number;
+    }
+  | {
+      type: "rematch_ready_changed";
+      playerId: string;
+      ready: boolean;
+      serverTs: number;
+    }
+  | {
+      type: "next_test_started";
+      roundId: number;
+      testContent: string;
+      testConfig: PartyTestConfig;
       serverTs: number;
     }
   | {

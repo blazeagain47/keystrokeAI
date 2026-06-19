@@ -9,6 +9,7 @@
 import { create } from "zustand";
 
 import type {
+  FinalResult,
   PartyRole,
   PartyRoomState,
   PartyStatus,
@@ -25,6 +26,7 @@ interface PartyStateData {
   guestId: string | null;
   testConfig: PartyTestConfig;
   testContent: string;
+  roundId: number;
   expiresAt: number;
 }
 
@@ -49,6 +51,16 @@ interface LiveSlice {
   startsAt: number | null;
   /** Is the local WebSocket currently OPEN? */
   connected: boolean;
+  /**
+   * True only once PartyKit has ACCEPTED this socket — i.e. a state_snapshot
+   * arrived confirming the local playerId holds the host or guest seat on the
+   * server. A rejected third browser (party_full / player_already_connected)
+   * is closed BEFORE any snapshot is broadcast, so it never flips this true
+   * and therefore can never mount the race / results / countdown screens.
+   * Sticky-true within a session; reset only on hard rejection or leave so a
+   * transient mid-race reconnect blip doesn't tear down the typing engine.
+   */
+  roomAccepted: boolean;
   /** Latest progress per opponent playerId. Only contains non-self entries. */
   opponentProgress: Record<string, OpponentProgressEntry>;
   /**
@@ -58,6 +70,16 @@ interface LiveSlice {
    * tearing down the typing engine.
    */
   opponentDisconnected: boolean;
+  /**
+   * Final results for the CURRENT round, keyed by playerId. Populated by
+   * `player_finished`, `party_finished`, snapshots, and the local
+   * optimistic `markSelfFinished`. Reset when a new round starts.
+   */
+  results: Record<string, FinalResult>;
+  /** Winner of the current round (null = tie / undecided). */
+  winnerId: string | null;
+  /** Per-player "play again" readiness for the current finished round. */
+  rematchReady: Record<string, boolean>;
 }
 
 interface PartyStore {
@@ -100,6 +122,8 @@ interface PartyStore {
   applyTestStarted: () => void;
   /** Track local socket connection status. */
   setConnected: (connected: boolean) => void;
+  /** Set/reset the "this socket was accepted by PartyKit" gate. */
+  setRoomAccepted: (accepted: boolean) => void;
   /**
    * Apply a `progress_relay` event for an opponent. Stale or duplicate
    * sequence numbers are silently ignored — older frames will never
@@ -110,6 +134,25 @@ interface PartyStore {
   clearOpponentProgress: () => void;
   /** Track opponent presence drops/recoveries for the in-race banner. */
   setOpponentDisconnected: (down: boolean) => void;
+
+  /** Optimistically record the local player's final result on completion. */
+  markSelfFinished: (result: FinalResult) => void;
+  /** Apply a `player_finished` event (one player's result landed). */
+  applyPlayerFinished: (result: FinalResult) => void;
+  /** Apply a `party_finished` event (round closed; full results + winner). */
+  applyPartyFinished: (input: {
+    roundId: number;
+    winnerId: string | null;
+    results: FinalResult[];
+  }) => void;
+  /** Apply a `rematch_ready_changed` event. */
+  applyRematchReadyChanged: (playerId: string, ready: boolean) => void;
+  /** Apply a `next_test_started` event (new round content + reset). */
+  applyNextTestStarted: (input: {
+    roundId: number;
+    testContent: string;
+    testConfig: PartyTestConfig;
+  }) => void;
 
   setStatus: (status: PartyStatus) => void;
   setLoading: (loading: boolean) => void;
@@ -122,8 +165,12 @@ const emptyLive: LiveSlice = {
   readiness: {},
   startsAt: null,
   connected: false,
+  roomAccepted: false,
   opponentProgress: {},
   opponentDisconnected: false,
+  results: {},
+  winnerId: null,
+  rematchReady: {},
 };
 
 export const usePartyStore = create<PartyStore>((set) => ({
@@ -143,6 +190,7 @@ export const usePartyStore = create<PartyStore>((set) => ({
         guestId: null,
         testConfig,
         testContent,
+        roundId: 1,
         expiresAt,
       },
       live: {
@@ -150,8 +198,12 @@ export const usePartyStore = create<PartyStore>((set) => ({
         readiness: { [hostId]: false },
         startsAt: null,
         connected: false,
+        roomAccepted: false,
         opponentProgress: {},
         opponentDisconnected: false,
+        results: {},
+        winnerId: null,
+        rematchReady: {},
       },
       error: null,
       loading: false,
@@ -171,6 +223,7 @@ export const usePartyStore = create<PartyStore>((set) => ({
           guestId: s.party?.guestId ?? null,
           testConfig,
           testContent,
+          roundId: s.party?.roundId ?? 1,
           expiresAt,
         },
         // Do not clobber `live` here — it gets populated by the snapshot
@@ -210,6 +263,7 @@ export const usePartyStore = create<PartyStore>((set) => ({
           guestId: snap.guestId,
           testConfig: snap.testConfig,
           testContent: snap.testContent,
+          roundId: snap.roundId ?? 1,
           expiresAt: snap.expiresAt,
         },
         live: {
@@ -217,6 +271,13 @@ export const usePartyStore = create<PartyStore>((set) => ({
           readiness: { ...snap.readiness },
           startsAt: snap.startsAt,
           connected: true,
+          // Receiving a snapshot at all means PartyKit accepted this socket.
+          // Confirm the local player actually holds a seat, and keep the flag
+          // sticky-true so a later snapshot can't flip it off mid-race.
+          roomAccepted:
+            (s.live?.roomAccepted ?? false) ||
+            snap.hostId === localPlayerId ||
+            snap.guestId === localPlayerId,
           opponentProgress,
           // A fresh snapshot means presence we previously thought was
           // dropped may now be back. Don't clobber a "still down" state
@@ -225,6 +286,9 @@ export const usePartyStore = create<PartyStore>((set) => ({
             s.live?.opponentDisconnected && !isOpponentPresent(snap, localPlayerId)
               ? true
               : false,
+          results: { ...(snap.results ?? {}) },
+          winnerId: snap.winnerId ?? null,
+          rematchReady: { ...(snap.rematchReady ?? {}) },
         },
       };
     }),
@@ -275,6 +339,9 @@ export const usePartyStore = create<PartyStore>((set) => ({
   setConnected: (connected) =>
     set((s) => ({ live: { ...s.live, connected } })),
 
+  setRoomAccepted: (accepted) =>
+    set((s) => ({ live: { ...s.live, roomAccepted: accepted } })),
+
   applyProgressRelay: (sample) =>
     set((s) => {
       const existing = s.live.opponentProgress[sample.playerId];
@@ -300,6 +367,76 @@ export const usePartyStore = create<PartyStore>((set) => ({
 
   setOpponentDisconnected: (down) =>
     set((s) => ({ live: { ...s.live, opponentDisconnected: down } })),
+
+  markSelfFinished: (result) =>
+    set((s) => {
+      // Ignore stale results from a previous round.
+      if (s.party && result.roundId !== s.party.roundId) return {};
+      if (s.live.results[result.playerId]) return {};
+      return {
+        live: {
+          ...s.live,
+          results: { ...s.live.results, [result.playerId]: result },
+        },
+      };
+    }),
+
+  applyPlayerFinished: (result) =>
+    set((s) => {
+      if (s.party && result.roundId !== s.party.roundId) return {};
+      if (s.live.results[result.playerId]) return {};
+      return {
+        live: {
+          ...s.live,
+          results: { ...s.live.results, [result.playerId]: result },
+        },
+      };
+    }),
+
+  applyPartyFinished: ({ roundId, winnerId, results }) =>
+    set((s) => {
+      const map: Record<string, FinalResult> = { ...s.live.results };
+      for (const r of results) map[r.playerId] = r;
+      return {
+        party: s.party ? { ...s.party, status: "finished", roundId } : null,
+        live: { ...s.live, results: map, winnerId },
+      };
+    }),
+
+  applyRematchReadyChanged: (playerId, ready) =>
+    set((s) => ({
+      live: {
+        ...s.live,
+        rematchReady: { ...s.live.rematchReady, [playerId]: ready },
+      },
+    })),
+
+  applyNextTestStarted: ({ roundId, testContent, testConfig }) =>
+    set((s) => ({
+      party: s.party
+        ? {
+            ...s.party,
+            // Optimistically enter countdown so the UI doesn't flash the
+            // lobby between next_test_started and countdown_started.
+            status: "countdown",
+            roundId,
+            testContent,
+            testConfig,
+          }
+        : null,
+      live: {
+        ...s.live,
+        // Fresh round: wipe all per-round state. Set an optimistic countdown
+        // target so the countdown screen renders immediately; the authoritative
+        // countdown_started that follows corrects startsAt.
+        startsAt: Date.now() + 3000,
+        opponentProgress: {},
+        opponentDisconnected: false,
+        results: {},
+        winnerId: null,
+        rematchReady: {},
+      },
+    })),
 
   setStatus: (status) =>
     set((s) => (s.party ? { party: { ...s.party, status } } : {})),
