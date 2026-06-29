@@ -59,25 +59,6 @@ export async function fetchJSON<T = any>(
   }
 
   try {
-    // ==== TEMP LOGS: remove after diagnosis ====
-    try {
-      const asString = typeof url === "string" ? url : (url as Request).toString();
-      const isAuthLogin = typeof input === "string" && (input === "/api/auth/login" || String(input).endsWith("/api/auth/login"));
-      if (isAuthLogin) {
-        const payloadBody = parseBody(bodyToSend);
-        // eslint-disable-next-line no-console
-        console.log("[auth] submit:start", {
-          method: (init.method || "GET").toUpperCase(),
-          url: asString,
-          credentialsMode: init.credentials ?? "include",
-          headersSent: {
-            "content-type": mergedHeaders["content-type"],
-            authorization: mergedHeaders["authorization"] ? "present" : "absent",
-          },
-          bodyKeys: payloadBody && typeof payloadBody === "object" ? Object.keys(payloadBody) : [],
-        });
-      }
-    } catch {}
     const res = await fetch(url as any, {
       ...init,
       credentials: init.credentials ?? "include",
@@ -85,41 +66,20 @@ export async function fetchJSON<T = any>(
       body: bodyToSend,
     });
 
-    // Optional guard: avoid surfacing raw HTML error pages to UI for auth login
+    // Guard: if the API server returns an HTML error page (e.g. 502/504 from
+    // a proxy), surface a clean message instead of raw HTML markup.
+    let serviceDown = false;
     try {
-      const asString = typeof url === "string" ? url : (url as Request).toString();
-      const isAuthLogin = typeof input === "string" && (input === "/api/auth/login" || String(input).endsWith("/api/auth/login"));
-      const ctHeader = (res as any)?.headers?.get?.("content-type") ?? (res as any)?.headers?.["content-type"] ?? "";
-      const looksHtml = String(ctHeader).toLowerCase().startsWith("text/html");
-      if (isAuthLogin && ((res as any)?.status >= 500 || looksHtml)) {
-        // eslint-disable-next-line no-console
-        console.error("[auth] submit:guard", { status: (res as any)?.status, contentType: ctHeader });
-        throw new Error("Login service is temporarily unavailable. Please try again.");
+      const ct = res.headers.get("content-type") ?? "";
+      if (res.status >= 500 || ct.toLowerCase().startsWith("text/html")) {
+        serviceDown = true;
       }
     } catch {}
+    if (serviceDown) {
+      throw new Error("Service is temporarily unavailable. Please try again.");
+    }
 
     const text = await res.text().catch(() => "");
-
-    // ==== TEMP LOGS: remove after diagnosis ====
-    try {
-      const asString = typeof url === "string" ? url : (url as Request).toString();
-      const isAuthLogin = typeof input === "string" && (input === "/api/auth/login" || String(input).endsWith("/api/auth/login"));
-      if (isAuthLogin) {
-        const ct = (res as any)?.headers?.get?.("content-type") ?? (res as any)?.headers?.["content-type"] ?? "n/a";
-        const preview = (text || "").slice(0, 120);
-        // Note: browsers cannot read Set-Cookie via fetch headers
-        const hasSetCookie = Boolean((res as any)?.headers?.get?.("set-cookie") ?? (res as any)?.headers?.["set-cookie"]);
-        // eslint-disable-next-line no-console
-        console.log("[auth] submit:response", {
-          url: asString,
-          status: (res as any)?.status,
-          ok: (res as any)?.ok ?? (((res as any)?.status >= 200) && ((res as any)?.status < 300)),
-          contentType: ct,
-          hasSetCookie,
-          bodyPreview: preview,
-        });
-      }
-    } catch {}
 
     if (!res.ok) {
       // On HTTP failure, queue if requested and method is a write.
@@ -133,7 +93,15 @@ export async function fetchJSON<T = any>(
           });
         } catch {}
       }
-      throw new Error(text || `http_${res.status}`);
+      // Parse FastAPI-style { detail: "..." } errors into human-readable messages.
+      let errorMessage = text || `http_${res.status}`;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.detail && typeof parsed.detail === "string") {
+          errorMessage = parsed.detail;
+        }
+      } catch {}
+      throw new Error(errorMessage);
     }
 
     try { return (text ? JSON.parse(text) : {}) as T; }

@@ -60,19 +60,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       } as any);
       const user = normalizeUser(raw, get().user);
       set({ user, ready: true });
-      
-      // Ensure user appears on leaderboard immediately
       try {
         await fetch("/api/profile/sync", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ username: user.username }),
         });
-      } catch (e) {
-        console.warn("Profile sync failed after login:", e);
-      }
-      
+      } catch {}
       try { const { pingStreak } = await import("@/lib/streakClient"); await pingStreak(); } catch {}
+    } catch (err: any) {
+      set({ error: err?.message || "Login failed" });
+      throw err;
     } finally {
       set({ loading: false });
     }
@@ -87,19 +85,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       } as any);
       const user = normalizeUser(raw, get().user);
       set({ user, ready: true });
-      
-      // Ensure user appears on leaderboard immediately
       try {
         await fetch("/api/profile/sync", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ username: user.username }),
         });
-      } catch (e) {
-        console.warn("Profile sync failed after registration:", e);
-      }
-      
+      } catch {}
       try { const { pingStreak } = await import("@/lib/streakClient"); await pingStreak(); } catch {}
+    } catch (err: any) {
+      set({ error: err?.message || "Registration failed" });
+      throw err;
     } finally {
       set({ loading: false });
     }

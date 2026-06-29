@@ -396,6 +396,11 @@ html[data-focus="1"] .bk-flame-bg::after  { animation: none !important; opacity:
   --bk-flame-intensity: 1;
   --bk-sparks-enabled: 1;
   --bk-vignette: .9;
+
+  /* Fire gradient — used by bk-cta-fire, bk-wordmark, bk-rank-badge, etc. */
+  --bk-grad-fire: linear-gradient(135deg, #FF3D00, #FF6A00 55%, #FFD36E);
+  --bk-glow-sm: 0 12px 28px -16px rgba(255, 106, 0, 0.45);
+  --bk-glow-md: 0 16px 36px -12px rgba(255, 106, 0, 0.60);
 }
 
 /* =================== blazeKey: filter bar UI =================== */
@@ -492,6 +497,38 @@ html[data-focus="1"] .bk-flame-bg::after  { animation: none !important; opacity:
 @media (prefers-reduced-motion: reduce) {
   .bk-chip, .bk-segment__item { transition: none; }
   .bk-chip--active::before { opacity: .45; filter: blur(12px); }
+}
+
+/* Auth form input — defined in @layer components so Tailwind utilities (pl-*) can override padding */
+@layer components {
+  .bk-input {
+    width: 100%;
+    border-radius: 0.75rem;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    font-size: 0.875rem;
+    color: white;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .bk-input::placeholder {
+    color: rgba(255, 255, 255, 0.22);
+  }
+  .bk-input:focus {
+    border-color: rgba(255, 106, 0, 0.55);
+    box-shadow:
+      0 0 0 3px rgba(255, 106, 0, 0.12),
+      0 0 14px rgba(255, 106, 0, 0.08);
+  }
+  /* Removes the spinning conic-gradient border ring from fire CTA buttons
+     where the animation is distracting (e.g. the login submit button). */
+  .bk-cta-no-spin::before {
+    content: none !important;
+  }
 }
 
 /* Cohesive glass card style + hover polish */

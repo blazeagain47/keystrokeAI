@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import os
 import random
 from typing import Optional
 import uuid
@@ -22,10 +23,18 @@ try:
 except Exception as _e:
     print("[bk] version check failed:", _e)
 
-# CORS: single origin, credentials enabled
+# CORS: configurable via CORS_ORIGINS env var (comma-separated).
+# Defaults to both common local dev origins so `localhost` and `127.0.0.1` both work.
+_cors_raw = os.getenv(
+    "CORS_ORIGINS",
+    "http://127.0.0.1:3000,http://localhost:3000"
+)
+_cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+print(f"[bk] CORS origins: {_cors_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:3000"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
