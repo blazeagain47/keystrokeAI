@@ -25,7 +25,10 @@ export default function RecentSessionsTable({ rows }: Props) {
 
 	const filtered = useMemo(() => {
 		let out = [...rows];
-		if (mode !== "all") out = out.filter(r => (r.mode || "").toLowerCase() === mode);
+		// Runs are stored as e.g. "words/25" or "time/30" (count suffix), so
+		// match by prefix rather than exact equality or the mode chips would
+		// always show zero results.
+		if (mode !== "all") out = out.filter(r => (r.mode || "").toLowerCase().startsWith(mode));
 		if (difficulty !== "all") {
 			if (difficulty === "—") out = out.filter(r => !r.difficulty);
 			else if (difficulty === "normal") out = out.filter(r => (r.difficulty || "").toLowerCase() === "normal" || (r.difficulty || "").toLowerCase() === "medium");
@@ -44,8 +47,8 @@ export default function RecentSessionsTable({ rows }: Props) {
 	const visible = filtered.slice(start, start + pageSize);
 
 	const chipCls = (active: boolean) => active
-		? "bg-orange-500/20 text-orange-300 border-orange-500/40 shadow-[0_0_20px_rgba(255,120,0,.25)]"
-		: "bg-white/5 text-white/70 border-white/10 hover:bg-white/10";
+		? "bg-orange-500/15 text-orange-300 border-orange-500/30"
+		: "bg-white/5 text-white/60 border-white/10 hover:bg-white/10";
 
 	const toCsv = useCallback((rowsCsv: BlazeRun[]) => {
 		const head = ["id","ts","mode","difficulty","durationSec","words","wpm","acc","xp"];
@@ -89,13 +92,13 @@ export default function RecentSessionsTable({ rows }: Props) {
 	const onRowClick = (r: BlazeRun) => { setSelected(r); setOpen(true); };
 
 	return (
-		<div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+		<div className="bk-fire-card p-4 md:p-5">
 			<div className="flex items-center justify-between mb-3">
 				<div>
 					<div className="text-white font-medium">Recent sessions</div>
-					<div className="text-white/50 text-sm">{total} total</div>
+					<div className="text-white/40 text-sm">{total} total</div>
 				</div>
-				<button onClick={onDownload} className="inline-flex items-center rounded-full px-3 py-1.5 text-sm border border-white/10 bg-white/5 hover:bg-white/10">Download CSV</button>
+				<button onClick={onDownload} className="inline-flex items-center rounded-full px-3 py-1.5 text-sm border border-white/10 bg-white/5 hover:bg-white/10 text-white/70">Download CSV</button>
 			</div>
 
 			<div className="flex items-center justify-between mb-3 gap-2">

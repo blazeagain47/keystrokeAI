@@ -7,14 +7,15 @@ type Context = "toggle" | "post";
 type Props = {
   show: boolean;
   context?: Context;
-  title?: string;
+  /** Overrides the default Blaze-mode heading (e.g. for non-typing flows like auth). */
+  heading?: string;
   lines?: string[];
 };
 
 export default function BlazeInterlude({
   show,
   context = "toggle",
-  title = "Blaze mode (AI)",
+  heading: headingOverride,
   lines = [
     "AI is analyzing your last test…",
     "Training a harder set for you…",
@@ -57,7 +58,8 @@ export default function BlazeInterlude({
   if (!mounted) return null;
 
   const heading =
-    context === "post" ? "Analyzing & adapting your results…" : "Adapting your next test…";
+    headingOverride ??
+    (context === "post" ? "Analyzing & adapting your results…" : "Adapting your next test…");
   const activeLine = lines[step] ?? "";
 
   return createPortal(

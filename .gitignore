@@ -16,3 +16,7 @@ Thumbs.db
 .env*.local
 .partykit/
 .cursor/
+
+# Local dev artifacts — not meant for source control
+*.db
+tsconfig.tsbuildinfo

@@ -3,12 +3,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import random
+import sys
 from typing import Optional
 import uuid
 import time
 
 from .database import engine, Base
 from .auth import router as auth_router
+
+# Windows consoles often default to a legacy codepage (e.g. cp1252) that can't
+# encode the unicode arrows used in request logging below, which crashes
+# every request inside the logging middleware. Force UTF-8 stdout/stderr so
+# logging never takes the whole server down regardless of host console.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 app = FastAPI()
 

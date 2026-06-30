@@ -1,15 +1,21 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Trophy, Crown, Medal, Award, Search } from "lucide-react";
+import { Trophy, Crown, Medal, Award, Search, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
-import { Card, CardContent } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Modal from "@/components/ui/Modal";
+import CountUpNumber from "@/components/account/CountUpNumber";
 import { tl } from "@/lib/timeline";
 import { devLog } from "@/lib/devLog";
 
 type Row = { id: string; username: string; xpTotal: number; xpToday?: number; lastUpdated?: string | null; photoURL?: string | null; bestWpm?: number|null; streakDays?: number|null };
+
+const FIRE_BTN_STYLE = {
+  background: "linear-gradient(135deg, #d9460a 0%, #e8600f 50%, #f07a1a 100%)",
+  boxShadow: "0 0 0 1px rgba(255,106,0,0.18) inset, 0 4px 16px -6px rgba(255,90,0,0.35)",
+};
 
 export default function LeaderboardPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -83,11 +89,12 @@ export default function LeaderboardPage() {
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto p-6 space-y-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-white/10 rounded w-48"></div>
-          <div className="space-y-2">
-            {Array.from({length:6}).map((_,i)=><div key={i} className="h-12 bg-white/5 rounded-xl" />)}
-          </div>
+        <div className="bk-fire-card p-6 animate-pulse h-[40px] w-48" />
+        <div className="grid grid-cols-3 gap-3">
+          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="bk-fire-card animate-pulse h-[120px]" />)}
+        </div>
+        <div className="bk-fire-card animate-pulse">
+          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-14 border-b border-white/5 last:border-0" />)}
         </div>
       </div>
     );
@@ -108,7 +115,8 @@ export default function LeaderboardPage() {
             {/* Both buttons go to login to avoid 404s */}
             <Link
               href="/login"
-              className="px-4 py-2 rounded-xl bg-white text-black font-medium"
+              className="px-4 py-2 rounded-xl text-white font-medium transition-transform hover:scale-[1.03]"
+              style={FIRE_BTN_STYLE}
               onClick={() => setCtaOpen(false)}
             >
               Register
@@ -116,7 +124,7 @@ export default function LeaderboardPage() {
 
             <Link
               href="/login"
-              className="px-4 py-2 rounded-xl border border-white/20 hover:bg-white/10"
+              className="px-4 py-2 rounded-xl border border-white/10 hover:bg-white/10 hover:border-orange-400/30 transition-colors"
               onClick={() => setCtaOpen(false)}
             >
               Sign in
@@ -132,43 +140,47 @@ export default function LeaderboardPage() {
           </div>
         </div>
       </Modal>
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Trophy className="h-6 w-6 text-amber-300" />
-          <h1 className="text-xl font-semibold">Leaderboard</h1>
+      <header className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-lg bg-gradient-to-br from-[#FF3D00]/20 to-[#FFB066]/20 ring-1 ring-orange-400/20">
+            <Trophy className="h-5 w-5 text-amber-300" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-fire leading-tight">Leaderboard</h1>
+            <p className="text-xs text-white/40">Top players, ranked by XP</p>
+          </div>
         </div>
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
           <input
             value={q}
             onChange={(e)=>setQ(e.target.value)}
             placeholder="Search players"
-            className="pl-8 pr-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-sm outline-none focus:ring-2 focus:ring-white/20"
+            className="pl-8 pr-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-sm outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400/30 transition-colors"
           />
         </div>
       </header>
 
       <Podium rows={filtered.slice(0,3) as Row[]} meId={youId} />
 
-      <Card className="rounded-2xl border border-white/10 bg-white/5 cv-auto cv-480">
-        <CardContent className="p-0">
+      <div className="bk-fire-card cv-auto cv-480 overflow-hidden">
           {filtered.length === 0 ? (
             <div className="p-6 text-white/70">No players yet. Create an account and we'll place you on the board instantly.</div>
           ) : (
-            <ul className="divide-y divide-white/10">
+            <ul className="divide-y divide-white/5">
               {(searchRows ?? filtered).map((r, idx) => {
                 const isMe = !!youId && String(r.id) === String(youId);
                 return (
                   <li
                     key={r.id}
-                    className={`flex items-center justify-between px-4 py-3 transition-colors duration-150 ${isMe ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"}`}
+                    className={`flex items-center justify-between px-4 py-3 transition-colors duration-150 ${isMe ? "bg-orange-500/[0.06]" : "hover:bg-white/[0.03]"}`}
                   >
                     <div className="flex items-center gap-3">
                       <RankBadge rank={idx+1} />
                       <AvatarDot name={r.username} photoURL={r.photoURL} />
                       <div className="flex items-center gap-2">
                         <span className="text-white/90 font-medium">{r.username}</span>
-                        {isMe && <span className="text-xs text-white/70 bg-white/10 px-2 py-0.5 rounded-full">you</span>}
+                        {isMe && <span className="text-xs text-orange-300 bg-orange-500/15 border border-orange-500/30 px-2 py-0.5 rounded-full">you</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-6 text-sm">
@@ -181,34 +193,31 @@ export default function LeaderboardPage() {
               })}
             </ul>
           )}
-        </CardContent>
-      </Card>
+      </div>
 
       {/* Pinned self card if not in the top N but signed-in */}
       {meRow && !listHasMe && !q && (
-        <Card className="rounded-2xl border border-white/10 bg-white/5">
-          <CardContent className="p-4">
-            <div className="text-sm mb-2 text-white/70">Your position</div>
+        <div className="bk-fire-card bk-card-sheen p-4">
+            <div className="text-sm mb-2 text-white/50">Your position</div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <AvatarDot name={meRow.username} photoURL={meRow.photoURL} />
                 <div className="flex items-center gap-2">
                   <span className="text-white/90 font-medium">{meRow.username}</span>
-                  <span className="text-xs text-white/70 bg-white/10 px-2 py-0.5 rounded-full">you</span>
+                  <span className="text-xs text-orange-300 bg-orange-500/15 border border-orange-500/30 px-2 py-0.5 rounded-full">you</span>
                 </div>
               </div>
               <div className="text-sm text-white/70">
-                <span className="text-white/90 font-semibold tabular-nums">{meRow.xpTotal}</span> XP
+                <CountUpNumber value={meRow.xpTotal} className="text-fire font-semibold tabular-nums text-base" /> <span className="text-white/50">XP</span>
               </div>
             </div>
-          </CardContent>
-        </Card>
+        </div>
       )}
 
       {(!q && nextCursor) ? (
         <div className="flex justify-center">
           <button
-            className="mt-3 px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10 text-sm"
+            className="mt-3 px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10 hover:border-orange-400/30 transition-colors text-sm"
             onClick={async () => {
               try {
                 const res = await fetch(`/api/leaderboard?limit=50&after=${encodeURIComponent(nextCursor!)}`, { cache: "no-store", credentials: "include" });
@@ -223,9 +232,24 @@ export default function LeaderboardPage() {
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-gradient-to-r from-orange-500/10 to-amber-300/10 p-4">
-        <div className="text-white/80 text-sm">Want to climb faster? Practice a quick test.</div>
-        <Link href="/#new" className="px-3 py-1.5 rounded-xl bg-white text-black text-sm font-medium" onClick={() => { try { tl("leaderboard New test click"); } catch {} ; try { devLog("nav: leaderboard new test"); } catch {} }}>New test</Link>
+      <div className="bk-fire-card p-5 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-gradient-to-br from-[#FF3D00]/20 to-[#FFB066]/20 ring-1 ring-orange-400/20">
+            <Sparkles className="h-5 w-5 text-amber-300" />
+          </div>
+          <div>
+            <div className="text-white font-semibold">Want to climb faster?</div>
+            <div className="text-white/50 text-sm">Practice a quick test and watch your XP grow.</div>
+          </div>
+        </div>
+        <Link
+          href="/#new"
+          className="px-4 py-2 rounded-xl text-sm font-medium text-white shrink-0 transition-transform hover:scale-[1.03]"
+          style={FIRE_BTN_STYLE}
+          onClick={() => { try { tl("leaderboard New test click"); } catch {} ; try { devLog("nav: leaderboard new test"); } catch {} }}
+        >
+          New test →
+        </Link>
       </div>
     </div>
     </Suspense>
@@ -242,14 +266,12 @@ function RankBadge({ rank }: { rank: number }) {
 function AvatarDot({ name, photoURL }: { name: string; photoURL?: string | null }) {
   const letter = (name || "?").slice(0,1).toUpperCase();
   return (
-    <div className="w-7 h-7 rounded-full grid place-items-center bg-white/10 ring-1 ring-white/10 text-white text-sm font-semibold overflow-hidden">
-      {photoURL ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img alt="" src={photoURL} className="h-full w-full object-cover" />
-      ) : (
-        letter
-      )}
-    </div>
+    <Avatar className="h-7 w-7 ring-1 ring-orange-500/20 shrink-0">
+      <AvatarImage src={photoURL ?? undefined} alt={name} />
+      <AvatarFallback className="text-sm bg-gradient-to-br from-[#FF3D00] via-[#FF6A00] to-[#FFB066] text-white">
+        {letter}
+      </AvatarFallback>
+    </Avatar>
   );
 }
 
@@ -264,21 +286,20 @@ function Podium({ rows, meId }: { rows: Row[]; meId: string | null }) {
           <article
             key={r.id}
             className={[
-              "group relative rounded-2xl border border-white/10 p-4",
+              "bk-fire-card bk-card-sheen group relative p-4",
               "transition-all duration-300 ease-out will-change-transform",
               // shared hover treatment for all 3 cards
-              "hover:-translate-y-0.5 hover:ring-2 hover:ring-white/15",
+              "hover:-translate-y-0.5 hover:ring-2 hover:ring-orange-400/20",
               "hover:shadow-[0_10px_28px_-16px_rgba(0,0,0,.35)]",
-              // champion (center) gets a raised baseline + gold aura
+              // champion (center) gets a raised baseline + fire aura
               i === 1
                 ? [
-                    "bg-gradient-to-b from-white/[0.10] to-transparent",
-                    "ring-1 ring-amber-300/20",
-                    "shadow-[0_8px_24px_-14px_rgba(255,193,7,.20)]",
+                    "ring-1 ring-orange-400/25",
+                    "shadow-[0_8px_24px_-14px_rgba(255,140,0,.25)]",
                     "motion-safe:-translate-y-1 md:motion-safe:-translate-y-1.5",
                     "motion-safe:animate-bk-glow-slow",
                   ].join(" ")
-                : "bg-white/5",
+                : "",
             ].join(" ")}
           >
             {/* Champion hover aura — a soft radial glow that fades in on hover */}
@@ -288,7 +309,7 @@ function Podium({ rows, meId }: { rows: Row[]; meId: string | null }) {
                 className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-300
                            group-hover:opacity-100
                            [mask-image:radial-gradient(60%_60%_at_50%_0%,#000_40%,transparent_100%)]
-                           bg-[radial-gradient(120%_80%_at_50%_-10%,rgba(255,200,0,.18),rgba(255,200,0,0)_60%)]"
+                           bg-[radial-gradient(120%_80%_at_50%_-10%,rgba(255,140,0,.20),rgba(255,140,0,0)_60%)]"
               />
             )}
 
@@ -297,22 +318,27 @@ function Podium({ rows, meId }: { rows: Row[]; meId: string | null }) {
                 {i === 1 ? (
                   <Crown className="h-4 w-4 text-yellow-300" />
                 ) : (
-                  <Trophy className="h-4 w-4 text-amber-300" />
+                  <Trophy className="h-4 w-4 text-amber-400/70" />
                 )}
-                <span className="text-sm text-white/80">{i === 1 ? "Champion" : "Top"}</span>
+                <span className="text-sm text-white/60">{i === 1 ? "Champion" : "Top"}</span>
               </div>
 
               <div className="flex items-center gap-3">
-                <AvatarDot name={r.username} photoURL={r.photoURL} />
-                <div className="leading-tight">
-                  <div className="text-white font-semibold">
+                <Avatar className="h-9 w-9 ring-2 ring-orange-500/25 shrink-0">
+                  <AvatarImage src={r.photoURL ?? undefined} alt={r.username} />
+                  <AvatarFallback className="text-sm bg-gradient-to-br from-[#FF3D00] via-[#FF6A00] to-[#FFB066] text-white">
+                    {(r.username || "?").slice(0, 1).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="leading-tight min-w-0">
+                  <div className="text-white font-semibold truncate">
                     {r.username}{" "}
                     {meId && String(r.id) === meId && (
-                      <span className="ml-1 rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70">you</span>
+                      <span className="ml-1 rounded-full bg-orange-500/15 border border-orange-500/30 px-2 py-0.5 text-xs text-orange-300">you</span>
                     )}
                   </div>
-                  <div className="text-sm text-white/70">
-                    <span className="tabular-nums font-semibold text-white/90">{r.xpTotal}</span> XP
+                  <div className="text-sm text-white/60">
+                    <CountUpNumber value={r.xpTotal} className="text-fire font-semibold tabular-nums" /> XP
                   </div>
                 </div>
               </div>
@@ -325,5 +351,3 @@ function Podium({ rows, meId }: { rows: Row[]; meId: string | null }) {
     </div>
   );
 }
-
-

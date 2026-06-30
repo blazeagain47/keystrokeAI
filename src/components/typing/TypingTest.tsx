@@ -1049,6 +1049,15 @@ const TypingTest: React.FC = () => {
 
       if (!response.ok) {
         console.warn('[TypingTest] Failed to save run:', response.status, response.statusText);
+      } else {
+        // Guardrail: reconcile with server truth in the background once the
+        // write lands, so the account page reflects canonical data (e.g. on
+        // another device/browser) rather than relying solely on the
+        // optimistic local append above.
+        try {
+          const uid = useStatsStore.getState().uid;
+          if (uid) void useStatsStore.getState().hydrate(uid);
+        } catch {}
       }
     } catch (error) {
       // Only log if it's not an abort error

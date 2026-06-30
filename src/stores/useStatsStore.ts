@@ -1,6 +1,6 @@
 "use client";
 import { create } from "zustand";
-import { filterByRange, summarize, getLocalHistory, migrateLegacyHistory, RangeKey, BlazeRun } from "@/lib/historyLocal";
+import { filterByRange, summarize, getLocalHistory, setLocalHistory, migrateLegacyHistory, RangeKey, BlazeRun } from "@/lib/historyLocal";
 import { normalizeMany, dedupeByIdThenTime } from "@/lib/historyNormalize";
 import { computeXpAward } from "@/lib/xp";
 import { isAbort } from "@/lib/isAbort";
@@ -42,15 +42,32 @@ export const useStatsStore = create<StatsState>((set, get) => ({
   hydrate: async (uid: string, opts?: { signal?: AbortSignal }) => {
     mark('stores:hydrate:stats:start');
     const id = String(uid);
-    const local = (() => { try { return getLocalHistory(id); } catch { return []; } })() || [];
+    let local = (() => { try { return getLocalHistory(id); } catch { return []; } })() || [];
+    // Guardrail: if this user's bucket is empty (e.g. first hydrate after a
+    // fresh login on a browser that previously only had a guest/legacy
+    // bucket), try to recover any run-shaped history sitting under another
+    // key before assuming there's genuinely nothing local.
+    if (!local.length) {
+      try { local = migrateLegacyHistory(id); } catch { /* no-op */ }
+    }
     let remote: any[] = [];
+    let remoteFailed = false;
     try {
       const res = await fetch(`/api/stats/history?range=all`, { cache: "no-store", signal: opts?.signal });
       if (res.ok) remote = await res.json();
-    } catch (e) { if (!isAbort(e)) console.warn("[stats.hydrate] history fetch failed:", e); }
+      else remoteFailed = true;
+    } catch (e) {
+      if (!isAbort(e)) { console.warn("[stats.hydrate] history fetch failed:", e); remoteFailed = true; }
+    }
+    // Union local + remote rather than trusting either alone: protects
+    // against a transient/misconfigured server read (remote=[]) wiping out
+    // real local history, and against local being stale/behind the server.
     const merged = dedupeByIdThenTime(normalizeMany([...(local as any[]), ...(remote as any[])]));
     set({ uid: id, history: merged as any, ready: true });
-    try { const { setLocalHistory } = await import("@/lib/historyLocal"); setLocalHistory(id, merged as any); } catch {}
+    try { setLocalHistory(id, merged as any); } catch {}
+    if (remoteFailed && process.env.NODE_ENV !== "production") {
+      console.warn("[stats.hydrate] server history unavailable — showing local-only data for", id);
+    }
     try { get().recompute(); } catch (e) { if (!isAbort(e)) console.warn("[stats.hydrate] recompute failed:", e); }
     mark('stores:hydrate:stats:end');
     measure('stores:hydrate:stats:start','stores:hydrate:stats:end');
@@ -85,6 +102,13 @@ export const useStatsStore = create<StatsState>((set, get) => ({
       const history = [...state.history, normalized as any];
       const inRange = filterByRange(history, state.range);
       const s = summarize(inRange);
+      // Guardrail: persist immediately. Without this, a completed run only
+      // ever lived in memory — navigating away and back (e.g. to /account)
+      // would call hydrate() again, which reads localStorage + server and
+      // would silently lose any run that hadn't made that round trip yet.
+      if (state.uid) {
+        try { setLocalHistory(state.uid, history); } catch {}
+      }
       return { history, summary: s, totalXP: s.totalXP, streakDays: s.streakDays };
     });
   },

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import React, { Suspense } from "react";
 import Script from "next/script";
 import AuthGate from "@/components/auth/AuthGate";
+import AuthTransitionLoader from "@/components/auth/AuthTransitionLoader";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -86,6 +87,8 @@ export default function RootLayout({
             <Footer />
             {/* Global auth modal gate */}
             <AuthGate />
+            {/* Full-screen loader bridging login/register submit → /account ready */}
+            <AuthTransitionLoader />
             <SettingsModal />
           </ThemeProvider>
         </Suspense>

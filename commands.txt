@@ -4,6 +4,7 @@ PC START: -->        .\.venv\Scripts\Activate.ps1
 LAPTOP START: -->    .\venv\Scripts\Activate.ps1
 python -m uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
 npm run dev
+npx partykit dev
 
 MAKE SURE TO SAVE -->
 

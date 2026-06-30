@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "@/store/auth";
+import { useAuthTransitionStore } from "@/store/authTransition";
+
+// Guarantees the full-screen loader is visible long enough to read even
+// when the backend responds almost instantly, avoiding a jarring flash.
+const AUTH_LOADER_MIN_MS = 600;
 
 type Tab = "login" | "register";
 
@@ -56,14 +61,18 @@ export default function LoginPage() {
     if (submitting) return;
     setErr(null);
     setSubmitting(true);
+    useAuthTransitionStore.getState().start(tab === "register" ? "register" : "login");
     try {
-      if (tab === "login") {
-        await login(username, password);
-      } else {
-        await register(username, password, email || undefined);
-      }
+      const minDelay = new Promise((res) => setTimeout(res, AUTH_LOADER_MIN_MS));
+      const authPromise =
+        tab === "login" ? login(username, password) : register(username, password, email || undefined);
+      await Promise.all([minDelay, authPromise]);
       router.replace("/account");
+      // Leave the full-screen loader active — /account clears it once the
+      // user's data is hydrated, so the transition reads as one continuous
+      // load instead of flashing the page skeleton in between.
     } catch (error: any) {
+      useAuthTransitionStore.getState().stop();
       setErr(error?.message || "Authentication failed");
     } finally {
       setSubmitting(false);
