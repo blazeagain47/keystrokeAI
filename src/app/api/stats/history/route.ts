@@ -4,26 +4,11 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "default-no-store";
 
 import { getAdminDb } from "@/lib/firebaseAdmin";
+import { getCurrentAppUsername } from "@/lib/appSession";
 
 // Cap how many docs we ever pull per request — generous for "all time" stats
 // without risking an unbounded read if a user has thousands of runs.
 const MAX_RUNS = 1000;
-
-// Mirrors getCurrentAppUser() in /api/runs — resolves the signed-in app
-// session (username/password backend) from the forwarded cookie.
-async function getCurrentAppUsername(req: NextRequest): Promise<string | null> {
-  try {
-    const meRes = await fetch(`${req.nextUrl.origin}/api/auth/me`, {
-      headers: { cookie: req.headers.get("cookie") ?? "" },
-      cache: "no-store",
-    });
-    if (!meRes.ok) return null;
-    const data = await meRes.json();
-    return data?.username ? String(data.username) : null;
-  } catch {
-    return null;
-  }
-}
 
 export async function GET(req: NextRequest) {
   // No session -> no server-side history to merge; the client still has its

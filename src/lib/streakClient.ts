@@ -1,11 +1,8 @@
-import { getIdTokenEnsured } from "@/lib/idToken";
-
 export async function pingStreak(signal?: AbortSignal) {
   try {
-    const token = await getIdTokenEnsured();
     const res = await fetch("/api/streak/ping", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
       cache: "no-store",
       signal,
     });

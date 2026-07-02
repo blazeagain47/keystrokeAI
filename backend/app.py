@@ -8,7 +8,6 @@ from typing import Optional
 import uuid
 import time
 
-from .database import engine, Base
 from .auth import router as auth_router
 
 # Windows consoles often default to a legacy codepage (e.g. cp1252) that can't
@@ -23,8 +22,11 @@ for _stream in (sys.stdout, sys.stderr):
 
 app = FastAPI()
 
-# Create tables on startup (SQLite, simple MVP)
-Base.metadata.create_all(bind=engine)
+# Schema is managed by Alembic migrations (see backend/alembic/), run via
+# `alembic upgrade head` before the app starts (see docker-compose.yml /
+# README). We intentionally do NOT auto-create tables here anymore: doing so
+# masked the fact this service was writing to a throwaway local SQLite file
+# instead of a real, durable, shared database.
 
 # Optional: log passlib/bcrypt versions once at startup for diagnostics
 try:
@@ -54,23 +56,8 @@ app.add_middleware(
 # Mount auth
 app.include_router(auth_router)
 
-# --- Guard heavy / optional imports ---
-HAS_TRANSFORMERS = False
+# --- Guard optional imports ---
 HAS_PROMPT_GEN = False
-
-def _lazy_import_transformers():
-    global HAS_TRANSFORMERS
-    if not HAS_TRANSFORMERS:
-        try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
-            import torch  # type: ignore
-            globals()["AutoModelForCausalLM"] = AutoModelForCausalLM
-            globals()["AutoTokenizer"] = AutoTokenizer
-            globals()["torch"] = torch
-            HAS_TRANSFORMERS = True
-        except Exception:
-            HAS_TRANSFORMERS = False
-    return HAS_TRANSFORMERS
 
 def _lazy_import_prompt_gen():
     global HAS_PROMPT_GEN
@@ -88,11 +75,6 @@ def _lazy_import_prompt_gen():
             except Exception:
                 HAS_PROMPT_GEN = False
     return HAS_PROMPT_GEN
-
-def _require_transformers():
-    if not _lazy_import_transformers():
-        from fastapi import HTTPException
-        raise HTTPException(status_code=501, detail="transformers/torch not available")
 
 def _require_prompt_gen():
     if not _lazy_import_prompt_gen():

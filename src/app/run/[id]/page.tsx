@@ -21,8 +21,8 @@ export default function RunDetailsPage() {
     if (fromStore) { setRun(fromStore); return; }
     // fallback to local history
     try {
-      if (user) {
-        const local = getLocalHistory(String(user.id));
+      if (user?.username) {
+        const local = getLocalHistory(user.username.trim().toLowerCase());
         const found = local.find(r => r.id === id) || null;
         setRun(found);
       }

@@ -1,9 +1,10 @@
 // src/lib/sync.ts
+import { startRetryDriver } from "./retryQueue";
+
 let stop: null | (() => void) = null;
 export function bootSync() {
   if (stop) return;
   try {
-    const { startRetryDriver } = require("./retryQueue") as { startRetryDriver: () => (()=>void) | void };
     stop = startRetryDriver() || null;
   } catch {}
 }

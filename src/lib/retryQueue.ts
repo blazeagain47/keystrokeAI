@@ -100,4 +100,46 @@ export async function flush(processor: (item: QueueItem) => Promise<boolean>) {
   return { remaining: next.length };
 }
 
+// Default processor: replays a queued request exactly as it was originally
+// sent (method/url/body/headers), with cookies included so authenticated
+// writes (e.g. saving a run) retry as the same user.
+async function defaultProcessor(item: QueueItem): Promise<boolean> {
+  try {
+    const res = await fetch(item.url, {
+      method: item.method,
+      headers: { "content-type": "application/json", ...(item.headers || {}) },
+      body: item.body !== undefined ? JSON.stringify(item.body) : undefined,
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+const FLUSH_INTERVAL_MS = 20000;
+
+/**
+ * Starts the background driver that actually retries queued requests:
+ * once immediately, then on an interval, and whenever the browser comes
+ * back online. Without this, enqueue() just accumulates items forever —
+ * something has to call flush(). Returns a stop function.
+ */
+export function startRetryDriver(): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  let stopped = false;
+  const run = () => { if (!stopped) void flush(defaultProcessor); };
+
+  run();
+  const intervalId = window.setInterval(run, FLUSH_INTERVAL_MS);
+  window.addEventListener("online", run);
+
+  return () => {
+    stopped = true;
+    window.clearInterval(intervalId);
+    window.removeEventListener("online", run);
+  };
+}
+
 

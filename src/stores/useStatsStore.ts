@@ -1,6 +1,6 @@
 "use client";
 import { create } from "zustand";
-import { filterByRange, summarize, getLocalHistory, setLocalHistory, migrateLegacyHistory, RangeKey, BlazeRun } from "@/lib/historyLocal";
+import { filterByRange, summarize, getLocalHistory, setLocalHistory, RangeKey, BlazeRun } from "@/lib/historyLocal";
 import { normalizeMany, dedupeByIdThenTime } from "@/lib/historyNormalize";
 import { computeXpAward } from "@/lib/xp";
 import { isAbort } from "@/lib/isAbort";
@@ -42,14 +42,7 @@ export const useStatsStore = create<StatsState>((set, get) => ({
   hydrate: async (uid: string, opts?: { signal?: AbortSignal }) => {
     mark('stores:hydrate:stats:start');
     const id = String(uid);
-    let local = (() => { try { return getLocalHistory(id); } catch { return []; } })() || [];
-    // Guardrail: if this user's bucket is empty (e.g. first hydrate after a
-    // fresh login on a browser that previously only had a guest/legacy
-    // bucket), try to recover any run-shaped history sitting under another
-    // key before assuming there's genuinely nothing local.
-    if (!local.length) {
-      try { local = migrateLegacyHistory(id); } catch { /* no-op */ }
-    }
+    const local = (() => { try { return getLocalHistory(id); } catch { return []; } })() || [];
     let remote: any[] = [];
     let remoteFailed = false;
     try {

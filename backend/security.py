@@ -1,8 +1,28 @@
-import os, time, jwt
+import os, sys, time, jwt
 from passlib.hash import bcrypt as bcrypt_hash
 from typing import Optional
 
-JWT_SECRET = os.environ.get("KS_JWT_SECRET", "dev_only_change_me")
+_IS_PROD = os.getenv("APP_ENV", os.getenv("NODE_ENV", "development")) == "production"
+_DEV_DEFAULT_SECRET = "dev_only_change_me"
+
+JWT_SECRET = os.environ.get("KS_JWT_SECRET")
+if not JWT_SECRET:
+    if _IS_PROD:
+        # A guessable/shared JWT secret lets anyone forge a session cookie for
+        # any user id — this must never silently fall back in production.
+        print(
+            "[bk] FATAL: KS_JWT_SECRET is not set in production. Refusing to "
+            "start with a default/guessable signing secret.",
+            file=sys.stderr,
+        )
+        raise RuntimeError("KS_JWT_SECRET must be set in production")
+    print(
+        "[bk] WARNING: KS_JWT_SECRET not set — using an insecure default for "
+        "LOCAL DEVELOPMENT ONLY.",
+        file=sys.stderr,
+    )
+    JWT_SECRET = _DEV_DEFAULT_SECRET
+
 JWT_TTL_SECONDS = int(os.environ.get("KS_JWT_TTL_SECONDS", "604800"))  # 7d
 COOKIE_NAME = "ks_session"
 

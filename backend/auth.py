@@ -1,5 +1,7 @@
 import os
-from typing import Optional
+import time
+from collections import defaultdict, deque
+from typing import Deque, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from sqlalchemy.orm import Session
@@ -27,7 +29,6 @@ def _set_session_cookie(resp: Response, token: str) -> None:
         samesite="lax",
         secure=_IS_PROD,
         max_age=_COOKIE_TTL,
-        expires=_COOKIE_TTL,
         path="/",
     )
 
@@ -40,6 +41,39 @@ def get_db():
         db.close()
 
 
+# --- Minimal brute-force guard -----------------------------------------
+# In-memory, per-process sliding-window limiter. This is intentionally
+# simple: it's enough to blunt naive credential-stuffing / brute-force
+# scripts hitting a single backend process. It is NOT a substitute for
+# proper edge/WAF rate limiting (e.g. at Caddy/Cloudflare) if this ever
+# needs to scale beyond one process — state here does not survive a
+# restart and is not shared across multiple worker processes.
+_LOGIN_WINDOW_SECONDS = 5 * 60
+_LOGIN_MAX_ATTEMPTS = 10
+_REGISTER_WINDOW_SECONDS = 60 * 60
+_REGISTER_MAX_ATTEMPTS = 8
+
+_login_attempts: Dict[str, Deque[float]] = defaultdict(deque)
+_register_attempts: Dict[str, Deque[float]] = defaultdict(deque)
+
+
+def _client_ip(req: Request) -> str:
+    fwd = req.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return req.client.host if req.client else "unknown"
+
+
+def _check_rate_limit(bucket: Dict[str, Deque[float]], key: str, window_s: int, max_attempts: int) -> None:
+    now = time.time()
+    attempts = bucket[key]
+    while attempts and now - attempts[0] > window_s:
+        attempts.popleft()
+    if len(attempts) >= max_attempts:
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
+    attempts.append(now)
+
+
 def to_profile(u: User) -> UserProfile:
     return UserProfile(
         id=u.id, username=u.username, email=u.email,
@@ -48,7 +82,8 @@ def to_profile(u: User) -> UserProfile:
 
 
 @router.post("/register", response_model=UserProfile)
-def register(req: RegisterRequest, resp: Response, db: Session = Depends(get_db)):
+def register(req: RegisterRequest, resp: Response, request: Request, db: Session = Depends(get_db)):
+    _check_rate_limit(_register_attempts, _client_ip(request), _REGISTER_WINDOW_SECONDS, _REGISTER_MAX_ATTEMPTS)
     existing = db.query(User).filter(User.username == req.username).first()
     if existing:
         raise HTTPException(status_code=409, detail="Username already taken")
@@ -65,7 +100,10 @@ def register(req: RegisterRequest, resp: Response, db: Session = Depends(get_db)
 
 
 @router.post("/login", response_model=UserProfile)
-def login(req: LoginRequest, resp: Response, db: Session = Depends(get_db)):
+def login(req: LoginRequest, resp: Response, request: Request, db: Session = Depends(get_db)):
+    ip = _client_ip(request)
+    _check_rate_limit(_login_attempts, ip, _LOGIN_WINDOW_SECONDS, _LOGIN_MAX_ATTEMPTS)
+    _check_rate_limit(_login_attempts, f"{ip}:{req.username.lower()}", _LOGIN_WINDOW_SECONDS, _LOGIN_MAX_ATTEMPTS)
     u: Optional[User] = db.query(User).filter(User.username == req.username).first()
     if not u or not verify_password(req.password, u.password_hash):
         raise HTTPException(status_code=401, detail="Invalid username or password")

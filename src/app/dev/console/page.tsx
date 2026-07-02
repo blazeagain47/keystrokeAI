@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { fetchRecentRuns, fetchMyTotals } from '@/lib/runsApi';
-import { getIdTokenEnsured } from '@/lib/idToken';
 
 type Run = { id: string; createdAt: number | null; wpm: number | null; accuracy: number | null; durationSec: number | null; mode: string | null; };
 type Totals = { totalRuns: number; totalXP: number; bestWpm: number | null; avgWpm: number | null; avgAcc: number | null; totalTimeSec: number; lastActiveUTC: number | null; streakDays: number; } | null;
@@ -10,14 +9,13 @@ type Totals = { totalRuns: number; totalXP: number; bestWpm: number | null; avgW
 export default function DevConsolePage() {
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [totals, setTotals] = useState<Totals>(null);
-  const [tokenTail, setTokenTail] = useState<string>('');
   const [err, setErr] = useState<string>('');
 
   async function loadAll() {
     setErr('');
     try {
-      const token = await getIdTokenEnsured();
-      setTokenTail(token.slice(-16));
+      // Identity now comes from the app session cookie (see src/lib/appSession.ts),
+      // not a Firebase token — make sure you're logged in via /login first.
       const [r, t] = await Promise.all([fetchRecentRuns(10), fetchMyTotals()]);
       setRuns(r.runs);
       // @ts-ignore
@@ -35,7 +33,6 @@ export default function DevConsolePage() {
 
       <div className="flex items-center gap-3">
         <button onClick={loadAll} className="px-3 py-2 rounded-xl shadow border">Refresh</button>
-        <span className="text-sm opacity-70">token…{tokenTail || '—'}</span>
         {err && <span className="text-red-600 text-sm">{err}</span>}
       </div>
 

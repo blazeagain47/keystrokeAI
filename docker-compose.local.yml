@@ -1,0 +1,25 @@
+# Local-dev-only Postgres. Deliberately separate from docker-compose.yml
+# (the real VPS stack) so this never gets deployed/exposed publicly — it's
+# only ever invoked explicitly via `-f docker-compose.local.yml` (see
+# start-local.bat). Fixed throwaway credentials are fine here since this
+# never leaves your machine.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: blazekey
+      POSTGRES_PASSWORD: localdevpassword
+      POSTGRES_DB: blazekey
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_local_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blazekey -d blazekey"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres_local_data:

@@ -114,49 +114,14 @@ export function toDailySeries(runs: BlazeRun[], daysBack = 7) {
 	return buckets.map(b => ({ t: b.t, wpm: b.n ? Math.round(b.wpm/b.n) : 0, acc: b.n ? Math.round(b.acc/b.n) : 0 }));
 }
 
-// --- NEW: migrate legacy/unknown user keys so old runs show up ----
-export function migrateLegacyHistory(uid: string): BlazeRun[] {
-	if (!uid) return [];
-	const current = getLocalHistory(uid);
-	if (current.length) return current;
-
-	let bestKey: string | null = null;
-	let bestRuns: BlazeRun[] = [];
-	const looksLikeRun = (o: any) =>
-		o && typeof o === "object" &&
-		typeof o.ts === "number" &&
-		typeof o.wpm === "number" &&
-		typeof o.acc === "number";
-
-	try {
-		for (let i = 0; i < localStorage.length; i++) {
-			const k = localStorage.key(i) || "";
-			// ignore our target bucket to avoid self-pick
-			if (k === `bk:history:${uid}`) continue;
-
-			const raw = localStorage.getItem(k);
-			if (!raw) continue;
-
-			// Must be a JSON array with run-like objects
-			let parsed: any;
-			try { parsed = JSON.parse(raw); } catch { continue; }
-			if (!Array.isArray(parsed) || parsed.length === 0) continue;
-			if (!looksLikeRun(parsed[0])) continue;
-
-			if (parsed.length > bestRuns.length) {
-				bestRuns = parsed as BlazeRun[];
-				bestKey = k;
-			}
-		}
-
-		if (bestRuns.length) {
-			// Non-destructive: copy into new user bucket
-			setLocalHistory(uid, bestRuns);
-			return bestRuns;
-		}
-	} catch { /* no-op */ }
-	return [];
-}
+// NOTE: we intentionally do NOT scavenge "any run-shaped array sitting under
+// some other localStorage key" and adopt it into a user's history bucket.
+// That used to exist as a guardrail for migrating pre-account "guest" data,
+// but on a shared browser it will just as happily hand a *brand new* account
+// the previous account's cached run history (wrong stats, wrong session
+// count, etc.) — which is a data-integrity bug, not a feature. Local storage
+// is purely a cache of server-authoritative data (Postgres/Firestore) keyed
+// by the current user's identity; if a bucket is empty, it's empty.
 
 
 

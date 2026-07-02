@@ -1,0 +1,62 @@
+# Self-hosted deployment for the blazeKey backend: FastAPI + Postgres +
+# Caddy (automatic HTTPS), meant to run together on a single VPS.
+#
+# Usage on the VPS:
+#   1. Copy `.env.example` to `.env` and fill in real values.
+#   2. docker compose up -d --build
+#
+# The Next.js frontend stays on Vercel and talks to this stack over HTTPS
+# via the domain configured in `Caddyfile` / `PUBLIC_API_DOMAIN`.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      KS_JWT_SECRET: ${KS_JWT_SECRET}
+      KS_JWT_TTL_SECONDS: ${KS_JWT_TTL_SECONDS:-604800}
+      JWT_COOKIE_NAME: ${JWT_COOKIE_NAME:-ks_session}
+      JWT_COOKIE_TTL_DAYS: ${JWT_COOKIE_TTL_DAYS:-7}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      PUBLIC_API_DOMAIN: ${PUBLIC_API_DOMAIN}
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

@@ -1,10 +1,36 @@
-# START SCRIPTS (PC vs Laptop)
+# EASIEST WAY: just double-click start-local.bat (or run it from a terminal).
+# It starts local Postgres in Docker, runs migrations, and opens backend +
+# frontend + partykit each in their own window. stop-local.bat tears the
+# Postgres container down again. Everything below is the manual/step-by-step
+# version of what that script does, in case you need to run pieces by hand.
 
+# START SCRIPTS (PC vs Laptop) - manual version
+
+# 1) Local Postgres (one-time per reboot, needs Docker Desktop running)
+docker compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml ps          # wait until "healthy"
+
+# 2) Backend (new terminal)
 PC START: -->        .\.venv\Scripts\Activate.ps1
 LAPTOP START: -->    .\venv\Scripts\Activate.ps1
+set DATABASE_URL=postgresql://blazekey:localdevpassword@localhost:5432/blazekey   (PowerShell: $env:DATABASE_URL="postgresql://blazekey:localdevpassword@localhost:5432/blazekey")
+alembic upgrade head
 python -m uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
+
+# 3) Frontend (new terminal)
 npm run dev
+
+# 4) Realtime (new terminal)
 npx partykit dev
+
+# 5) When done for the day
+docker compose -f docker-compose.local.yml down
+
+# Automated tests
+npm run test:e2e        # Playwright smoke test (spins up its own dev server)
+npm run build            # production build check
+npm run lint             # eslint
+npm run type-check       # tsc --noEmit
 
 MAKE SURE TO SAVE -->
 

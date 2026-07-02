@@ -1,14 +1,9 @@
-import { getIdTokenEnsured } from "@/lib/idToken";
-
 export async function syncProfileUsername(username: string) {
   try {
-    const token = await getIdTokenEnsured();
     await fetch("/api/profile/sync", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      credentials: "include",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ username }),
       cache: "no-store",
     });
@@ -16,5 +11,3 @@ export async function syncProfileUsername(username: string) {
     // Best-effort; non-blocking for UI.
   }
 }
-
-

@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { getAdminDb, serverTs, verifyIdTokenFromAuthHeader } from "@/lib/firebaseAdmin";
 import { leaderboardDocId } from "@/lib/leaderboardUser";
+import { getCurrentAppUsername } from "@/lib/appSession";
 import * as admin from "firebase-admin";
 import { createHash } from "crypto";
 
@@ -17,23 +18,6 @@ type RunPayload = {
   clientRunId?: string;
 };
 
-// Helper to get current app user from session/cookies
-async function getCurrentAppUser(req: NextRequest): Promise<{ username: string } | null> {
-  try {
-    // Forward cookies to the /api/auth/me endpoint
-    const meRes = await fetch(`${req.nextUrl.origin}/api/auth/me`, {
-      headers: { cookie: req.headers.get("cookie") ?? "" },
-      cache: "no-store",
-    });
-    
-    if (!meRes.ok) return null;
-    const userData = await meRes.json();
-    return userData?.username ? { username: userData.username } : null;
-  } catch {
-    return null;
-  }
-}
-
 export async function POST(req: NextRequest) {
   try {
     // Resolve identities from headers and cookies
@@ -43,13 +27,13 @@ export async function POST(req: NextRequest) {
     const signInProvider = (decoded as any)?.firebase?.sign_in_provider || null;
     const isAnonymous = signInProvider === "anonymous";
 
-    const appUser = await getCurrentAppUser(req);
+    const appUsername = await getCurrentAppUsername(req);
 
     // Prefer app session username when available; otherwise use non-anonymous Firebase uid
     let userDocId: string | null = null;
     let username: string | null = null;
-    if (appUser?.username) {
-      username = String(appUser.username).trim();
+    if (appUsername) {
+      username = appUsername;
       try { userDocId = leaderboardDocId({ uid: null, username }); } catch { userDocId = username.toLowerCase(); }
       if (process.env.NODE_ENV !== "production") console.log("[/api/runs] Using app session:", username, "->", userDocId);
     } else if (firebaseUid && !isAnonymous) {

@@ -998,7 +998,15 @@ const TypingTest: React.FC = () => {
         feedback: "Could not fetch AI feedback. Please ensure backend is running.",
       });
     }
-    // Fire-and-forget: persist run to server (guest-safe)
+    // Persist run to server (guest-safe). This is fire-and-forget from the
+    // UI's perspective (we don't block on it), but it must never silently
+    // lose data: on timeout/network failure/non-2xx we enqueue the exact
+    // request into the persistent retry queue (src/lib/retryQueue.ts), which
+    // is flushed on an interval and on `online` (see bootSync()/AppBoot).
+    // Without this, a slow/aborted save would leave the optimistic local
+    // append (above) as the *only* record of the run — looking "synced" in
+    // this browser while never actually landing in Postgres/Firestore, so
+    // it silently vanishes on any other device/browser for the same account.
     try {
       const payload = {
         mode: view === 'typing' ? (mode === 'time' ? `time/${durationSec}` : `words/${wordCount}`) : 'words',
@@ -1007,6 +1015,13 @@ const TypingTest: React.FC = () => {
         wpm: Math.round(finalWpm),
         accuracy: Math.round(finalAccuracy),
       };
+
+      // Validate payload before sending
+      if (!Number.isFinite(payload.wpm) || !Number.isFinite(payload.accuracy) || !Number.isFinite(payload.durationSec)) {
+        console.warn('[TypingTest] Invalid payload data, skipping API call:', payload);
+        return;
+      }
+
       const guestId = (() => {
         try {
           return localStorage.getItem('bk_guest_id') || (() => {
@@ -1028,27 +1043,42 @@ const TypingTest: React.FC = () => {
         // proceed without token; server will treat as guest
       }
 
-      // Validate payload before sending
-      if (!Number.isFinite(payload.wpm) || !Number.isFinite(payload.accuracy) || !Number.isFinite(payload.durationSec)) {
-        console.warn('[TypingTest] Invalid payload data, skipping API call:', payload);
+      const runBody = { ...payload, guestId };
+      const enqueueForRetry = async () => {
+        try {
+          const { enqueue } = await import("@/lib/retryQueue");
+          await enqueue({ url: "/api/runs", method: "POST", body: runBody, headers: authHeader });
+        } catch {}
+      };
+
+      // Generous timeout: a cold dev server (or a cold serverless start in
+      // prod) compiling/initializing this route for the first time can
+      // legitimately take longer than a typical request. We'd rather wait
+      // than falsely conclude the save failed and duplicate it via the
+      // retry queue.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+      let response: Response;
+      try {
+        response = await fetch('/api/runs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeader },
+          body: JSON.stringify(runBody),
+          credentials: 'include',
+          signal: controller.signal,
+        });
+      } catch (networkErr) {
+        clearTimeout(timeoutId);
+        console.warn('[TypingTest] Run save failed (network/timeout), queued for retry:', networkErr);
+        await enqueueForRetry();
         return;
       }
-
-      // Use AbortController with timeout to prevent hanging requests
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
-      const response = await fetch('/api/runs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ ...payload, guestId }),
-        signal: controller.signal
-      });
-
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.warn('[TypingTest] Failed to save run:', response.status, response.statusText);
+        console.warn('[TypingTest] Failed to save run, queued for retry:', response.status, response.statusText);
+        await enqueueForRetry();
       } else {
         // Guardrail: reconcile with server truth in the background once the
         // write lands, so the account page reflects canonical data (e.g. on
@@ -1060,10 +1090,7 @@ const TypingTest: React.FC = () => {
         } catch {}
       }
     } catch (error) {
-      // Only log if it's not an abort error
-      if (error instanceof Error && error.name !== 'AbortError') {
-        console.warn('[TypingTest] Error saving run:', error.message);
-      }
+      console.warn('[TypingTest] Error saving run:', error instanceof Error ? error.message : error);
     }
   };
 

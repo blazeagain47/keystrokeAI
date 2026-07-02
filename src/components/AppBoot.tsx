@@ -18,12 +18,17 @@ export default function AppBoot() {
     try { bootSync(); } catch {}
   }, []);
 
-  // Hydrate stats store when user identity changes (guest vs authed)
-  const uid = useAuthStore(s => s.user?.id);
+  // Hydrate stats store when user identity changes (guest vs authed).
+  // Keyed by username (not the numeric DB id) since that id is only unique
+  // within one database instance/environment and gets reused (1, 2, 3...)
+  // across fresh local DBs — keying local history by it risks one account's
+  // cached runs bleeding into an unrelated account that happens to land on
+  // the same id.
+  const username = useAuthStore(s => s.user?.username);
   useEffect(() => {
-    const id = uid ? String(uid) : "guest";
+    const id = username ? username.trim().toLowerCase() : "guest";
     try { useStatsStore.getState().hydrate(id); } catch {}
-  }, [uid]);
+  }, [username]);
   return null;
 }
 

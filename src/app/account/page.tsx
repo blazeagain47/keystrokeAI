@@ -35,10 +35,11 @@ export default function AccountPage() {
     } catch {}
   }, [ready]);
 
-  // hydrate stats store once user is available
+  // hydrate stats store once user is available (keyed by username, see
+  // AppBoot.tsx for why this must not be the numeric DB id)
   useEffect(() => {
-    if (!user) return;
-    try { void hydrateStats(String(user.id)); } catch {}
+    if (!user?.username) return;
+    try { void hydrateStats(user.username.trim().toLowerCase()); } catch {}
   }, [user, hydrateStats]);
 
   // Clear the post-login/register full-screen loader (started on /login)

@@ -1,17 +1,12 @@
 import { auth } from "@/lib/firebase";
-import { getIdToken, signInAnonymously } from "firebase/auth";
-
-export async function getIdTokenEnsured(): Promise<string> {
-  if (!auth.currentUser) {
-    await signInAnonymously(auth);
-  }
-  return getIdToken(auth.currentUser!, true);
-}
+import { getIdToken } from "firebase/auth";
 
 /**
- * Return a Firebase ID token if a real user is already signed in.
- * Does NOT sign in anonymously. Use this for routes that should not
- * create anonymous identities (e.g., /api/runs where app session should win).
+ * Return a Firebase ID token if a real (non-anonymous) user is already
+ * signed in. Does NOT sign in anonymously — the app's identity system is
+ * the username/password session cookie (see src/lib/appSession.ts); Firebase
+ * anonymous auth previously caused user data to be split across two
+ * identities and is intentionally not used anymore.
  */
 export async function getIdTokenOptional(): Promise<string | null> {
   try {
@@ -21,5 +16,3 @@ export async function getIdTokenOptional(): Promise<string | null> {
     return null;
   }
 }
-
-
