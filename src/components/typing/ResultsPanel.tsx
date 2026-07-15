@@ -2,12 +2,10 @@
 "use client";
 
 import * as React from "react";
-import { useMemo, useDeferredValue } from "react";
+import { useMemo } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { useOnVisible } from "@/lib/useOnVisible";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import AIFeedback from "@/components/feedback/AIFeedback";
-import BlazeFeedbackCard from "@/components/feedback/BlazeFeedbackCard";
+import dynamic from "next/dynamic";
 const AIFeedbackCardRevamp = dynamic(() => import("@/components/feedback/AIFeedbackCardRevamp"), {
   ssr: false,
   loading: () => <div className="p-5 rounded-xl border border-white/10 bg-white/5 animate-pulse h-[180px]" />
@@ -16,14 +14,8 @@ import FireSummaryCard from "@/components/test/FireSummaryCard";
 import CommandHintsFloating from "@/components/ui/CommandHintsFloating";
 import { useCommandsStore, type CommandAction } from "@/stores/commands";
 import { useStatsStore } from "@/stores/useStatsStore";
-import { useAuth } from "@/hooks/useAuth";
-import { useTotalsStore } from "@/stores/useTotalsStore";
 import ResultsStatsBar from "./ResultsStatsBar";
-import { sanitizeWpmForChart } from "@/lib/typingMetrics";
-import dynamic from "next/dynamic";
 import AICoachCard from "@/components/ai/AICoachCard";
-import { useAICoach } from "@/store/aiCoach";
-import { ChartProbe } from "@/components/dev/ChartProbe";
 import ResultsChart from "./ResultsChart";
 import { safeCopy } from "@/utils/safeCopy";
 import { Switch } from "@/components/ui/switch";
@@ -31,11 +23,8 @@ import * as Tooltip from "@/components/ui/tooltip";
 import { useSettingsStore } from "@/store/settings";
 import { useHydrated } from "@/lib/useHydrated";
 import { mark } from "@/lib/perf";
-import { tl } from "@/lib/timeline";
-import { devLog } from "@/lib/devLog";
-import { useQueueCount } from "@/hooks/useQueueCount";
-import { officialWpm, accuracy as accFn, ema, dropFirstN, normalizePerSecond, stdev } from "@/lib/statsMath";
-import useSyncing from "@/hooks/useSyncing";
+import { stdev } from "@/lib/statsMath";
+import { getTrendRevealProps, prepareResultsSeries } from "@/lib/resultsSeries";
 import AdSlot from "@/components/ads/AdSlot";
 
 export interface ResultsPanelProps {
@@ -67,14 +56,8 @@ export interface ResultsPanelProps {
 
 }
 
-const fmt = {
-  x: (s: number) => `${s}s`,
-  y: (v: number) => `${Math.round(v)}`,
-};
-
 export default function ResultsPanel(props: ResultsPanelProps) {
   const { registerGroup, setActiveGroup } = useCommandsStore();
-  const chartBoxRef = React.useRef<HTMLDivElement>(null);
 
   const isHydrated = useHydrated();
   const blazeEnabled = useSettingsStore(s => s.test.blazeModeEnabled);
@@ -108,46 +91,30 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     flags,
   } = props;
 
-  // Diagnostic logging
-  console.info('[bk:new] results= src/components/typing/ResultsPanel.tsx'); // remove after verification
-
-  const totalXpStore = useStatsStore(s => s.totalXP);
-  const { user } = useAuth();
-  const userStreak = useTotalsStore(s => s.streakDays) || 0;
-  const hydrateTotals = useTotalsStore(s => s.hydrate);
-  React.useEffect(() => { void hydrateTotals(); }, [hydrateTotals]);
-
-  const wpmTrendRaw: number[] = Array.isArray(wpmSeries)
-    ? wpmSeries.map((p: any) => (typeof p === "number" ? p : Number(p?.wpm) || 0))
-    : [];
-  const deferredChart = useDeferredValue(wpmTrendRaw);
-  const wpmTrend = deferredChart;
-
-  // Normalize raw series and apply EMA smoothing with first-second drop for chart
-  const { chartWpm, coachWpm, consistency } = React.useMemo(() => {
-    const rawSeries = normalizePerSecond(
-      wpmTrend.map((wpm, i) => ({ t: i, wpm }))
-    ).map(s => s.wpm);
-
-    // Drop first 1s to remove cold-start spike (chart only; KPIs unchanged)
-    const chartSeries = dropFirstN(rawSeries, 1);
-    const chartSeriesEma = ema(chartSeries, 0.3);
-
-    // Coach WPM is the final EMA value, or fallback to official if no data
-    const coachWpm = chartSeriesEma.length ? chartSeriesEma[chartSeriesEma.length - 1] : props.wpm;
-    
-    // Consistency % based on per-second variability
-    const consistency = chartSeriesEma.length ? Math.max(0, 100 - stdev(chartSeriesEma)) : 0;
-
-    return { chartWpm: chartSeriesEma, coachWpm, consistency };
-  }, [wpmTrend, props.wpm]);
-  const [pulseGlow, setPulseGlow] = React.useState(false);
+  const chartData = React.useMemo(
+    () => prepareResultsSeries(wpmSeries, props.time, props.wpm).map((point) => ({
+      second: point.second,
+      wpm: Math.round(point.wpm),
+    })),
+    [wpmSeries, props.time, props.wpm],
+  );
+  const wpmTrend = React.useMemo(() => chartData.map((point) => point.wpm), [chartData]);
+  const coachWpm = wpmTrend.length ? wpmTrend[wpmTrend.length - 1] : props.wpm;
+  const consistency = wpmTrend.length ? Math.max(0, 100 - stdev(wpmTrend)) : 0;
   const prefersReducedMotion = useReducedMotion();
-  // Reveal the chart only when the card is scrolled into view
-  const { ref: trendRef, visible: trendVisible } = useOnVisible<HTMLDivElement>({
-    rootMargin: "0px 0px -120px 0px",
-    threshold: 0.2,
-  });
+  const trendReveal = getTrendRevealProps(!!prefersReducedMotion);
+  const handleChartFirstPaint = React.useCallback(() => mark('chart:rendered'), []);
+  const [nonCriticalReady, setNonCriticalReady] = React.useState(false);
+  React.useEffect(() => {
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => setNonCriticalReady(true));
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, []);
 
   React.useEffect(() => {
     let tabHeld = false;
@@ -190,11 +157,11 @@ export default function ResultsPanel(props: ResultsPanelProps) {
   }, [onNextTest]);
   // Normalize WPM values to 0..100 for sparkline animation
   const trendPercentages: number[] | undefined = (() => {
-    if (!chartWpm || chartWpm.length < 2) return undefined;
-    const min = Math.min(...chartWpm);
-    const max = Math.max(...chartWpm);
+    if (!wpmTrend || wpmTrend.length < 2) return undefined;
+    const min = Math.min(...wpmTrend);
+    const max = Math.max(...wpmTrend);
     const range = Math.max(1, max - min);
-    return chartWpm.map((v) => Math.round(((v - min) / range) * 100));
+    return wpmTrend.map((v) => Math.round(((v - min) / range) * 100));
   })();
   const nextKnobs: string[] | undefined = (() => {
     if (!flags) return undefined;
@@ -207,41 +174,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     const msg = analysis?.feedback || "";
     return msg.includes("Could not fetch AI feedback.") ? msg : null;
   })();
-  const qn = useQueueCount();
-  const syncing = useSyncing();
-
-  // Map sanitized series to chart data points
-  const chartData = React.useMemo(
-    () => Object.freeze(chartWpm.map((v, i) => ({ second: i + 1, wpm: Math.round(v) }))),
-    [chartWpm]
-  );
-
-  // Debug logging for chart data
-  console.log("[ResultsPanel] chartData preview", {
-    n: chartData.length,
-    preview: chartData.slice(0, 5)
-  });
-
-  // (Dev) Debug toggle for series comparison
-  React.useEffect(() => {
-    if (process.env.NEXT_PUBLIC_DEV_STATS_DEBUG === "1") {
-      const rawSeries = normalizePerSecond(
-        wpmTrend.map((wpm, i) => ({ t: i, wpm }))
-      ).map(s => s.wpm);
-      
-      // eslint-disable-next-line no-console
-      console.table({
-        wpm_official: props.wpm,
-        coach_last: Math.round(coachWpm),
-        raw_len: rawSeries.length,
-        chart_len: chartWpm.length,
-        first5_raw: rawSeries.slice(0, 5),
-        first5_chart: chartWpm.slice(0, 5).map(n => Math.round(n)),
-      });
-    }
-  }, [wpmTrend, props.wpm, coachWpm, chartWpm]);
-
-  // Debug logging for chart annotations (rename to avoid shadowing prop avgWpm)
+  // Compact chart context shown in the card header.
   const chartAvgWpm = chartData.length ? chartData.reduce((s, p) => s + p.wpm, 0) / chartData.length : undefined;
   const peakPoint = chartData.length
     ? chartData.reduce(
@@ -250,9 +183,6 @@ export default function ResultsPanel(props: ResultsPanelProps) {
       )
     : { second: 0, wpm: -Infinity as number };
   const hasPeak = Number.isFinite(peakPoint.wpm);
-  const finishSec = props.time ?? (chartData.length ? chartData[chartData.length - 1].second : undefined);
-  
-  console.debug("[bk] chart meta", { chartAvgWpm, peakPoint, finishSec, n: chartData.length });
 
   // Derive error tokens source from most recent run in history when available
   const historyAll = useStatsStore(s => s.history);
@@ -272,16 +202,6 @@ export default function ResultsPanel(props: ResultsPanelProps) {
     const keys = (lastRun as any)?.mistypedKeys ?? (lastRun as any)?.errors ?? null;
     return bigrams || keys ? { bigrams, keys } : null;
   }, [lastRun]);
-
-  // Debug logging for error sources
-  console.debug("[bk] error sources", {
-    events: Array.isArray((lastRun as any)?.events) && (lastRun as any).events.length,
-    keyEvents: Array.isArray((lastRun as any)?.keyEvents) && (lastRun as any).keyEvents.length,
-    keystrokes: Array.isArray((lastRun as any)?.keystrokes) && (lastRun as any).keystrokes.length,
-    keyLog: Array.isArray((lastRun as any)?.keyLog) && (lastRun as any).keyLog.length,
-    bigrams: !!(lastRun as any)?.errorBigrams, 
-    keys: !!((lastRun as any)?.mistypedKeys ?? (lastRun as any)?.errors),
-  });
 
   return (
     <section className="relative z-[1] w-full mx-auto max-w-7xl px-4 md:px-6 bk-page-content results-scroll-root" aria-label="Results">
@@ -333,7 +253,7 @@ export default function ResultsPanel(props: ResultsPanelProps) {
                   knobs={nextKnobs ?? ["Punctuation off", "Numbers off"]}
                   trend={trendPercentages}
                   error={aiError}
-                  className={`${pulseGlow ? 'glow-boost' : ''} self-start`}
+                  className="self-start"
                   lastRunConfig={resolvedLastRunConfig}
                   headerSlot={null}
                   secondarySize="sm"
@@ -361,16 +281,16 @@ export default function ResultsPanel(props: ResultsPanelProps) {
         )}
 
         {/* Ad: Results (below top summary) */}
-        <div className="col-span-12">
+        {nonCriticalReady && <div className="col-span-12">
           <AdSlot
             slot={process.env.NEXT_PUBLIC_ADSENSE_SLOT_RESULTS}
             pageKey="results"
           />
-        </div>
+        </div>}
 
         {/* Middle row: Insights left, Coach right */}
         <div className="col-span-12 lg:col-span-6">
-          <div className="cv-auto cv-300">
+          <div>
             <AIFeedbackCardRevamp
               wpmTrend={wpmTrend}
               accuracyPct={accuracy}
@@ -384,46 +304,47 @@ export default function ResultsPanel(props: ResultsPanelProps) {
         </div>
 
         <div className="col-span-12 lg:col-span-6">
-          {(onPracticeWeakSpots || onPracticeWeakSpotsTimed) && (() => {
-            const coachStatus = useAICoach((s) => s.status);
-            const coachDeltas = useAICoach((s) => s.lastDeltas);
-            return (
-              <div>
-                <AICoachCard
-                  onPractice={onPracticeWeakSpots ?? (() => {})}
-                  onPracticeTimed={onPracticeWeakSpotsTimed}
-                  state={coachStatus}
-                  deltas={coachDeltas}
-                />
-              </div>
-            );
-          })()}
+          {(onPracticeWeakSpots || onPracticeWeakSpotsTimed) && (
+            <div>
+              <AICoachCard
+                onPractice={onPracticeWeakSpots ?? (() => {})}
+                onPracticeTimed={onPracticeWeakSpotsTimed}
+              />
+            </div>
+          )}
         </div>
 
         {/* Bottom: Trend full-width */}
-        <div className="col-span-12 cv-auto cv-480">
+        <div className="col-span-12">
           <Card className="bk-fire-card relative isolate rounded-2xl h-full min-h-[432px]">
             <div aria-hidden className="bk-card-vignette pointer-events-none absolute inset-0" />
             <CardHeader className="pb-2 relative z-10">
-              <div className="bk-chart-title mb-2">
+              <div className="bk-chart-title mb-2 flex flex-wrap items-center justify-between gap-3">
                 <CardTitle className="text-base md:text-lg font-semibold bk-title bk-title--glow">Typing Speed Trend</CardTitle>
+                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-white/55">
+                  {chartAvgWpm != null && (
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">
+                      Avg <strong className="ml-1 font-semibold text-orange-200">{Math.round(chartAvgWpm)}</strong>
+                    </span>
+                  )}
+                  {hasPeak && (
+                    <span className="rounded-full border border-orange-400/15 bg-orange-400/[0.06] px-2.5 py-1">
+                      Peak <strong className="ml-1 font-semibold text-orange-200">{Math.round(peakPoint.wpm)}</strong>
+                    </span>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent className="pt-2 relative z-10">
               <motion.div
-                ref={trendRef}
                 className="h-[312px] md:h-[360px] pl-6 pr-2"
-                initial={prefersReducedMotion ? undefined : { opacity: 0, y: 12 }}
-                animate={prefersReducedMotion ? undefined : (trendVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 })}
-                transition={{ duration: 0.5, ease: "easeOut" }}
+                {...trendReveal}
+                data-testid="results-trend"
               >
                 <ResultsChart
                   chartData={chartData}
-                  avg={chartAvgWpm}
-                  finishSec={finishSec}
-                  reducedMotion={prefersReducedMotion}
-                  visible={trendVisible}
-                  onFirstPaint={() => mark('chart:rendered')}
+                  reducedMotion={!!prefersReducedMotion}
+                  onFirstPaint={handleChartFirstPaint}
                 />
               </motion.div>
             </CardContent>

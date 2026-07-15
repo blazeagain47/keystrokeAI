@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useStatsStore } from "@/stores/useStatsStore";
 import { useTotalsStore } from "@/stores/useTotalsStore";
@@ -13,11 +13,6 @@ import {
   baselineWpmFromHistory,
   RunSnapshot,
 } from "@/lib/typingMetrics";
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-} from "recharts";
 import {
   ChevronRight,
   ChevronDown,
@@ -43,6 +38,55 @@ type Props = {
   onPracticeWeakSpots?: () => void;
   onPracticeWeakSpotsTimed?: () => void;
 };
+
+function RhythmSparkline({ values }: { values: number[] }) {
+  const gradientId = useId().replace(/:/g, "");
+  const geometry = useMemo(() => {
+    const clean = values.filter(Number.isFinite);
+    if (!clean.length) return null;
+
+    const width = 160;
+    const height = 48;
+    const pad = 3;
+    const min = Math.min(...clean);
+    const max = Math.max(...clean);
+    const span = Math.max(1, max - min);
+    const points = clean.map((value, index) => {
+      const x = clean.length === 1 ? width / 2 : pad + (index / (clean.length - 1)) * (width - pad * 2);
+      const y = height - pad - ((value - min) / span) * (height - pad * 2);
+      return [x, y] as const;
+    });
+    const line = points.map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(2)} ${y.toFixed(2)}`).join(" ");
+    const first = points[0];
+    const last = points[points.length - 1];
+    const area = `${line} L${last[0].toFixed(2)} ${height} L${first[0].toFixed(2)} ${height} Z`;
+    return { line, area, last };
+  }, [values]);
+
+  if (!geometry) {
+    return <div className="h-12 rounded-lg bg-white/[0.03]" aria-label="No rhythm samples yet" />;
+  }
+
+  return (
+    <svg
+      viewBox="0 0 160 48"
+      preserveAspectRatio="none"
+      className="block size-full overflow-visible"
+      role="img"
+      aria-label={`Typing rhythm across ${values.length} samples`}
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fb923c" stopOpacity="0.32" />
+          <stop offset="100%" stopColor="#fb923c" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={geometry.area} fill={`url(#${gradientId})`} />
+      <path d={geometry.line} fill="none" stroke="#fb923c" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+      <circle cx={geometry.last[0]} cy={geometry.last[1]} r="2.5" fill="#fdba74" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
 
 function buildMessage(wpmTrend: number[], acc: number) {
   if (!Array.isArray(wpmTrend) || !wpmTrend.length) return "Keep going—finish a full run for better insights.";
@@ -385,17 +429,7 @@ function DetailedView({
           <p>Your typing rhythm was {consistency > 80 ? "consistent" : "variable"} throughout.</p>
           <div className="h-12 relative">
             <div className="absolute inset-x-0 bottom-0 h-6 bk-chart-halo rounded-full pointer-events-none" />
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={wpmTrend.map((wpm, i) => ({ second: i + 1, wpm }))}>
-                <Area type="monotone" dataKey="wpm" stroke="#f97316" fill="url(#colorWpm)" />
-                <defs>
-                  <linearGradient id="colorWpm" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0.1} />
-                  </linearGradient>
-                </defs>
-              </AreaChart>
-            </ResponsiveContainer>
+            <RhythmSparkline values={wpmTrend} />
           </div>
         </div>
       </ExpandableSection>

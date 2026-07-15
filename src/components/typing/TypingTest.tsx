@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStatsStore } from '@/stores/useStatsStore';
+import { useTotalsStore } from '@/stores/useTotalsStore';
 import TypingBox from './TypingBox';
 import ResultsPanel from './ResultsPanel';
 import { 
@@ -54,6 +55,7 @@ import { weakspot } from "@/ai/weakspot";
 import { useAICoach } from "@/store/aiCoach";
 import { useHydrated } from "@/lib/useHydrated";
 import { flushSync } from 'react-dom';
+import { upsertLatestWpmSample, withOfficialFinalSample } from '@/lib/resultsSeries';
 
 // --- NEW: simple local history for adaptive difficulty ---
 const HISTORY_KEY = "ks_history_v1";
@@ -70,6 +72,16 @@ function movingAvg(items: Hist[]) {
   const wpm = Math.round(items.reduce((s, x) => s + x.wpm, 0) / n);
   const acc = Math.round(items.reduce((s, x) => s + x.acc, 0) / n);
   return { wpm, acc };
+}
+
+function afterNextPaint() {
+  return new Promise<void>((resolve) => {
+    if (typeof window === "undefined" || document.visibilityState === "hidden") {
+      setTimeout(resolve, 0);
+      return;
+    }
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
 }
 
 type FetchResponse = {
@@ -719,22 +731,8 @@ const TypingTest: React.FC = () => {
     setAccuracy(newAccuracy);
     setTime(newTime);
     setIsTestComplete(false);
-    const s = Math.max(1, Math.floor(newTime));
-    setWpmSeries((prev) => (prev.length && prev[prev.length - 1].second === s) ? prev : [...prev, { second: s, wpm: newWpm }]);
+    setWpmSeries((prev) => upsertLatestWpmSample(prev, newTime, newWpm));
   };
-
-  // Ensure a 1s sampling cadence during active typing (view === 'typing' and not complete)
-  useEffect(() => {
-    const isActive = view === 'typing' && !isTestComplete;
-    if (!isActive) return;
-    const id = setInterval(() => {
-      // Trigger a no-op update using existing values to keep the 1s cadence in the top bar
-      setWpm((w) => w);
-      setAccuracy((a) => a);
-      setTime((t) => t);
-    }, 1000);
-    return () => clearInterval(id);
-  }, [view, isTestComplete]);
 
   // Track difficulty changes to update prevDifficulty (animation removed)
   // useEffect(() => {
@@ -904,6 +902,7 @@ const TypingTest: React.FC = () => {
     setWpm(finalWpm);
     setAccuracy(finalAccuracy);
     setTime(finalTime);
+    setWpmSeries((prev) => withOfficialFinalSample(prev, finalTime, finalWpm));
 
     const blazeOn = useSettingsStore.getState().test.blazeModeEnabled === true;
 
@@ -939,12 +938,17 @@ const TypingTest: React.FC = () => {
       await new Promise(res => setTimeout(res, MIN));
       await Promise.race([Promise.allSettled(tasks), new Promise(res => setTimeout(res, EXTRA))]);
 
-      React.startTransition(() => setView('results'));
+      setView('results');
       // gentle fade-out overlap to avoid flicker
       setTimeout(() => setBlazeUi("off"), 250);
     } else {
-      React.startTransition(() => setView('results'));
+      setView('results');
     }
+
+    // Let the urgent results shell commit before history, analysis, persistence,
+    // retry-queue, and auth-token work starts.
+    await afterNextPaint();
+
     // update local history for adaptive difficulty
     try {
       const items = readHist();

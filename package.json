@@ -12,6 +12,7 @@
     "firebase:deploy": "firebase deploy",
     "inspect-firestore": "tsx scripts/inspect-firestore.ts",
     "test": "jest",
+    "test:unit": "tsx --test tests/unit/resultsSeries.test.ts",
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
     "test:e2e:webkit": "playwright test --project=webkit",
